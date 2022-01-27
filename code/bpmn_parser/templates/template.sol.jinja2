@@ -34,14 +34,36 @@ contract {{ choreography.attrib.id }} {
 
     uint DIM = 8;
 
-    function getLeaves() {
-        Configuration leaves = [];
+    function getLeaves() public returns(Configuration[] memory) {
+        //Configuration[] storage leaves; // = new Configuration[](0);
+        //Configuration memory leaves [ configurations.length() ];
+        uint16 numLeaves = 0;
+
+        // 1st. count the number of leaves
         for (uint i=0; i<configurationIndices.length; i++) {
-            Configuration curr = configurations(configurationIndices(i));
+            Configuration memory curr = configurations[configurationIndices[i]];
             if (! curr.deadEnd) {
-                leaves.push(curr);
+                // TODO check it has no children ... if (! curr.hasChildren()) ...
+                //leaves.push(curr);
+                //leaves[currLeaf++] = curr;
+                numLeaves++;
             }
         }
+
+        // 2nd. allocate array and copy leaves
+        Configuration memory leaves[ numLeaves ];
+        uint16 currLeaf = 0;
+
+        for (uint i=0; i<configurationIndices.length; i++) {
+            Configuration memory curr = configurations[configurationIndices[i]];
+            if (! curr.deadEnd) {
+                // TODO check it has no children ... if (! curr.hasChildren()) ...
+                //leaves.push(curr);
+                //leaves[currLeaf++] = curr;
+                leaves[numLeaves++] = curr;
+            }
+        }
+
 
         return leaves;
     }

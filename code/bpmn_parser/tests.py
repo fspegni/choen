@@ -6,7 +6,7 @@ from django.conf import settings
 from bpmn_parser.models import Choreography
 
 
-class AnimalTestCase(TestCase):
+class LoadChoreographyCase(TestCase):
 
     def setUp(self):
 
