@@ -1,0 +1,124 @@
+pragma solidity {{ settings.SOLIDITY_VERSION }};
+
+//SPDX-License-Identifier: UNLICENSED;
+
+contract {{ choreography.attrib.id }} {
+
+    // task encoding
+    // 0 : idle
+    {% for curr in tasks %}
+    // {{ loop.index }} : {{ curr.attrib.name }}
+    {% endfor %}
+
+    {% for curr in participants %}
+    address payable public actor_{{ curr.attrib.name|slugify }} = address(0x0);
+    {% endfor %}
+
+    string[] private messages;
+    
+    struct Configuration {
+        bytes32 name;     // name of node
+        bytes32 parent;   // parent node’s path
+        //uint64 data;     // node’s data
+        uint8[] tasks;
+        bytes32[] configurations;  // list of linked nodes’ paths
+        bool deadEnd;       
+    }
+
+    mapping(bytes32 => Configuration) configurations;
+    bytes32[] configurationIndices;
+
+    uint8[] _tasks; // = [ 0,0] ;
+
+    Configuration tree = Configuration(0, 0, new uint8 [] (0), new bytes32 [](0), false);
+
+    uint DIM = 8;
+
+    function getLeaves() {
+        Configuration leaves = [];
+        for (uint i=0; i<configurationIndices.length; i++) {
+            Configuration curr = configurations(configurationIndices(i));
+            if (! curr.deadEnd) {
+                leaves.push(curr);
+            }
+        }
+
+        return leaves;
+    }
+       
+    function enableTask(uint8[] memory _v, uint _n) public returns(uint8[] memory) { //mettere memory prima di _n non mi permetteva di compilare
+           
+        uint i = _n / DIM;        //gives the corresponding index in the array A
+        uint pos = _n % DIM;      //gives the corresponding bit position in A[i]
+    
+        uint flag = 1 << pos;   // flag = 0000.....00001
+    
+        _v[i] = _v[i] | uint8(flag);      // Set the bit at the k-th position in A[i] //ho fatto il type-casting a uint32
+        
+        return _v;
+   }
+    
+    
+    function disableTask(uint8[] memory _v, uint _n) public returns (uint8[] memory) {
+       
+        uint i = _n / DIM;        //gives the corresponding index in the array A
+        uint pos = _n % DIM;      //gives the corresponding bit position in A[i]
+        
+        uint8 flag = uint8(~(1 << pos));
+        _v[i] = _v[i] & flag;
+        
+        return _v;
+    }
+    
+    function compareStrings(string memory a, string memory b) public view returns (bool) {
+        return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
+    }
+    
+    modifier isEnabled(uint8[] memory _v, uint _n) { //
+        
+         uint i = _n / DIM;        //gives the corresponding index in the array A 
+         uint pos = _n % DIM;      //gives the corresponding bit position in A[i]
+        
+        uint flag = 1 << pos; 
+        uint temp = _v[i] & flag;
+        
+        _;
+    }
+
+ 
+    function send(string memory msgName) public{
+        messages.push(msgName);
+        
+    }
+    
+    modifier messageSent(string memory msgName) {
+        bool found = false;
+        for(uint i=0; i<messages.length; i++){ 
+            if(keccak256(abi.encodePacked(messages[i])) == keccak256(abi.encodePacked(msgName))){ 
+                found = true;
+                break;
+            }
+        }
+    
+        require (found);
+        
+        _;
+    }
+  
+    {% for curr in participants %}
+    function sign_{{ curr.attrib.name|slugify }}() public {
+        actor_{{ curr.attrib.name|slugify }} = payable(msg.sender);
+
+        if (
+        {% for curr2 in participants %}
+            actor_{{ curr2.attrib.name|slugify }} != address(0x0) {% if not loop.last %}&&{% endif %}
+        {% endfor %}
+        ) {
+            // TODO disable initial task, enable first task
+            disableTask(tree.tasks, 0);
+            enableTask(tree.tasks, 1);
+        }
+    }
+    {% endfor %}
+
+}
