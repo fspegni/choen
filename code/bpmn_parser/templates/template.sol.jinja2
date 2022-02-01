@@ -1,4 +1,5 @@
 pragma solidity {{ settings.SOLIDITY_VERSION }};
+pragma abicoder v2;
 
 //SPDX-License-Identifier: UNLICENSED;
 
@@ -51,7 +52,7 @@ contract {{ choreography.attrib.id }} {
         }
 
         // 2nd. allocate array and copy leaves
-        Configuration memory leaves[ numLeaves ];
+        Configuration[] memory leaves = new Configuration[]( numLeaves );
         uint16 currLeaf = 0;
 
         for (uint i=0; i<configurationIndices.length; i++) {
