@@ -28,3 +28,4 @@ six==1.14.0
 sqlparse==0.4.2
 urllib3==1.25.8
 webencodings==0.5.1
+py-solc-x==1.1.1
