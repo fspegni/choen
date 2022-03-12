@@ -26,3 +26,10 @@ class LoadChoreographyCase(TestCase):
         assert type(res) == dict
         assert key in res
         assert type(res[key]) == dict
+
+    def test_next(self):
+        c = Choreography.objects.first()
+        for curr in c.startEvents:
+            print("START: %s" % curr)
+            next = c.next(curr)
+            print("NEXT: %s" % next)
