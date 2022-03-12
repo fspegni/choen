@@ -108,9 +108,58 @@ class Choreography(models.Model):
                 if flow == None:
                     raise Exception("Cannot find flow: %s" % curr.text)
 
-                res.append(flow.attrib["targetRef"])
+                # res.append(flow.attrib["targetRef"])
+                target_id = flow.attrib["targetRef"]
+                target_node = self.root.find(".//*[@id='%s']" % target_id, NS)
+                if target_node == None:
+                    raise Exception("Target node (%s) cannot be found" % target_id)
+
+                res.append(target_node)
 
         return res
 
+
     def prev(self, node):
-        raise Exception("TODO")
+
+        res = []
+
+        if (node):
+            incoming = node.findall(".//bpmn2:incoming", NS)
+
+            for curr in incoming:
+                print("OUT : %s -> %s " % (node, curr))
+                print("%s (%s)" % (curr, curr.text))
+
+                flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
+                print("Flows found: %s" % flow)
+
+                if flow == None:
+                    raise Exception("Cannot find flow: %s" % curr.text)
+
+                source_id = flow.attrib["sourceRef"]
+                source_node = self.root.find(".//*[@id='%s']" % source_id, NS)
+                if source_node == None:
+                    raise Exception("Source node (%s) cannot be found" % source_id)
+
+                res.append(source_node)
+
+        return res
+        
+
+    def star(self, start, op):
+        items = set([ start ])
+        visited = set([])    
+        
+        
+        while visited != items:
+            for curr in items:
+                if curr not in visited:
+                    found = op(curr)
+                    
+                    print("VISIT: %s |-> %s" % (curr, found))
+
+                    visited = visited.union([ curr ])
+                    items = items.union(found)
+
+        print("STAR(%s,%s) = %s" % (start, op,items))
+        return items

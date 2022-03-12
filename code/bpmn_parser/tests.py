@@ -33,3 +33,27 @@ class LoadChoreographyCase(TestCase):
             print("START: %s" % curr)
             next = c.next(curr)
             print("NEXT: %s" % next)
+
+
+    def test_prev(self):
+        c = Choreography.objects.first()
+        for curr in c.endEvents:
+            print("END: %s" % curr)
+            prev = c.prev(curr)
+            print("PREV: %s" % prev)
+
+
+    def test_next_star(self):
+        c = Choreography.objects.first()
+        for curr in c.startEvents:
+            print("START: %s" % curr)
+            items = c.star(curr, c.next)
+            print("ITEMS = %s" % items)    
+
+
+    def test_prev_star(self):
+        c = Choreography.objects.first()
+        for curr in c.endEvents:
+            print("END: %s" % curr)
+            items = c.star(curr, c.prev)
+            print("ITEMS = %s" % items)    
