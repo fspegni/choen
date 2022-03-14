@@ -14,6 +14,7 @@ NS = {
 
 class Choreography(models.Model):
 
+    name = models.TextField(max_length=100, null=True, blank=True)
     resource = models.FileField(upload_to=settings.UPLOAD_ROOT)
 
     def __init__(self, *args, **kwargs):        
@@ -91,14 +92,14 @@ class Choreography(models.Model):
         ctx = { "settings": settings, "choreography": self.choreographies[0], "participants": self.participants, "tasks": self.tasks }
         return template.render(**ctx)
 
-    def next(self, node):
-
+    def outgoing(self, node):
         res = []
 
         if (node):
-            out = node.findall(".//bpmn2:outgoing", NS)
+            outgoing = node.findall(".//bpmn2:outgoing", NS)
+            #res.append(out)
 
-            for curr in out:
+            for curr in outgoing:
                 print("OUT : %s -> %s " % (node, curr))
                 print("%s (%s)" % (curr, curr.text))
 
@@ -107,6 +108,52 @@ class Choreography(models.Model):
 
                 if flow == None:
                     raise Exception("Cannot find flow: %s" % curr.text)
+
+                res.append(flow)
+
+        return res
+
+
+    def incoming(self, node):
+        res = []
+
+        if (node):
+            incoming = node.findall(".//bpmn2:incoming", NS)
+            #res.append(out)
+
+            for curr in incoming:
+                print("IN : %s -> %s " % (node, curr))
+                print("%s (%s)" % (curr, curr.text))
+
+                flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
+                print("Flows found: %s" % flow)
+
+                if flow == None:
+                    raise Exception("Cannot find flow: %s" % curr.text)
+
+                res.append(flow)
+
+        return res
+
+    
+
+    def next(self, node):
+
+        res = []
+
+        if (node):
+            connections = self.outgoing(node) #node.findall(".//bpmn2:outgoing", NS)
+
+            for flow in connections:
+            # for curr in out:
+                # print("OUT : %s -> %s " % (node, curr))
+                # print("%s (%s)" % (curr, curr.text))
+
+                # flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
+                # print("Flows found: %s" % flow)
+
+                # if flow == None:
+                    # raise Exception("Cannot find flow: %s" % curr.text)
 
                 # res.append(flow.attrib["targetRef"])
                 target_id = flow.attrib["targetRef"]
@@ -124,17 +171,20 @@ class Choreography(models.Model):
         res = []
 
         if (node):
-            incoming = node.findall(".//bpmn2:incoming", NS)
+            # incoming = node.findall(".//bpmn2:incoming", NS)
+            connections = self.incoming(node)
 
-            for curr in incoming:
-                print("OUT : %s -> %s " % (node, curr))
-                print("%s (%s)" % (curr, curr.text))
+            # for curr in incoming:
+            #     print("OUT : %s -> %s " % (node, curr))
+            #     print("%s (%s)" % (curr, curr.text))
 
-                flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
-                print("Flows found: %s" % flow)
+            #     flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
+            #     print("Flows found: %s" % flow)
 
-                if flow == None:
-                    raise Exception("Cannot find flow: %s" % curr.text)
+            #     if flow == None:
+            #         raise Exception("Cannot find flow: %s" % curr.text)
+
+            for flow in connections:
 
                 source_id = flow.attrib["sourceRef"]
                 source_node = self.root.find(".//*[@id='%s']" % source_id, NS)
@@ -144,7 +194,7 @@ class Choreography(models.Model):
                 res.append(source_node)
 
         return res
-        
+
 
     def star(self, start, op):
         items = set([ start ])
@@ -163,3 +213,8 @@ class Choreography(models.Model):
 
         print("STAR(%s,%s) = %s" % (start, op,items))
         return items
+
+    def reachable(self, start):
+        return self.star(start, self.next)
+
+    

@@ -3,6 +3,10 @@ class REI:
     def __str__(self):
         return ""
 
+    @property
+    def latex(self):
+        return ""
+
 
 class Symbol(REI):
 
@@ -14,13 +18,24 @@ class Symbol(REI):
         return self.symbol
 
 
+    @property
+    def latex(self):
+        return f"\textit{{{self.symbol}}}"
+
+
 class Conc(REI):
 
     def __init__(self, *items):
 
         self.items = list(items)
+
     def __str__(self):
         return " ".join(map(lambda curr: str(curr), self.items))
+
+    @property
+    def latex(self):
+        return " \cdot ".join(map(lambda curr: curr.latex, self.items))
+
 
 class Par(REI):
 
@@ -30,6 +45,11 @@ class Par(REI):
     def __str__(self):
         return "(" + " & ".join(map(lambda curr: str(curr), self.items)) + ")"
 
+    @property
+    def latex(self):
+        return " \& ".join(map(lambda curr: curr.latex, self.items))
+
+
 class Union(REI):
 
     def __init__(self, *items):
@@ -38,6 +58,9 @@ class Union(REI):
     def __str__(self):
         return "(" + " | ".join(map(lambda curr: str(curr), self.items)) + ")"
 
+    @property
+    def latex(self):
+        return " \vert ".join(map(lambda curr: curr.latex, self.items))
 
 
 class NFA:
@@ -51,8 +74,8 @@ class NFA:
     def add_node(self, id, node=None):
         self.nodes[id] = node
         
-
     def add_edge(self, source, target, label=None):
+
         
         if (source not in self.nodes):
             raise Exception(f"Source node not found: {source}")
