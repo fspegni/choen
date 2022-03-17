@@ -173,7 +173,7 @@ class TestChoreographyBasicCase(TestCase):
 
         assert n_visited == n_start + n_end + n_tasks + n_gateways, f"Visited: {n_visited} : Start: {n_start} : End: {n_end} : Tasks: {n_tasks} : Gateways: {n_gateways}"
 
-    def test_start_end_have_no_participants(self):
+    def test_start_events_have_no_participants(self):
 
         c:Choreography = Choreography.objects.get(name="diagram_gateways")
 
@@ -182,10 +182,64 @@ class TestChoreographyBasicCase(TestCase):
 
             assert len(participants) == 0
 
+
+    def test_end_events_have_no_participants(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
         for curr in c.endEvents:
             participants = c.involved(curr)
 
             assert len(participants) == 0
+
+    def test_gateways_have_no_participants(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
+        for curr in c.gateways:
+            participants = c.involved(curr)
+
+            assert len(participants) == 0
+
+
+    def test_start_events_have_no_messages(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
+        for curr in c.startEvents:
+            messages = c.messages(curr)
+
+            assert len(messages) == 0
+
+    def test_end_events_have_no_messages(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
+        for curr in c.endEvents:
+            messages = c.messages(curr)
+
+            assert len(messages) == 0
+
+    def test_gateways_have_no_messages(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
+        for curr in c.gateways:
+            messages = c.messages(curr)
+
+            assert len(messages) == 0
+
+
+    def test_tasks_have_at_least_one_message(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
+        for curr in c.tasks:
+            messages = c.messages(curr)
+
+            assert len(messages) > 0
+
+
 
 
 class TestTranslateChoreographyToRei(TestCase):
@@ -369,4 +423,5 @@ class TestTranslateChoreographyToRei(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "^'order pizza' ('New Activity' ('another implicit end'$ & (('' | 'implicit end'$) & ('' | something 'something else'$))) | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
+        assert str(r) == "^Pizza_Place?pizza_order (Pizza_Place?Message_0rkgt7n (Customer?Message_10fwh9y$ & (('' | Customer?Message_1e83pou$) & ('' | Customer?Message_0futku6 Pizza_Place?Message_1nqt44e$))) | Delivery_Boy?Message_1mi4idx Customer?pizza$)", f"Received: {r}"
+        # assert str(r) == "^'order pizza' ('New Activity' ('another implicit end'$ & (('' | 'implicit end'$) & ('' | something 'something else'$))) | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
