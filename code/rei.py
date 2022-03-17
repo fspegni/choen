@@ -1,4 +1,5 @@
 from bpmn_parser.models import Choreography, ElementType
+import re
 
 def expect_node_type(cho:Choreography, node:ElementType, ntypes):
 
@@ -42,19 +43,69 @@ class Symbol(REI):
     def latex(self):
         return f"\\textit{{{self.symbol}}}"
 
+class Epsilon(Symbol):
 
-class Conc(REI):
-
-    def __init__(self, *items):
-
-        self.items = list(items)
-
-    def __str__(self):
-        return " ".join(map(lambda curr: str(curr), self.items))
+    def __init__(self):
+        self.symbol = ""
 
     @property
     def latex(self):
-        return " \\cdot ".join(map(lambda curr: curr.latex if curr else "", self.items))
+        return f"\\epsilon"
+
+
+class Start(Symbol):
+
+    def __init__(self):
+        self.symbol = "^"
+
+    @property
+    def latex(self):
+        return "\\hat{}"
+
+class End(Symbol):
+
+    def __init__(self):
+        self.symbol = "$"
+
+    @property
+    def latex(self):
+        return f"\\$"        
+
+
+class Conc(REI):
+
+    def __init__(self, *children):
+        if len(children) == 0:
+            raise Exception("Empty lists are not accepted here")
+
+        self.items = []
+
+        for curr in children:
+            if isinstance(curr, Conc):
+                self.items.extend(curr.items)
+            else:
+                self.items.append(curr)
+
+        # self.items = list(items)
+
+    def __str__(self):
+        text = ""
+        eat_space = False
+        for curr in self.items:
+            if eat_space or isinstance(curr, End):
+                text = f"{text}{curr}"
+            else:
+                text = f"{text} {curr}"
+
+            # remember to eat one space next round
+            eat_space = isinstance(curr, Start) or isinstance(curr, End)
+                
+        
+        return text.strip()
+
+    @property
+    def latex(self):
+        return " \\cdot ".join(map(lambda curr: str(curr.latex) if curr else "", self.items))
 
 
 class Par(REI):
@@ -133,8 +184,8 @@ def ChoToRei(cho:Choreography, node:ElementType=None, match:ElementType=None):
     if node is None:
         # begin
 
-        rei_head = rei.Symbol("start")
-
+        # rei_head = rei.Symbol("start")
+        rei_head = rei.Start()
 
         assert len(cho.startEvents) == 1
         node = cho.startEvents[0]
@@ -154,7 +205,8 @@ def ChoToRei(cho:Choreography, node:ElementType=None, match:ElementType=None):
         closure = None
 
         if len(cho_next) == 0:
-            rei_rest = rei.Symbol("end")
+            # rei_rest = rei.Symbol("end")
+            rei_rest = rei.End()
         elif len(cho_next) == 1:
             rei_rest, closure = ChoToRei(cho, cho_next[0], match)
         else:
@@ -170,7 +222,8 @@ def ChoToRei(cho:Choreography, node:ElementType=None, match:ElementType=None):
         # print(f"Node: {node} - Type: {node_type}")
 
         if node_type == "END":
-            return rei.Symbol("end"), None
+            # return rei.Symbol("end"), None
+            return rei.End(), None
 
         elif node_type == "TASK":
             rei_head = rei.Symbol(node.attrib["name"])
@@ -180,7 +233,8 @@ def ChoToRei(cho:Choreography, node:ElementType=None, match:ElementType=None):
             closure = None
 
             if len(cho_next) == 0:
-                rei_rest = rei.Symbol("end")
+                # rei_rest = rei.Symbol("end")
+                rei_rest = rei.End()
             elif len(cho_next) == 1:
                 rei_rest, closure = ChoToRei(cho, cho_next[0], match)
             else:
@@ -269,7 +323,7 @@ def ChoToRei(cho:Choreography, node:ElementType=None, match:ElementType=None):
                 gw_closure = closure
                 
                 if rei_branch:
-                    rei_branch = rei.Union(rei.Symbol(''), rei_branch)
+                    rei_branch = rei.Union(rei.Epsilon(), rei_branch)
                     branches.append(rei_branch)
 
 

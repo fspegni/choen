@@ -184,7 +184,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start end"
+        assert str(r) == "^$"
 
 
     def test_translation_start_end(self):
@@ -193,7 +193,7 @@ class LoadChoreographyCase(TestCase):
         """
         c:Choreography = Choreography.objects.get(name="diagram_basic")
 
-        print(f">>> START: {c.startEvents}")
+        # print(f">>> START: {c.startEvents}")
 
 
         r, match = rei.ChoToRei(c)
@@ -201,7 +201,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start end"
+        assert str(r) == "^$", f"Received: {r}"
 
   
     def test_translation_simple(self):
@@ -213,7 +213,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' 'hand over pizza' 'deliver pizza' end", f"Received: {r}"
+        assert str(r) == "^'order pizza' 'hand over pizza' 'deliver pizza'$", f"Received: {r}"
 
     
     def test_translation_gateways(self):
@@ -225,7 +225,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza') end", f"Received: {r}"
+        assert str(r) == "^'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza')$", f"Received: {r}"
 
     def test_translation_gateways_mismatch(self):
 
@@ -247,7 +247,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' ('New Activity' end | 'hand over pizza' 'deliver pizza' end)", f"Received: {r}"
+        assert str(r) == "^'order pizza' ('New Activity'$ | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
 
         
     def test_translation_gateways_nested(self):
@@ -259,7 +259,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task')) end", f"Received: {r}"
+        assert str(r) == "^'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task'))$", f"Received: {r}"
 
 
     def test_translation_gateways_nested_inclusive(self):
@@ -271,7 +271,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' (('' | 'New Activity') & ('' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task'))) end", f"Received: {r}"
+        assert str(r) == "^'order pizza' (('' | 'New Activity') & ('' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task')))$", f"Received: {r}"
 
     
     def test_translation_gateways_nested_intermediate(self):
@@ -283,7 +283,7 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task') Intermediate) end", f"Received: {r}"
+        assert str(r) == "^'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task') Intermediate)$", f"Received: {r}"
 
 
     def test_translation_gateways_nested_dangling(self):
@@ -296,5 +296,5 @@ class LoadChoreographyCase(TestCase):
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
 
-        assert str(r) == "start 'order pizza' ('New Activity' ('another implicit end' end & (('' | 'implicit end' end) & ('' | something 'something else' end))) | 'hand over pizza' 'deliver pizza' end)", f"Received: {r}"
+        assert str(r) == "^'order pizza' ('New Activity' ('another implicit end'$ & (('' | 'implicit end'$) & ('' | something 'something else'$))) | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
 
