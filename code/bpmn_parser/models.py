@@ -267,6 +267,18 @@ class Choreography(models.Model):
                 # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
                 res = f"GW_PAR({len(incoming)},{len(outgoing)})"
 
+        elif node.tag == f"{{{NS['bpmn2']}}}inclusiveGateway":
+            incoming = self.incoming(node)
+            outgoing = self.outgoing(node)
+
+            if len(incoming) == 1 and len(outgoing) > 1:
+                res = "GW_INC_OPEN"
+            elif len(incoming) > 1 and len(outgoing) == 1:
+                res = "GW_INC_CLOSE"
+            else:
+                # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
+                res = f"GW_INC({len(incoming)},{len(outgoing)})"
+
         elif node.tag == f"{{{NS['bpmn2']}}}choreographyTask":
             res = "TASK"
         elif node.tag == f"{{{NS['bpmn2']}}}startEvent":

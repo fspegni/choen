@@ -22,7 +22,7 @@ class Symbol(REI):
     def __str__(self):
         res = self.symbol
 
-        if " " in res:
+        if " " in res or not res:
             res = f"'{res}'"
     
         return res
@@ -186,19 +186,11 @@ def ChoToRei(cho, node=None, match=None):
             rei_head = rei.Union(*branches)
 
             rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
-            # print(f"Continue from: {cho.next(gw_closure)[0]} |-> {rei_rest} ...")
 
-            # assert match == match_rest
-
-            # TODO not sure whether I should return match or match_rest
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
                 return rei_head, match_rest
-            # return rei.Conc(rei_head, rei_rest), match_rest
-
-        elif node_type == "GW_EX_CLOSE":
-            return None, node
 
         elif node_type == "GW_PAR_OPEN":
             branches = []
@@ -221,18 +213,41 @@ def ChoToRei(cho, node=None, match=None):
             rei_head = rei.Par(*branches)
             
             rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
-            # print(f"Continue from: {cho.next(gw_closure)[0]} |-> {rei_rest} ...")
 
-            # assert match == match_rest, f"{match.attrib['id']} vs {match_rest.attrib['id']}"
-            # TODO not sure whether I should return match or match_rest
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
                 return rei_head, match_rest
-            # return rei.Conc(rei_head, rei_rest), match_rest
+
+        elif node_type == "GW_INC_OPEN":
+            branches = []
+            cho_next = cho.next(node)
+
+            gw_closure = None
+            for curr in cho_next:
+                rei_branch, closure = ChoToRei(cho, curr, node)
+                assert cho.node_type(closure) == "GW_INC_CLOSE"
+                assert not gw_closure or gw_closure == closure
+                gw_closure = closure
+                
+                if rei_branch:
+                    rei_branch = rei.Union(rei.Symbol(''), rei_branch)
+                    branches.append(rei_branch)
+
+            assert gw_closure != None
+            assert len(cho.next(gw_closure)) == 1
+
+            rei_head = rei.Par(*branches) 
+
+            rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
+
+            if rei_rest:
+                return rei.Conc(rei_head, rei_rest), match_rest
+            else:
+                return rei_head, match_rest
 
 
-        elif node_type == "GW_PAR_CLOSE":
+        elif node_type in [ "GW_PAR_CLOSE", "GW_EX_CLOSE", "GW_INC_CLOSE" ]:
             return None, node
 
         else:

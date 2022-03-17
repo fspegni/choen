@@ -12,9 +12,11 @@ class LoadChoreographyCase(TestCase):
 
         choreographies = [
             ("diagram", "diagram.bpmn", ),
+            ("diagram_simple", "diagram_simple.bpmn"),
             ("diagram_gateways", "diagram_gateways.bpmn", ),
             ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
             ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
         ]
 
         for name, filename in choreographies:
@@ -164,8 +166,8 @@ class LoadChoreographyCase(TestCase):
         
         r, match = rei.ChoToRei(c)
 
-        print(f"REI (diagram): {r}")
-        print(f"REI (diagram,latex): {r.latex}")
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
 
         assert str(r) == "start 'order pizza' 'hand over pizza' 'deliver pizza' end", f"Received: {r}"
 
@@ -176,8 +178,8 @@ class LoadChoreographyCase(TestCase):
         
         r, match = rei.ChoToRei(c)
 
-        print(f"REI (diagram_gateways): {r}")
-        print(f"REI (diagram_gateways,latex): {r.latex}")
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
 
         assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza') end", f"Received: {r}"
 
@@ -188,10 +190,22 @@ class LoadChoreographyCase(TestCase):
         
         r, match = rei.ChoToRei(c)
 
-        print(f"REI (diagram_gateways_nested): {r}")
-        print(f"REI (diagram_gateways_nested,latex): {r.latex}")
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
 
         assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task')) end", f"Received: {r}"
+
+
+    def test_translation_gateways_nested_inclusive(self):
+
+        c = Choreography.objects.get(name="diagram_gateways_nested_inclusive")
+        
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' (('' | 'New Activity') & ('' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task'))) end", f"Received: {r}"
 
     
     def test_translation_gateways_nested_intermediate(self):
@@ -200,7 +214,18 @@ class LoadChoreographyCase(TestCase):
         
         r, match = rei.ChoToRei(c)
 
-        print(f"REI (diagram_gateways_nested_intermediate): {r}")
-        print(f"REI (diagram_gateways_nested_intermediate,latex): {r.latex}")
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
 
         assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task') Intermediate) end", f"Received: {r}"
+
+
+    def test_simple_diagram(self):
+
+        c = Choreography.objects.get(name="diagram_simple")
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
+
+        assert str(r) == "start end"
