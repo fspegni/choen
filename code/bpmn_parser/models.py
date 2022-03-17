@@ -62,7 +62,7 @@ class Choreography(models.Model):
 
     @property
     def arrows(self):
-        return self.root.findAll(".//bpmn2:sequentialFlow", NS)
+        return self.root.findall(".//bpmn2:sequentialFlow", NS)
 
     @property
     def gw_exclusive(self):
@@ -88,6 +88,59 @@ class Choreography(models.Model):
     def endEvents(self):
         return self.root.findall(".//bpmn2:endEvent", NS)
 
+    def messages(self, node:ET.Element):
+        messages = node.findall(".//bpmn2:messageFlowRef", NS)
+        res = []
+        for curr in messages:
+            # print(f"Find flow def: {curr} : {curr.text}")
+            msg_flow_def_xpath = f".//bpmn2:messageFlow[@id='{curr.text}']"
+            msg_flow_def = self.root.find(msg_flow_def_xpath, NS)
+            # print(f"Find msg def: {msg_flow_def} : {msg_flow_def.attrib['messageRef']}")
+            msg_def_xpath = f"bpmn2:message[@id='{msg_flow_def.attrib['messageRef']}']"
+            # print(f"Msg def xpath: {msg_def_xpath}")
+            msg_def = self.root.find(msg_def_xpath, NS)
+            msg_id = msg_def.attrib["id"]
+            msg_name = msg_def.attrib.get("name")
+
+            res.append(msg_name if msg_name else msg_id)
+
+        return res
+
+
+    def involved(self, node:ET.Element):
+        p_ref = node.findall(".//bpmn2:participantRef", NS)
+
+        if len(p_ref) == 0:
+            # raise Exception("No participant for this node")
+            return []
+
+        res = []
+        for curr in p_ref:
+            p_def_xpath = f".//bpmn2:participant[@id='{curr.text}']"
+            # print(f"Participant definition xpath: {p_def_xpath}")
+            p_def = self.root.find(p_def_xpath, NS)
+            # print(f"Found participant definition: {p_def}")
+
+            if p_def is None:
+                raise Exception(f"Cannot find definition for participant: {curr.text}")
+
+            res.append(p_def.attrib["name"])
+
+        return res
+
+
+    def initiator(self, node:ET.Element):
+        involved = self.involved(node)
+
+        if involved:
+            return involved[0]
+        else:
+            return None
+
+    def recipients(self, node:ET.Element):
+        return self.involved(node)[1:]
+
+
     def fetch(self, tag:str, **attributes):
         query = f".//bpmn2:{tag}"
 
@@ -95,6 +148,7 @@ class Choreography(models.Model):
             query += "[" + ",".join(map(lambda p: f"@{p[0]}='{p[1]}'", attributes.items())) + "]"
 
         return self.root.findall(query, NS)
+
 
     def lookup(self, tag:str, **attributes):
         results = self.fetch(tag, **attributes)
@@ -106,6 +160,7 @@ class Choreography(models.Model):
 
         return results[0]
 
+
     def compile(self):
         
         env = Environment(loader=PackageLoader('bpmn_parser'))
@@ -113,6 +168,7 @@ class Choreography(models.Model):
         template = env.get_template(settings.TEMPLATE_NAME)
         ctx = { "settings": settings, "choreography": self.choreographies[0], "participants": self.participants, "tasks": self.tasks }
         return template.render(**ctx)
+
 
     def outgoing(self, node:ElementType) -> set:
         res = []

@@ -3,7 +3,7 @@ import solcx
 import os
 from django.conf import settings
 
-from bpmn_parser.models import Choreography, NS
+from bpmn_parser.models import Choreography, NS, ElementType
 import rei
 
 class TestChoreographyBasicCase(TestCase):
@@ -173,6 +173,20 @@ class TestChoreographyBasicCase(TestCase):
 
         assert n_visited == n_start + n_end + n_tasks + n_gateways, f"Visited: {n_visited} : Start: {n_start} : End: {n_end} : Tasks: {n_tasks} : Gateways: {n_gateways}"
 
+    def test_start_end_have_no_participants(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
+
+        for curr in c.startEvents:
+            participants = c.involved(curr)
+
+            assert len(participants) == 0
+
+        for curr in c.endEvents:
+            participants = c.involved(curr)
+
+            assert len(participants) == 0
+
 
 class TestTranslateChoreographyToRei(TestCase):
 
@@ -328,3 +342,31 @@ class TestTranslateChoreographyToRei(TestCase):
 
         assert str(r) == "^'order pizza' ('New Activity' ('another implicit end'$ & (('' | 'implicit end'$) & ('' | something 'something else'$))) | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
 
+    def test_translation_with_messages(self):
+
+        def handle_task (cho:Choreography, node:ElementType):
+            print(f"Choreography: {cho}")
+            print(f"Node: {node} : {node.attrib['id']} : {node.attrib.get('name')}")
+            messages = cho.messages(node)
+
+            symbol = node.attrib["id"]
+            if len(messages) > 0:
+                initiator = cho.initiator(node)
+                recipients = cho.recipients(node)
+
+                assert len(recipients) == 1
+                target = recipients[0].replace(" ", "_")
+                msg = messages[0].replace(" ","_")
+                symbol = f"{target}?{msg}"
+
+            return rei.Symbol(symbol)
+
+
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_nested_dangling")
+
+        r, match = rei.ChoToRei(c, handle_task)
+
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
+
+        assert str(r) == "^'order pizza' ('New Activity' ('another implicit end'$ & (('' | 'implicit end'$) & ('' | something 'something else'$))) | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
