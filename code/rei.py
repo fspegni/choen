@@ -1,3 +1,8 @@
+def expect_node_type(cho, node, ntype):
+    real_ntype = cho.node_type(node)
+    assert real_ntype == ntype, f"Expected node of type '{ntype}'. Found: Node: {node} - Type: {real_ntype}"
+
+
 class REI:
 
     def __str__(self):
@@ -127,10 +132,11 @@ def ChoToRei(cho, node=None, match=None):
 
         assert len(cho.startEvents) == 1
         node = cho.startEvents[0]
-        node_type = cho.node_type(node)
-        assert node_type == "START", f"Node: {node}. Tag: {node.tag}. Type: {node_type}"
+        # node_type = cho.node_type(node)
+        # assert node_type == "START", f"Expected node of type 'START'. Found : Node: {node}. Tag: {node.tag}. Type: {node_type}"
+        expect_node_type(cho, node, "START")
 
-        print(f"Node: {node} - Type: {node_type}")
+        # print(f"Node: {node} - Type: {node_type}")
 
 
         cho_start = cho.startEvents[0]
@@ -173,7 +179,8 @@ def ChoToRei(cho, node=None, match=None):
             gw_closure = None
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, curr, node)
-                assert cho.node_type(closure) == "GW_EX_CLOSE", f"Node: {closure} - Type: {cho.node_type(closure)}"
+                # assert cho.node_type(closure) == "GW_EX_CLOSE", f"Expected closure node of type 'GW_EX_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
+                expect_node_type(cho, closure, "GW_EX_CLOSE")
                 assert not gw_closure or gw_closure == closure
                 gw_closure = closure
     
@@ -199,7 +206,8 @@ def ChoToRei(cho, node=None, match=None):
             gw_closure = None
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, curr, node)
-                assert cho.node_type(closure) == "GW_PAR_CLOSE"
+                expect_node_type(cho, closure, "GW_PAR_CLOSE")
+                # assert cho.node_type(closure) == "GW_PAR_CLOSE", f"Expected closure node of type 'GW_PAR_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
                 assert not gw_closure or gw_closure == closure
                 gw_closure = closure
                 
@@ -226,7 +234,8 @@ def ChoToRei(cho, node=None, match=None):
             gw_closure = None
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, curr, node)
-                assert cho.node_type(closure) == "GW_INC_CLOSE"
+                # assert cho.node_type(closure) == "GW_INC_CLOSE"
+                expect_node_type(cho, closure, "GW_INC_CLOSE")
                 assert not gw_closure or gw_closure == closure
                 gw_closure = closure
                 

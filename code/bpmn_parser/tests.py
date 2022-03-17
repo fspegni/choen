@@ -14,6 +14,7 @@ class LoadChoreographyCase(TestCase):
             ("diagram", "diagram.bpmn", ),
             ("diagram_simple", "diagram_simple.bpmn"),
             ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
             ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
             ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
             ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
@@ -183,7 +184,19 @@ class LoadChoreographyCase(TestCase):
 
         assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza') end", f"Received: {r}"
 
-    
+    def test_translation_gateways_mismatch(self):
+
+        c = Choreography.objects.get(name="diagram_gateways_mismatch")
+        
+        try:
+            r, match = rei.ChoToRei(c)
+            assert False, f"Expected excepion during the convertion. Received: {r}"
+        except AssertionError:
+            # this error is expected, because of a mismatch in the use of gateways
+            assert True
+
+            
+        
     def test_translation_gateways_nested(self):
 
         c = Choreography.objects.get(name="diagram_gateways_nested")
