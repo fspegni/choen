@@ -3,9 +3,15 @@ class REI:
     def __str__(self):
         return ""
 
+
+    def __bytes__(self):
+        return str(self).encode('utf-8')
+
     @property
     def latex(self):
         return ""
+
+
 
 
 class Symbol(REI):
@@ -13,14 +19,17 @@ class Symbol(REI):
     def __init__(self, symbol):
         self.symbol = symbol
 
-
     def __str__(self):
-        return self.symbol
+        res = self.symbol
 
+        if " " in res:
+            res = f"'{res}'"
+    
+        return res
 
     @property
     def latex(self):
-        return f"\textit{{{self.symbol}}}"
+        return f"\\textit{{{self.symbol}}}"
 
 
 class Conc(REI):
@@ -34,7 +43,7 @@ class Conc(REI):
 
     @property
     def latex(self):
-        return " \cdot ".join(map(lambda curr: curr.latex, self.items))
+        return " \\cdot ".join(map(lambda curr: curr.latex if curr else "", self.items))
 
 
 class Par(REI):
@@ -47,7 +56,7 @@ class Par(REI):
 
     @property
     def latex(self):
-        return " \& ".join(map(lambda curr: curr.latex, self.items))
+        return "(" + " \& ".join(map(lambda curr: curr.latex if curr else "", self.items)) + ")"
 
 
 class Union(REI):
@@ -60,7 +69,7 @@ class Union(REI):
 
     @property
     def latex(self):
-        return " \vert ".join(map(lambda curr: curr.latex, self.items))
+        return "(" + " \\vert ".join(map(lambda curr: curr.latex if curr else "", self.items)) + ")"
 
 
 class NFA:
@@ -103,3 +112,128 @@ class NFA:
                     print(f"{id_source} -({label})-> {id_target}")
         else:
             print("<none>")
+
+
+def ChoToRei(cho, node=None, match=None):
+    import rei
+
+    atoms = {}
+
+    if not node:
+        # begin
+
+        rei_head = rei.Symbol("start")
+
+
+        assert len(cho.startEvents) == 1
+        node = cho.startEvents[0]
+        node_type = cho.node_type(node)
+        assert node_type == "START", f"Node: {node}. Tag: {node.tag}. Type: {node_type}"
+
+        print(f"Node: {node} - Type: {node_type}")
+
+
+        cho_start = cho.startEvents[0]
+        cho_next = cho.next(cho_start)
+
+        assert len(cho_next) == 1
+        
+        rei_rest, closure = ChoToRei(cho, cho_next[0], match)
+
+        if rei_rest:
+            return rei.Conc(rei_head, rei_rest), closure
+        else:
+            return rei_head, closure
+    
+    else:
+        node_type = cho.node_type(node)
+        # print(f"Node: {node} - Type: {node_type}")
+
+        if node_type == "END":
+            return rei.Symbol("end"), None
+
+        elif node_type == "TASK":
+            rei_head = rei.Symbol(node.attrib["name"])
+            cho_next = cho.next(node)
+
+            assert len(cho_next) == 1
+            
+            rei_rest, closure = ChoToRei(cho, cho_next[0], match)
+
+            if rei_rest:
+                return rei.Conc(rei_head, rei_rest), closure
+            else:
+                return rei_head, closure
+            # return rei.Conc(rei_head, rei_rest), closure
+
+        elif node_type == "GW_EX_OPEN":
+            branches = []
+            cho_next = cho.next(node)
+
+            gw_closure = None
+            for curr in cho_next:
+                rei_branch, closure = ChoToRei(cho, curr, node)
+                assert cho.node_type(closure) == "GW_EX_CLOSE", f"Node: {closure} - Type: {cho.node_type(closure)}"
+                assert not gw_closure or gw_closure == closure
+                gw_closure = closure
+    
+                if rei_branch:
+                    branches.append(rei_branch)
+
+            assert gw_closure != None
+            assert len(cho.next(gw_closure)) == 1
+
+            rei_head = rei.Union(*branches)
+
+            rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
+            # print(f"Continue from: {cho.next(gw_closure)[0]} |-> {rei_rest} ...")
+
+            # assert match == match_rest
+
+            # TODO not sure whether I should return match or match_rest
+            if rei_rest:
+                return rei.Conc(rei_head, rei_rest), match_rest
+            else:
+                return rei_head, match_rest
+            # return rei.Conc(rei_head, rei_rest), match_rest
+
+        elif node_type == "GW_EX_CLOSE":
+            return None, node
+
+        elif node_type == "GW_PAR_OPEN":
+            branches = []
+            cho_next = cho.next(node)
+
+            gw_closure = None
+            for curr in cho_next:
+                rei_branch, closure = ChoToRei(cho, curr, node)
+                assert cho.node_type(closure) == "GW_PAR_CLOSE"
+                assert not gw_closure or gw_closure == closure
+                gw_closure = closure
+                
+                if rei_branch:
+                    branches.append(rei_branch)
+
+
+            assert gw_closure != None
+            assert len(cho.next(gw_closure)) == 1
+
+            rei_head = rei.Par(*branches)
+            
+            rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
+            # print(f"Continue from: {cho.next(gw_closure)[0]} |-> {rei_rest} ...")
+
+            # assert match == match_rest, f"{match.attrib['id']} vs {match_rest.attrib['id']}"
+            # TODO not sure whether I should return match or match_rest
+            if rei_rest:
+                return rei.Conc(rei_head, rei_rest), match_rest
+            else:
+                return rei_head, match_rest
+            # return rei.Conc(rei_head, rei_rest), match_rest
+
+
+        elif node_type == "GW_PAR_CLOSE":
+            return None, node
+
+        else:
+            raise Exception(f"Node type not handle {node_type}. Node: {node}. Node tag: {node.tag}.  Node name: {node.attrib.get('name')}. Node id: {node.attrib.get('id')}.")

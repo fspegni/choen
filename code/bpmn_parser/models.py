@@ -59,6 +59,18 @@ class Choreography(models.Model):
         return self.root.findall(".//bpmn2:choreographyTask", NS)
 
     @property
+    def arrows(self):
+        return self.root.findAll(".//bpmn2:sequentialFlow", NS)
+
+    @property
+    def gw_exclusive(self):
+        return self.root.findall(".//bpmn2:exclusiveGateway", NS)
+
+    @property
+    def gw_parallel(self):
+        return self.root.findall(".//bpmn2:parallelGateway", NS)
+
+    @property
     def startEvents(self):
         return self.root.findall(".//bpmn2:startEvent", NS)
 
@@ -100,14 +112,14 @@ class Choreography(models.Model):
             #res.append(out)
 
             for curr in outgoing:
-                print("OUT : %s -> %s " % (node, curr))
-                print("%s (%s)" % (curr, curr.text))
+                # print(f"OUT : {node} -> {curr} ")
+                # print(f"{curr} ({curr.text})")
 
-                flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
-                print("Flows found: %s" % flow)
+                flow = self.root.find(f".//bpmn2:sequenceFlow[@id='{curr.text}']", NS)
+                # print(f"Flows found: {flow}")
 
                 if flow == None:
-                    raise Exception("Cannot find flow: %s" % curr.text)
+                    raise Exception(f"Cannot find flow: {curr.text}")
 
                 res.append(flow)
 
@@ -122,11 +134,11 @@ class Choreography(models.Model):
             #res.append(out)
 
             for curr in incoming:
-                print("IN : %s -> %s " % (node, curr))
-                print("%s (%s)" % (curr, curr.text))
+                # print("IN : %s -> %s " % (node, curr))
+                # print("%s (%s)" % (curr, curr.text))
 
                 flow = self.root.find(".//bpmn2:sequenceFlow[@id='%s']" % curr.text, NS)
-                print("Flows found: %s" % flow)
+                # print("Flows found: %s" % flow)
 
                 if flow == None:
                     raise Exception("Cannot find flow: %s" % curr.text)
@@ -137,12 +149,15 @@ class Choreography(models.Model):
 
     
 
-    def next(self, node):
+    def next(self, node, connection=None):
 
         res = []
 
         if (node):
-            connections = self.outgoing(node) #node.findall(".//bpmn2:outgoing", NS)
+            if not connection:
+                connections = self.outgoing(node) #node.findall(".//bpmn2:outgoing", NS)
+            else:
+                connections = [ connection ]
 
             for flow in connections:
             # for curr in out:
@@ -166,13 +181,16 @@ class Choreography(models.Model):
         return res
 
 
-    def prev(self, node):
+    def prev(self, node, connection=None):
 
         res = []
 
         if (node):
-            # incoming = node.findall(".//bpmn2:incoming", NS)
-            connections = self.incoming(node)
+            if not connection:
+                # incoming = node.findall(".//bpmn2:incoming", NS)
+                connections = self.incoming(node)
+            else:
+                connections = [ connection ]
 
             # for curr in incoming:
             #     print("OUT : %s -> %s " % (node, curr))
@@ -206,15 +224,56 @@ class Choreography(models.Model):
                 if curr not in visited:
                     found = op(curr)
                     
-                    print("VISIT: %s |-> %s" % (curr, found))
+                    # print("VISIT: %s |-> %s" % (curr, found))
 
                     visited = visited.union([ curr ])
                     items = items.union(found)
 
-        print("STAR(%s,%s) = %s" % (start, op,items))
+        # print("STAR(%s,%s) = %s" % (start, op,items))
         return items
 
     def reachable(self, start):
         return self.star(start, self.next)
 
-    
+
+    def node_type(self, node):
+        if not node:
+            return None
+        
+        res = "NN"
+        if node.tag == f"{{{NS['bpmn2']}}}exclusiveGateway":
+            
+            incoming = self.incoming(node)
+            outgoing = self.outgoing(node)
+
+            if len(incoming) == 1 and len(outgoing) > 1:
+                res = "GW_EX_OPEN"
+            elif len(incoming) > 1 and len(outgoing) == 1:
+                res = "GW_EX_CLOSE"
+            else:
+                # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
+                res = f"GW_EX({len(incoming)},{len(outgoing)})"
+
+
+        elif node.tag == f"{{{NS['bpmn2']}}}parallelGateway":
+            incoming = self.incoming(node)
+            outgoing = self.outgoing(node)
+
+            if len(incoming) == 1 and len(outgoing) > 1:
+                res = "GW_PAR_OPEN"
+            elif len(incoming) > 1 and len(outgoing) == 1:
+                res = "GW_PAR_CLOSE"
+            else:
+                # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
+                res = f"GW_PAR({len(incoming)},{len(outgoing)})"
+
+        elif node.tag == f"{{{NS['bpmn2']}}}choreographyTask":
+            res = "TASK"
+        elif node.tag == f"{{{NS['bpmn2']}}}startEvent":
+            res = "START"
+        elif node.tag == f"{{{NS['bpmn2']}}}endEvent":
+            res = "END"
+
+        # TODO add inclusive gateway
+
+        return res

@@ -4,21 +4,25 @@ import os
 from django.conf import settings
 
 from bpmn_parser.models import Choreography
-
+import rei
 
 class LoadChoreographyCase(TestCase):
 
     def setUp(self):
 
-        c1 = Choreography()
-        c1.name="diagram"
-        c1.resource = os.path.join(settings.MEDIA_ROOT, "diagram.bpmn")
-        c1.save()
+        choreographies = [
+            ("diagram", "diagram.bpmn", ),
+            ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+        ]
 
-        c2 = Choreography()
-        c2.name = "diagram_gateways"
-        c2.resource = os.path.join(settings.MEDIA_ROOT, "diagram_gateways.bpmn")
-        c2.save()
+        for name, filename in choreographies:
+            c = Choreography()
+            c.name = name
+            c.resource = os.path.join(settings.MEDIA_ROOT, filename)
+            c.save()
+
 
 
     def test_compilation(self):
@@ -47,12 +51,16 @@ class LoadChoreographyCase(TestCase):
 
         assert len(c.outgoing(curr)) == 1
 
-        print("START: %s" % curr)
+        # print("START: %s" % curr)
         next = c.next(curr)
-        print("NEXT: %s" % next)
+        # print("NEXT: %s" % next)
 
         assert(len(next) == 1)
         assert(next[0].attrib["name"] == "order pizza")
+
+        for curr in c.endEvents:
+            next = c.next(curr)
+            assert len(next) == 0
 
 
     def test_prev(self):
@@ -66,12 +74,16 @@ class LoadChoreographyCase(TestCase):
         assert len(c.incoming(curr)) == 1
 
         # for curr in c.endEvents:
-        print(">>> END: %s" % curr)
+        # print(">>> END: %s" % curr)
         prev = c.prev(curr)
-        print(">>> PREV: %s" % prev)
+        # print(">>> PREV: %s" % prev)
 
         assert len(prev) == 1
         assert prev[0].attrib["name"] == "deliver pizza"
+
+        for curr in c.startEvents:
+            prev = c.prev(curr)
+            assert len(prev) == 0
 
     def test_next_star(self):
 
@@ -108,4 +120,87 @@ class LoadChoreographyCase(TestCase):
 
         # expected to return itself plus 4 reachable items
         assert len(items) == 5, f"Found {len(items)} items"
+
+
+    def test_gateways(self):
+
+        c = Choreography.objects.get(name="diagram_gateways")
+        # for curr in c.startEvents:
+        # curr = c.startEvents[0]
+
+        assert len(c.gw_parallel) == 0
+        assert len(c.gw_exclusive) == 2
+
+
+    def test_neighbor(self):
+        
+        c = Choreography.objects.get(name="diagram_gateways")
+        
+        curr = c.startEvents[0]
+
+        to_visit = set([ curr ])
+
+        while len(to_visit) > 0:
+
+            curr = to_visit.pop()
+            # print(f">> TO VISIT: {curr} ({curr.attrib['id']})")
+
+            arcs = c.outgoing(curr)
+            # assert len(arcs) == 1, f"Found {len(arcs)} outgoing arcs from {curr} ({curr.attrib['id']})"
+
+            if len(arcs) > 0:
+                neighbors = c.next(curr, arcs[0])
+                assert len(neighbors) == len(arcs)
+
+                to_visit = to_visit.union(set(neighbors))
+            else:
+                neighbors = c.next(curr)
+                assert len(neighbors) == 0
+
   
+    def test_translation_simple(self):
+
+        c = Choreography.objects.get(name="diagram")
+        
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI (diagram): {r}")
+        print(f"REI (diagram,latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' 'hand over pizza' 'deliver pizza' end", f"Received: {r}"
+
+    
+    def test_translation_gateways(self):
+
+        c = Choreography.objects.get(name="diagram_gateways")
+        
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI (diagram_gateways): {r}")
+        print(f"REI (diagram_gateways,latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza') end", f"Received: {r}"
+
+    
+    def test_translation_gateways_nested(self):
+
+        c = Choreography.objects.get(name="diagram_gateways_nested")
+        
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI (diagram_gateways_nested): {r}")
+        print(f"REI (diagram_gateways_nested,latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task')) end", f"Received: {r}"
+
+    
+    def test_translation_gateways_nested_intermediate(self):
+
+        c = Choreography.objects.get(name="diagram_gateways_nested_intermediate")
+        
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI (diagram_gateways_nested_intermediate): {r}")
+        print(f"REI (diagram_gateways_nested_intermediate,latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task') Intermediate) end", f"Received: {r}"
