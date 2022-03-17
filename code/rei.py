@@ -1,6 +1,10 @@
-def expect_node_type(cho, node, ntype):
+def expect_node_type(cho, node, ntypes):
+
+    if isinstance(ntypes, str):
+        ntypes = [ ntypes] 
+
     real_ntype = cho.node_type(node)
-    assert real_ntype == ntype, f"Expected node of type '{ntype}'. Found: Node: {node} - Type: {real_ntype}"
+    assert real_ntype in ntypes, f"Expected node of type '{ntypes}'. Found: Node: {node} - Type: {real_ntype}"
 
 
 class REI:
@@ -180,19 +184,24 @@ def ChoToRei(cho, node=None, match=None):
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, curr, node)
                 # assert cho.node_type(closure) == "GW_EX_CLOSE", f"Expected closure node of type 'GW_EX_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
-                expect_node_type(cho, closure, "GW_EX_CLOSE")
+                expect_node_type(cho, closure, [ None, "GW_EX_CLOSE" ])
                 assert not gw_closure or gw_closure == closure
                 gw_closure = closure
     
                 if rei_branch:
                     branches.append(rei_branch)
 
-            assert gw_closure != None
-            assert len(cho.next(gw_closure)) == 1
+            # assert gw_closure != None
+            # assert len(cho.next(gw_closure)) == 1
 
             rei_head = rei.Union(*branches)
 
-            rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
+            rei_rest = None
+            match_rest = None
+
+            if gw_closure:
+                assert len(cho.next(gw_closure)) == 1
+                rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
 
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
@@ -215,12 +224,16 @@ def ChoToRei(cho, node=None, match=None):
                     branches.append(rei_branch)
 
 
-            assert gw_closure != None
-            assert len(cho.next(gw_closure)) == 1
-
             rei_head = rei.Par(*branches)
             
-            rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
+            rei_rest = None
+            match_rest = None
+
+            if gw_closure:
+                # assert gw_closure != None
+                assert len(cho.next(gw_closure)) == 1
+
+                rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
 
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
@@ -243,12 +256,16 @@ def ChoToRei(cho, node=None, match=None):
                     rei_branch = rei.Union(rei.Symbol(''), rei_branch)
                     branches.append(rei_branch)
 
-            assert gw_closure != None
-            assert len(cho.next(gw_closure)) == 1
 
             rei_head = rei.Par(*branches) 
+            rei_rest = None
+            match_rest = None
 
-            rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
+            if gw_closure:
+                # assert gw_closure != None
+                assert len(cho.next(gw_closure)) == 1
+
+                rei_rest, match_rest = ChoToRei(cho, cho.next(gw_closure)[0], match)
 
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest

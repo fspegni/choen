@@ -15,6 +15,7 @@ class LoadChoreographyCase(TestCase):
             ("diagram_simple", "diagram_simple.bpmn"),
             ("diagram_gateways", "diagram_gateways.bpmn", ),
             ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
             ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
             ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
             ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
@@ -195,7 +196,17 @@ class LoadChoreographyCase(TestCase):
             # this error is expected, because of a mismatch in the use of gateways
             assert True
 
-            
+    def test_translation_gateways_dangling(self):
+
+        c = Choreography.objects.get(name="diagram_gateways_dangling")
+
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' ('New Activity' end | 'hand over pizza' 'deliver pizza' end)", f"Received: {r}"
+
         
     def test_translation_gateways_nested(self):
 
