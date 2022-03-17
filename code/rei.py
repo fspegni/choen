@@ -1,4 +1,6 @@
-def expect_node_type(cho, node, ntypes):
+from bpmn_parser.models import Choreography
+
+def expect_node_type(cho:Choreography, node, ntypes):
 
     if isinstance(ntypes, str):
         ntypes = [ ntypes] 
@@ -89,7 +91,7 @@ class NFA:
         self.edges = {}
 
 
-    def add_node(self, id, node=None):
+    def add_node(self, id:str, node=None):
         self.nodes[id] = node
         
     def add_edge(self, source, target, label=None):
@@ -123,7 +125,7 @@ class NFA:
             print("<none>")
 
 
-def ChoToRei(cho, node=None, match=None):
+def ChoToRei(cho:Choreography, node=None, match=None):
     import rei
 
     atoms = {}

@@ -12,6 +12,7 @@ class LoadChoreographyCase(TestCase):
 
         choreographies = [
             ("diagram", "diagram.bpmn", ),
+            ("diagram_minimal", "diagram_minimal.bpmn"),
             ("diagram_basic", "diagram_basic.bpmn"),
             ("diagram_gateways", "diagram_gateways.bpmn", ),
             ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
@@ -163,9 +164,23 @@ class LoadChoreographyCase(TestCase):
                 neighbors = c.next(curr)
                 assert len(neighbors) == 0
 
+    def test_translation_only_start(self):
+        """
+        This diagram contains only a start event
+        """
+        c = Choreography.objects.get(name="diagram_minimal")
+        r, match = rei.ChoToRei(c)
 
-    def test_translation_basic(self):
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
 
+        assert str(r) == "start end"
+
+
+    def test_translation_start_end(self):
+        """
+        This diagram contains only a start event followed by an end event
+        """
         c = Choreography.objects.get(name="diagram_basic")
         r, match = rei.ChoToRei(c)
 

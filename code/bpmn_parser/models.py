@@ -78,7 +78,7 @@ class Choreography(models.Model):
     def endEvents(self):
         return self.root.findall(".//bpmn2:endEvent", NS)
 
-    def fetch(self, tag, **attributes):
+    def fetch(self, tag:str, **attributes):
         query = f".//bpmn2:{tag}"
 
         if attributes:
@@ -86,7 +86,7 @@ class Choreography(models.Model):
 
         return self.root.findall(query, NS)
 
-    def lookup(self, tag, **attributes):
+    def lookup(self, tag:str, **attributes):
         results = self.fetch(tag, **attributes)
     
         if len(results) == 0:
@@ -104,7 +104,7 @@ class Choreography(models.Model):
         ctx = { "settings": settings, "choreography": self.choreographies[0], "participants": self.participants, "tasks": self.tasks }
         return template.render(**ctx)
 
-    def outgoing(self, node):
+    def outgoing(self, node:ET.Element) -> set:
         res = []
 
         if (node):
@@ -126,7 +126,7 @@ class Choreography(models.Model):
         return res
 
 
-    def incoming(self, node):
+    def incoming(self, node:ET.Element) -> set:
         res = []
 
         if (node):
@@ -149,7 +149,7 @@ class Choreography(models.Model):
 
     
 
-    def next(self, node, connection=None):
+    def next(self, node:ET.Element, connection:ET.Element=None) -> set:
 
         res = []
 
@@ -181,7 +181,7 @@ class Choreography(models.Model):
         return res
 
 
-    def prev(self, node, connection=None):
+    def prev(self, node:ET.Element, connection:ET.Element=None) -> set:
 
         res = []
 
@@ -214,7 +214,7 @@ class Choreography(models.Model):
         return res
 
 
-    def star(self, start, op):
+    def star(self, start:ET.Element, op) -> set:
         items = set([ start ])
         visited = set([])    
         
@@ -232,11 +232,11 @@ class Choreography(models.Model):
         # print("STAR(%s,%s) = %s" % (start, op,items))
         return items
 
-    def reachable(self, start):
+    def reachable(self, start:ET.Element) -> set:
         return self.star(start, self.next)
 
 
-    def node_type(self, node):
+    def node_type(self, node:ET.Element) -> str:
         if not node:
             return None
         
