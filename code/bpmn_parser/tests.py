@@ -256,3 +256,15 @@ class LoadChoreographyCase(TestCase):
 
         assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task') Intermediate) end", f"Received: {r}"
 
+
+    def test_translation_gateways_nested_dangling(self):
+
+        c = Choreography.objects.get(name="diagram_gateways_nested_dangling")
+        
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
+
+        assert str(r) == "start 'order pizza' ('New Activity' ('another implicit end' end & (('' | 'implicit end' end) & ('' | something 'something else' end))) | 'hand over pizza' 'deliver pizza' end)", f"Received: {r}"
+

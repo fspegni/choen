@@ -166,9 +166,15 @@ def ChoToRei(cho, node=None, match=None):
             rei_head = rei.Symbol(node.attrib["name"])
             cho_next = cho.next(node)
 
-            assert len(cho_next) == 1
-            
-            rei_rest, closure = ChoToRei(cho, cho_next[0], match)
+            rei_rest = None
+            closure = None
+
+            if len(cho_next) == 0:
+                rei_rest = rei.Symbol("end")
+            elif len(cho_next) == 1:
+                rei_rest, closure = ChoToRei(cho, cho_next[0], match)
+            else:
+                raise Exception(f"Too many successors: {cho_next}. Expected zero or one.")
 
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), closure
@@ -215,7 +221,7 @@ def ChoToRei(cho, node=None, match=None):
             gw_closure = None
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, curr, node)
-                expect_node_type(cho, closure, "GW_PAR_CLOSE")
+                expect_node_type(cho, closure, ["GW_PAR_CLOSE",None])
                 # assert cho.node_type(closure) == "GW_PAR_CLOSE", f"Expected closure node of type 'GW_PAR_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
                 assert not gw_closure or gw_closure == closure
                 gw_closure = closure
@@ -248,7 +254,7 @@ def ChoToRei(cho, node=None, match=None):
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, curr, node)
                 # assert cho.node_type(closure) == "GW_INC_CLOSE"
-                expect_node_type(cho, closure, "GW_INC_CLOSE")
+                expect_node_type(cho, closure, ["GW_INC_CLOSE",None])
                 assert not gw_closure or gw_closure == closure
                 gw_closure = closure
                 

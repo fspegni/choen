@@ -71,7 +71,7 @@
       <bpmn2:outgoing>Flow_1nm4hbs</bpmn2:outgoing>
     </bpmn2:parallelGateway>
     <bpmn2:sequenceFlow id="Flow_0ew2l0f" sourceRef="ChoreographyTask_1jfza9z" targetRef="Gateway_1s37uwi" />
-    <bpmn2:choreographyTask id="ChoreographyTask_1y33b6s" name="New Activity" initiatingParticipantRef="Participant_0mgz9si">
+    <bpmn2:choreographyTask id="ChoreographyTask_1y33b6s" name="another implicit end" initiatingParticipantRef="Participant_0mgz9si">
       <bpmn2:incoming>Flow_0ix72oz</bpmn2:incoming>
       <bpmn2:participantRef>Participant_0mgz9si</bpmn2:participantRef>
       <bpmn2:participantRef>Participant_06qakjv</bpmn2:participantRef>
@@ -84,14 +84,14 @@
       <bpmn2:outgoing>Flow_0iku4aq</bpmn2:outgoing>
       <bpmn2:outgoing>Flow_0db8cen</bpmn2:outgoing>
     </bpmn2:inclusiveGateway>
-    <bpmn2:choreographyTask id="ChoreographyTask_1lml3yq" name="New Activity" initiatingParticipantRef="Participant_0mgz9si">
+    <bpmn2:choreographyTask id="ChoreographyTask_1lml3yq" name="implicit end" initiatingParticipantRef="Participant_0mgz9si">
       <bpmn2:incoming>Flow_0iku4aq</bpmn2:incoming>
       <bpmn2:participantRef>Participant_0mgz9si</bpmn2:participantRef>
       <bpmn2:participantRef>Participant_06qakjv</bpmn2:participantRef>
       <bpmn2:messageFlowRef>MessageFlow_0qtsgws</bpmn2:messageFlowRef>
     </bpmn2:choreographyTask>
     <bpmn2:sequenceFlow id="Flow_0iku4aq" sourceRef="Gateway_1h334h1" targetRef="ChoreographyTask_1lml3yq" />
-    <bpmn2:choreographyTask id="ChoreographyTask_1ixvwfd" name="New Activity" initiatingParticipantRef="Participant_0mgz9si">
+    <bpmn2:choreographyTask id="ChoreographyTask_1ixvwfd" name="something" initiatingParticipantRef="Participant_0mgz9si">
       <bpmn2:incoming>Flow_0db8cen</bpmn2:incoming>
       <bpmn2:outgoing>Flow_04336s5</bpmn2:outgoing>
       <bpmn2:participantRef>Participant_0mgz9si</bpmn2:participantRef>
@@ -99,7 +99,7 @@
       <bpmn2:messageFlowRef>MessageFlow_0izi8fh</bpmn2:messageFlowRef>
     </bpmn2:choreographyTask>
     <bpmn2:sequenceFlow id="Flow_0db8cen" sourceRef="Gateway_1h334h1" targetRef="ChoreographyTask_1ixvwfd" />
-    <bpmn2:choreographyTask id="ChoreographyTask_1utgyrp" name="New Activity" initiatingParticipantRef="Participant_06qakjv">
+    <bpmn2:choreographyTask id="ChoreographyTask_1utgyrp" name="something else" initiatingParticipantRef="Participant_06qakjv">
       <bpmn2:incoming>Flow_04336s5</bpmn2:incoming>
       <bpmn2:outgoing>Flow_0wqaofz</bpmn2:outgoing>
       <bpmn2:participantRef>Participant_06qakjv</bpmn2:participantRef>
