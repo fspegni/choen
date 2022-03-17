@@ -12,13 +12,15 @@ class LoadChoreographyCase(TestCase):
 
         choreographies = [
             ("diagram", "diagram.bpmn", ),
-            ("diagram_simple", "diagram_simple.bpmn"),
+            ("diagram_basic", "diagram_basic.bpmn"),
             ("diagram_gateways", "diagram_gateways.bpmn", ),
             ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
             ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
             ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
             ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
             ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+
         ]
 
         for name, filename in choreographies:
@@ -161,6 +163,17 @@ class LoadChoreographyCase(TestCase):
                 neighbors = c.next(curr)
                 assert len(neighbors) == 0
 
+
+    def test_translation_basic(self):
+
+        c = Choreography.objects.get(name="diagram_basic")
+        r, match = rei.ChoToRei(c)
+
+        print(f"REI ({c.name}): {r}")
+        print(f"REI ({c.name},latex): {r.latex}")
+
+        assert str(r) == "start end"
+
   
     def test_translation_simple(self):
 
@@ -243,13 +256,3 @@ class LoadChoreographyCase(TestCase):
 
         assert str(r) == "start 'order pizza' ('New Activity' | 'hand over pizza' 'deliver pizza' (Something 'Something else' & 'Another task') Intermediate) end", f"Received: {r}"
 
-
-    def test_simple_diagram(self):
-
-        c = Choreography.objects.get(name="diagram_simple")
-        r, match = rei.ChoToRei(c)
-
-        print(f"REI ({c.name}): {r}")
-        print(f"REI ({c.name},latex): {r.latex}")
-
-        assert str(r) == "start end"
