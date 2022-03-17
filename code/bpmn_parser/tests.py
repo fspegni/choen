@@ -3,7 +3,7 @@ import solcx
 import os
 from django.conf import settings
 
-from bpmn_parser.models import Choreography
+from bpmn_parser.models import Choreography, NS
 import rei
 
 class LoadChoreographyCase(TestCase):
@@ -25,7 +25,7 @@ class LoadChoreographyCase(TestCase):
         ]
 
         for name, filename in choreographies:
-            c = Choreography()
+            c:Choreography = Choreography()
             c.name = name
             c.resource = os.path.join(settings.MEDIA_ROOT, filename)
             c.save()
@@ -34,7 +34,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_compilation(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
         text = c.compile()
         assert len(text) > 0
         solc_version = "0.7.6"
@@ -49,7 +49,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_next(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
 
         assert len(c.startEvents) == 1
 
@@ -72,7 +72,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_prev(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
 
         assert len(c.endEvents) == 1
 
@@ -94,7 +94,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_next_star(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
         # for curr in c.startEvents:
         curr = c.startEvents[0]
 
@@ -108,7 +108,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_prev_star(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
         for curr in c.endEvents:
             # print("END: %s" % curr)
             items = c.star(curr, c.prev)
@@ -117,7 +117,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_reachable(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
         # for curr in c.startEvents:
         curr = c.startEvents[0]
 
@@ -131,7 +131,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_gateways(self):
 
-        c = Choreography.objects.get(name="diagram_gateways")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
         # for curr in c.startEvents:
         # curr = c.startEvents[0]
 
@@ -141,34 +141,44 @@ class LoadChoreographyCase(TestCase):
 
     def test_neighbor(self):
         
-        c = Choreography.objects.get(name="diagram_gateways")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
         
         curr = c.startEvents[0]
 
         to_visit = set([ curr ])
+        n_visited = 0
 
         while len(to_visit) > 0:
 
             curr = to_visit.pop()
+            n_visited = n_visited + 1
             # print(f">> TO VISIT: {curr} ({curr.attrib['id']})")
 
             arcs = c.outgoing(curr)
             # assert len(arcs) == 1, f"Found {len(arcs)} outgoing arcs from {curr} ({curr.attrib['id']})"
+            # print(f">> ARCS: {arcs}")
 
             if len(arcs) > 0:
-                neighbors = c.next(curr, arcs[0])
-                assert len(neighbors) == len(arcs)
+                neighbors = c.next(curr, arcs)
+                assert len(neighbors) == len(arcs), f"Received: neighbors : {neighbors} : arcs : {arcs}"
 
                 to_visit = to_visit.union(set(neighbors))
             else:
                 neighbors = c.next(curr)
                 assert len(neighbors) == 0
 
+        assert n_visited == len(c.startEvents) + len(c.endEvents) + len(c.tasks) + len(c.gateways)
+
     def test_translation_only_start(self):
         """
         This diagram contains only a start event
         """
-        c = Choreography.objects.get(name="diagram_minimal")
+        c:Choreography = Choreography.objects.get(name="diagram_minimal")
+
+        print(f"{NS}")
+        # print(f">>> START: {c.startEvents}")
+        print(f"{type(c.startEvents[0])}")
+
         r, match = rei.ChoToRei(c)
 
         print(f"REI ({c.name}): {r}")
@@ -181,7 +191,11 @@ class LoadChoreographyCase(TestCase):
         """
         This diagram contains only a start event followed by an end event
         """
-        c = Choreography.objects.get(name="diagram_basic")
+        c:Choreography = Choreography.objects.get(name="diagram_basic")
+
+        print(f">>> START: {c.startEvents}")
+
+
         r, match = rei.ChoToRei(c)
 
         print(f"REI ({c.name}): {r}")
@@ -192,7 +206,7 @@ class LoadChoreographyCase(TestCase):
   
     def test_translation_simple(self):
 
-        c = Choreography.objects.get(name="diagram")
+        c:Choreography = Choreography.objects.get(name="diagram")
         
         r, match = rei.ChoToRei(c)
 
@@ -204,7 +218,7 @@ class LoadChoreographyCase(TestCase):
     
     def test_translation_gateways(self):
 
-        c = Choreography.objects.get(name="diagram_gateways")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways")
         
         r, match = rei.ChoToRei(c)
 
@@ -215,7 +229,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_translation_gateways_mismatch(self):
 
-        c = Choreography.objects.get(name="diagram_gateways_mismatch")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_mismatch")
         
         try:
             r, match = rei.ChoToRei(c)
@@ -226,7 +240,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_translation_gateways_dangling(self):
 
-        c = Choreography.objects.get(name="diagram_gateways_dangling")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_dangling")
 
         r, match = rei.ChoToRei(c)
 
@@ -238,7 +252,7 @@ class LoadChoreographyCase(TestCase):
         
     def test_translation_gateways_nested(self):
 
-        c = Choreography.objects.get(name="diagram_gateways_nested")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_nested")
         
         r, match = rei.ChoToRei(c)
 
@@ -250,7 +264,7 @@ class LoadChoreographyCase(TestCase):
 
     def test_translation_gateways_nested_inclusive(self):
 
-        c = Choreography.objects.get(name="diagram_gateways_nested_inclusive")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_nested_inclusive")
         
         r, match = rei.ChoToRei(c)
 
@@ -262,7 +276,7 @@ class LoadChoreographyCase(TestCase):
     
     def test_translation_gateways_nested_intermediate(self):
 
-        c = Choreography.objects.get(name="diagram_gateways_nested_intermediate")
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_nested_intermediate")
         
         r, match = rei.ChoToRei(c)
 
@@ -274,9 +288,10 @@ class LoadChoreographyCase(TestCase):
 
     def test_translation_gateways_nested_dangling(self):
 
-        c = Choreography.objects.get(name="diagram_gateways_nested_dangling")
-        
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_nested_dangling")
+
         r, match = rei.ChoToRei(c)
+
 
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")

@@ -1,6 +1,6 @@
-from bpmn_parser.models import Choreography
+from bpmn_parser.models import Choreography, ElementType
 
-def expect_node_type(cho:Choreography, node, ntypes):
+def expect_node_type(cho:Choreography, node:ElementType, ntypes):
 
     if isinstance(ntypes, str):
         ntypes = [ ntypes] 
@@ -27,7 +27,7 @@ class REI:
 
 class Symbol(REI):
 
-    def __init__(self, symbol):
+    def __init__(self, symbol:str):
         self.symbol = symbol
 
     def __str__(self):
@@ -91,10 +91,10 @@ class NFA:
         self.edges = {}
 
 
-    def add_node(self, id:str, node=None):
+    def add_node(self, id:str, node:ElementType=None):
         self.nodes[id] = node
         
-    def add_edge(self, source, target, label=None):
+    def add_edge(self, source:str, target:str, label:str=None):
 
         
         if (source not in self.nodes):
@@ -125,12 +125,12 @@ class NFA:
             print("<none>")
 
 
-def ChoToRei(cho:Choreography, node=None, match=None):
+def ChoToRei(cho:Choreography, node:ElementType=None, match:ElementType=None):
     import rei
 
     atoms = {}
 
-    if not node:
+    if node is None:
         # begin
 
         rei_head = rei.Symbol("start")
@@ -138,6 +138,8 @@ def ChoToRei(cho:Choreography, node=None, match=None):
 
         assert len(cho.startEvents) == 1
         node = cho.startEvents[0]
+
+        # print(f">>> START found ({cho.name}): {node} : '{node.tag}'")
         # node_type = cho.node_type(node)
         # assert node_type == "START", f"Expected node of type 'START'. Found : Node: {node}. Tag: {node.tag}. Type: {node_type}"
         expect_node_type(cho, node, "START")
@@ -148,9 +150,15 @@ def ChoToRei(cho:Choreography, node=None, match=None):
         cho_start = cho.startEvents[0]
         cho_next = cho.next(cho_start)
 
-        assert len(cho_next) == 1
-        
-        rei_rest, closure = ChoToRei(cho, cho_next[0], match)
+        rei_rest = None
+        closure = None
+
+        if len(cho_next) == 0:
+            rei_rest = rei.Symbol("end")
+        elif len(cho_next) == 1:
+            rei_rest, closure = ChoToRei(cho, cho_next[0], match)
+        else:
+            raise Exception(f"Too many successors: {cho_next}. Expected zero or one.")
 
         if rei_rest:
             return rei.Conc(rei_head, rei_rest), closure
@@ -193,7 +201,7 @@ def ChoToRei(cho:Choreography, node=None, match=None):
                 rei_branch, closure = ChoToRei(cho, curr, node)
                 # assert cho.node_type(closure) == "GW_EX_CLOSE", f"Expected closure node of type 'GW_EX_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
                 expect_node_type(cho, closure, [ None, "GW_EX_CLOSE" ])
-                assert not gw_closure or gw_closure == closure
+                assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
     
                 if rei_branch:
@@ -225,7 +233,7 @@ def ChoToRei(cho:Choreography, node=None, match=None):
                 rei_branch, closure = ChoToRei(cho, curr, node)
                 expect_node_type(cho, closure, ["GW_PAR_CLOSE",None])
                 # assert cho.node_type(closure) == "GW_PAR_CLOSE", f"Expected closure node of type 'GW_PAR_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
-                assert not gw_closure or gw_closure == closure
+                assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
                 
                 if rei_branch:
@@ -257,7 +265,7 @@ def ChoToRei(cho:Choreography, node=None, match=None):
                 rei_branch, closure = ChoToRei(cho, curr, node)
                 # assert cho.node_type(closure) == "GW_INC_CLOSE"
                 expect_node_type(cho, closure, ["GW_INC_CLOSE",None])
-                assert not gw_closure or gw_closure == closure
+                assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
                 
                 if rei_branch:

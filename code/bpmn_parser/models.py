@@ -12,6 +12,8 @@ NS = {
     "bpmn2": "http://www.omg.org/spec/BPMN/20100524/MODEL",
 }
 
+ElementType=ET.Element
+
 class Choreography(models.Model):
 
     name = models.TextField(max_length=100, null=True, blank=True)
@@ -27,7 +29,7 @@ class Choreography(models.Model):
 
         # if not self._parsed:
 
-        if not self._tree:
+        if self._tree is None:
             self._tree = ET.parse(self.resource.path) #'country_data.xml')
             #self._parsed = tree.getroot()
             
@@ -71,6 +73,14 @@ class Choreography(models.Model):
         return self.root.findall(".//bpmn2:parallelGateway", NS)
 
     @property
+    def gw_inclusive(self):
+        return self.root.findall(".//bpmn2:inclusiveGateway", NS)
+
+    @property
+    def gateways(self):
+        return self.gw_parallel + self.gw_exclusive + self.gw_inclusive
+
+    @property
     def startEvents(self):
         return self.root.findall(".//bpmn2:startEvent", NS)
 
@@ -104,7 +114,7 @@ class Choreography(models.Model):
         ctx = { "settings": settings, "choreography": self.choreographies[0], "participants": self.participants, "tasks": self.tasks }
         return template.render(**ctx)
 
-    def outgoing(self, node:ET.Element) -> set:
+    def outgoing(self, node:ElementType) -> set:
         res = []
 
         if (node):
@@ -149,15 +159,17 @@ class Choreography(models.Model):
 
     
 
-    def next(self, node:ET.Element, connection:ET.Element=None) -> set:
+    def next(self, node:ET.Element, connections=None) -> set:
 
         res = []
 
         if (node):
-            if not connection:
+            if connections is None:
                 connections = self.outgoing(node) #node.findall(".//bpmn2:outgoing", NS)
-            else:
-                connections = [ connection ]
+            elif isinstance(connections, ET.Element):
+                connections = [ connections ]
+
+            assert all(isinstance(element, ET.Element) for element in connections)
 
             for flow in connections:
             # for curr in out:
@@ -181,17 +193,18 @@ class Choreography(models.Model):
         return res
 
 
-    def prev(self, node:ET.Element, connection:ET.Element=None) -> set:
+    def prev(self, node:ET.Element, connections=None) -> set:
 
         res = []
 
         if (node):
-            if not connection:
+            if connections is None:
                 # incoming = node.findall(".//bpmn2:incoming", NS)
                 connections = self.incoming(node)
-            else:
-                connections = [ connection ]
-
+            elif isinstance(connections, ET.Element):
+                connections = [ connections ]
+            
+            assert all(isinstance(element, ET.Element) for element in connections)
             # for curr in incoming:
             #     print("OUT : %s -> %s " % (node, curr))
             #     print("%s (%s)" % (curr, curr.text))
@@ -237,11 +250,19 @@ class Choreography(models.Model):
 
 
     def node_type(self, node:ET.Element) -> str:
-        if not node:
+        if node is None:
+            # print(f">>> {node} -> None type")
             return None
         
         res = "NN"
-        if node.tag == f"{{{NS['bpmn2']}}}exclusiveGateway":
+
+        if node.tag == f"{{{NS['bpmn2']}}}choreographyTask":
+            res = "TASK"
+        elif node.tag == f"{{{NS['bpmn2']}}}startEvent":
+            res = "START"
+        elif node.tag == f"{{{NS['bpmn2']}}}endEvent":
+            res = "END"
+        elif node.tag == f"{{{NS['bpmn2']}}}exclusiveGateway":
             
             incoming = self.incoming(node)
             outgoing = self.outgoing(node)
@@ -251,7 +272,6 @@ class Choreography(models.Model):
             elif len(incoming) > 1 and len(outgoing) == 1:
                 res = "GW_EX_CLOSE"
             else:
-                # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
                 res = f"GW_EX({len(incoming)},{len(outgoing)})"
 
 
@@ -264,7 +284,6 @@ class Choreography(models.Model):
             elif len(incoming) > 1 and len(outgoing) == 1:
                 res = "GW_PAR_CLOSE"
             else:
-                # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
                 res = f"GW_PAR({len(incoming)},{len(outgoing)})"
 
         elif node.tag == f"{{{NS['bpmn2']}}}inclusiveGateway":
@@ -276,16 +295,7 @@ class Choreography(models.Model):
             elif len(incoming) > 1 and len(outgoing) == 1:
                 res = "GW_INC_CLOSE"
             else:
-                # print(f"No. incoming: {len(incoming)} - No. outgoing: {len(outgoing)} - Node: {node}")
                 res = f"GW_INC({len(incoming)},{len(outgoing)})"
 
-        elif node.tag == f"{{{NS['bpmn2']}}}choreographyTask":
-            res = "TASK"
-        elif node.tag == f"{{{NS['bpmn2']}}}startEvent":
-            res = "START"
-        elif node.tag == f"{{{NS['bpmn2']}}}endEvent":
-            res = "END"
-
-        # TODO add inclusive gateway
 
         return res
