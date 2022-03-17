@@ -6,22 +6,13 @@ from django.conf import settings
 from bpmn_parser.models import Choreography, NS
 import rei
 
-class LoadChoreographyCase(TestCase):
+class TestChoreographyBasicCase(TestCase):
 
     def setUp(self):
 
         choreographies = [
             ("diagram", "diagram.bpmn", ),
-            ("diagram_minimal", "diagram_minimal.bpmn"),
-            ("diagram_basic", "diagram_basic.bpmn"),
             ("diagram_gateways", "diagram_gateways.bpmn", ),
-            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
-            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
-            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
-            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
-            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
-            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
-
         ]
 
         for name, filename in choreographies:
@@ -139,18 +130,24 @@ class LoadChoreographyCase(TestCase):
         assert len(c.gw_exclusive) == 2
 
 
-    def test_neighbor(self):
+    def test_visit_neighbor(self):
+        """
+        This test case shows also how to build a visitor using the next(...) function
+        """
         
         c:Choreography = Choreography.objects.get(name="diagram_gateways")
         
         curr = c.startEvents[0]
 
         to_visit = set([ curr ])
+        visited = set([])
         n_visited = 0
 
         while len(to_visit) > 0:
 
             curr = to_visit.pop()
+            visited.add(curr)
+
             n_visited = n_visited + 1
             # print(f">> TO VISIT: {curr} ({curr.attrib['id']})")
 
@@ -162,12 +159,45 @@ class LoadChoreographyCase(TestCase):
                 neighbors = c.next(curr, arcs)
                 assert len(neighbors) == len(arcs), f"Received: neighbors : {neighbors} : arcs : {arcs}"
 
-                to_visit = to_visit.union(set(neighbors))
+                # remove from the neighbors, those that have been visited
+                neighbors_unvisited = set(neighbors).difference(visited)
+                to_visit = to_visit.union(set(neighbors_unvisited))
             else:
                 neighbors = c.next(curr)
                 assert len(neighbors) == 0
 
-        assert n_visited == len(c.startEvents) + len(c.endEvents) + len(c.tasks) + len(c.gateways)
+        n_start = len(c.startEvents)
+        n_end = len(c.endEvents)
+        n_tasks = len(c.tasks)
+        n_gateways = len(c.gateways)
+
+        assert n_visited == n_start + n_end + n_tasks + n_gateways, f"Visited: {n_visited} : Start: {n_start} : End: {n_end} : Tasks: {n_tasks} : Gateways: {n_gateways}"
+
+
+class TestTranslateChoreographyToRei(TestCase):
+
+    def setUp(self):
+
+        choreographies = [
+            ("diagram", "diagram.bpmn", ),
+            ("diagram_minimal", "diagram_minimal.bpmn"),
+            ("diagram_basic", "diagram_basic.bpmn"),
+            ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
+            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+
+        ]
+
+        for name, filename in choreographies:
+            c:Choreography = Choreography()
+            c.name = name
+            c.resource = os.path.join(settings.MEDIA_ROOT, filename)
+            c.save()
+            
 
     def test_translation_only_start(self):
         """
