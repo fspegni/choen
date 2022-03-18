@@ -71,6 +71,24 @@ class End(Symbol):
     def latex(self):
         return f"\\$"        
 
+class Star(REI):
+
+    def __init__(self, rei:REI):
+        self.rei = rei
+    
+    def __str__(self):
+        if isinstance(self.rei, Symbol):
+            return f"{self.rei}*"
+        else:
+            return f"({self.rei})*"
+
+    @property
+    def latex(self):
+        if isinstance(self.rei, Symbol):
+            return f"{{{self.rei.latex}}}^\star"
+        else:
+            return f"({self.rei})^\star"
+
 
 class Conc(REI):
 
@@ -352,3 +370,4 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 
         else:
             raise Exception(f"Node type not handle {node_type}. Node: {node}. Node tag: {node.tag}.  Node name: {node.attrib.get('name')}. Node id: {node.attrib.get('id')}.")
+
