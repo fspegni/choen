@@ -49,11 +49,11 @@ class Choreography(models.Model):
         return self.root.findall(".//bpmn2:choreography", NS)    
 
     @property   
-    def messages(self):
+    def all_messages(self):
         return self.root.findall(".//bpmn2:message", NS)    
 
     @property
-    def participants(self):
+    def all_participants(self):
         return self.root.findall(".//bpmn2:participant", NS)
 
     @property
@@ -108,13 +108,17 @@ class Choreography(models.Model):
 
 
     def involved(self, node:ET.Element):
+        p_initiating = node.attrib.get("initiatingParticipantRef")
+        # assert p_initiating is not None, f"Null initiating in node {node.tag}:{node.attrib['id']}"
+
         p_ref = node.findall(".//bpmn2:participantRef", NS)
 
         if len(p_ref) == 0:
             # raise Exception("No participant for this node")
             return []
 
-        res = []
+        initiating = None
+        others = []
         for curr in p_ref:
             p_def_xpath = f".//bpmn2:participant[@id='{curr.text}']"
             # print(f"Participant definition xpath: {p_def_xpath}")
@@ -124,9 +128,17 @@ class Choreography(models.Model):
             if p_def is None:
                 raise Exception(f"Cannot find definition for participant: {curr.text}")
 
-            res.append(p_def.attrib["name"])
+            if curr.text == p_initiating:
+                initiating = p_def
+            else:
+                others.append(p_def)
+            # participants[curr.text] = p_def #.attrib["name"]
 
-        return res
+        # assert initiating is not None, f"Could not find initiating {p_initiating} in node {node.tag}:{node.attrib['id']}"
+
+        # res = [ participants.pop(p_initiating) ]
+
+        return [ initiating ] + others
 
 
     def initiator(self, node:ET.Element):
@@ -166,7 +178,7 @@ class Choreography(models.Model):
         env = Environment(loader=PackageLoader('bpmn_parser'))
         env.filters["slugify"] = lambda v: slugify(v).replace("-", "_")
         template = env.get_template(settings.TEMPLATE_NAME)
-        ctx = { "settings": settings, "choreography": self.choreographies[0], "participants": self.participants, "tasks": self.tasks }
+        ctx = { "settings": settings, "choreography": self.choreographies[0], "participants": self.all_participants, "tasks": self.tasks }
         return template.render(**ctx)
 
 

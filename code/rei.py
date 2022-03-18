@@ -1,5 +1,5 @@
 from bpmn_parser.models import Choreography, ElementType
-import re
+# import re
 
 def expect_node_type(cho:Choreography, node:ElementType, ntypes):
 

@@ -409,7 +409,7 @@ class TestTranslateChoreographyToRei(TestCase):
                 recipients = cho.recipients(node)
 
                 assert len(recipients) == 1
-                target = recipients[0].replace(" ", "_")
+                target = recipients[0].attrib["name"].replace(" ", "_")
                 msg = messages[0].replace(" ","_")
                 symbol = f"{target}?{msg}"
 
