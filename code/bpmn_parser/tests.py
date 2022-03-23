@@ -1,3 +1,4 @@
+from audioop import add
 from django.test import TestCase
 import solcx
 import os
@@ -5,6 +6,7 @@ from django.conf import settings
 
 from bpmn_parser.models import Choreography, NS, ElementType
 import rei
+import nfa
 
 class TestChoreographyBasicCase(TestCase):
 
@@ -424,4 +426,156 @@ class TestTranslateChoreographyToRei(TestCase):
         print(f"REI ({c.name},latex): {r.latex}")
 
         assert str(r) == "^Pizza_Place?pizza_order (Pizza_Place?Message_0rkgt7n (Customer?Message_10fwh9y$ & (('' | Customer?Message_1e83pou$) & ('' | Customer?Message_0futku6 Pizza_Place?Message_1nqt44e$))) | Delivery_Boy?Message_1mi4idx Customer?pizza$)", f"Received: {r}"
-        # assert str(r) == "^'order pizza' ('New Activity' ('another implicit end'$ & (('' | 'implicit end'$) & ('' | something 'something else'$))) | 'hand over pizza' 'deliver pizza'$)", f"Received: {r}"
+
+
+class TestNFA(TestCase):
+
+    def test_state(self):
+
+        s = nfa.State("foo")
+
+        assert s.id == "foo"
+
+    def test_transition(self):
+        s1 = nfa.State("foo")
+        s2 = nfa.State("fie")
+        t = nfa.Transition(s1, s2, "boo")
+
+        assert t.source == s1
+        assert t.target == s2
+        assert t.label == "boo"
+
+    def test_empty_automaton(self):
+        a = nfa.NFA()
+
+        assert len(a.states) == 0, f"States: {a.states}"
+        assert len(a.transitions) == 0, f"Transitions: {a.transitions}"
+        assert len(a.final) == 0
+        assert a.initial == None
+
+        try:
+            result, state, remaining = a.read_string("foofie")
+            assert False, f"Exception expected, received: {result},{state},{remaining}"
+        except Exception:
+            assert True
+
+    def test_final_states(self):
+
+        s1 = nfa.State("s1")
+        s2 = nfa.State("s2")
+        s3 = nfa.State("s3")
+        s4 = nfa.State("s4")
+        s5 = nfa.State("s5")
+
+        a = nfa.NFA()
+        a.add_state(s1)
+        a.add_state(s2)
+        a.add_state(s3, is_final=True)
+        a.add_state(s4)
+        a.add_state(s5, is_final=True)
+
+        assert len(a.final) == 2
+
+        for curr in a.final:
+            assert curr in [ s3, s5 ]
+
+        for curr in [ s3, s5 ]:
+            assert curr in a.final
+
+    def test_automaton_linear(self):
+        s1 = nfa.State("s1")
+        s2 = nfa.State("s2")
+        s3 = nfa.State("s3")
+        s4 = nfa.State("s4")
+        s5 = nfa.State("s5")
+
+        a = nfa.NFA()
+        a.add_state(s1)
+        a.add_state(s2)
+        a.add_state(s3)
+        a.add_state(s4)
+        a.add_state(s5, is_final=True)
+
+        a.add_transition(s1, s2, "a")
+        a.add_transition(s2, s3, "b")
+        a.add_transition(s3, s4, "c")
+        a.add_transition(s4, s5, "d")
+
+        a.set_initial(s1)
+
+        accepted, state, remaining = a.read_string("abcd")
+        assert accepted == True
+        assert state == s5.id
+        assert remaining == ""
+
+    def test_automaton_loop(self):
+
+        s1 = nfa.State("s1")
+        s2 = nfa.State("s2")
+        
+        a = nfa.NFA()
+        a.add_state(s1)
+        a.add_state(s2, is_final=True)
+
+        a.set_initial(s1)
+
+        # automaton recognizing (a b*) (a a b*)*
+        a.add_transition(s1, s2, "a")
+        a.add_transition(s2, s2, "b")
+        a.add_transition(s2, s1, "a")
+
+        # examples of strings that are accepted by the regular expression
+        accepted, state, remaining = a.read_string("abbbbbbbbbbbbb")
+
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s2.id
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("abbbbbbaabbbbbbb")
+
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s2.id
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("abbbbbbaabbbbbbbaa")
+
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s2.id
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("a")
+
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s2.id
+        assert remaining == ""
+
+        # example of strings that are not accepted by the regular expression
+        accepted, state, remaining = a.read_string("aa")
+
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s1.id
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("aabb")
+
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s1.id
+        assert remaining == "bb"
+
+        accepted, state, remaining = a.read_string("abbbbbaaba")
+
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s1.id
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("")
+
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s1.id
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("abbbbbbcdef")
+
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert state == s2.id
+        assert remaining == "cdef"
