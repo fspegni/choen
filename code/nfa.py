@@ -167,7 +167,10 @@ class NFA:
                 remaining_shortest = input_string[pos:]
                 state_shortest = curr_state
                 for t_out in transitions:
-                    recognized, reached, remaining = self.read_string(input_string[pos:], curr_state)
+                    assert isinstance(t_out, Transition)
+
+                    print(f"Recursive call: read_string({input_string[pos:]},{t_out.target.id}) ...")
+                    recognized, reached, remaining = self.read_string(input_string[pos:], t_out.target.id)
                     if recognized:
                         return recognized, reached, remaining
 
