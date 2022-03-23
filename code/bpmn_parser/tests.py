@@ -482,6 +482,98 @@ class TestNFA(TestCase):
         for curr in [ s3, s5 ]:
             assert curr in a.final
 
+    def test_transition_operators(self):
+
+        s1 = nfa.State("s1")
+        s2 = nfa.State("s2")
+        s3 = nfa.State("s3")
+        s4 = nfa.State("s4")
+        s5 = nfa.State("s5")
+
+        a = nfa.NFA()
+        a.add_state(s1)
+        a.add_state(s2)
+        a.add_state(s3)
+        a.add_state(s4)
+        a.add_state(s5, is_final=True)
+
+        a.add_transition(s1, s2, "a")
+        a.add_transition(s2, s3) # epsilon transition
+        a.add_transition(s2, s4) # epsilon transition
+        a.add_transition(s3, s4, "b")
+        a.add_transition(s3, s5, "c")
+        a.add_transition(s3, s5) # epsilon transition
+        a.add_transition(s5, s1) # epsilon transition
+        a.add_transition(s4, s1, "d")
+
+        transitions = list(a.transitions_from(s1))
+        assert len(transitions) == 1, f"Received: {transitions}"
+        assert transitions[0].source == s1
+
+        transitions = list(a.transitions_from(s2))
+        transitions_text = ", ".join(map(lambda t: str(t), transitions))
+        assert len(transitions) == 2, f"Received: {transitions}"
+        for t in transitions:
+            assert t.source == s2
+
+        transitions = list(a.transitions_from(s3))
+        assert len(transitions) == 3, f"Received: {transitions}"
+        for t in transitions:
+            assert t.source == s3
+
+        transitions = list(a.transitions_from(s4))
+        assert len(transitions) == 1, f"Received: {transitions}"
+        assert transitions[0].source == s4
+
+        transitions = list(a.transitions_from(s5))
+        assert len(transitions) == 1, f"Received: {transitions}"
+        assert transitions[0].source == s5
+
+
+
+    def test_epsilon_closure(self):
+        s1 = nfa.State("s1")
+        s2 = nfa.State("s2")
+        s3 = nfa.State("s3")
+        s4 = nfa.State("s4")
+        s5 = nfa.State("s5")
+
+        a = nfa.NFA()
+        a.add_state(s1)
+        a.add_state(s2)
+        a.add_state(s3)
+        a.add_state(s4)
+        a.add_state(s5, is_final=True)
+
+        a.add_transition(s1, s2, "a")
+        a.add_transition(s2, s3) # epsilon transition
+        a.add_transition(s2, s4) # epsilon transition
+        a.add_transition(s3, s4, "b")
+        a.add_transition(s3, s5, "c")
+        a.add_transition(s3, s5) # epsilon transition
+        a.add_transition(s5, s1) # epsilon transition
+        a.add_transition(s4, s1, "d")
+
+        a.set_initial(s1)
+
+        c = a.e_closure(s1)
+        assert len(c) == 0, f"Received: {c}"
+
+        c = a.e_closure(s2)
+        assert len(c) == 4, f"Received: {c}"
+        assert c == set([ s1, s3, s4, s5 ])
+
+        c = a.e_closure(s2)
+        assert len(c) == 4, f"Received: {c}"
+        assert c == set([ s1, s3, s4, s5 ])
+
+        c = a.e_closure(s4)
+        assert len(c) == 0, f"Received: {c}"
+
+        c = a.e_closure(s5)
+        assert len(c) == 1, f"Received: {c}"
+        assert c == set([ s1 ])
+
     def test_automaton_linear(self):
         s1 = nfa.State("s1")
         s2 = nfa.State("s2")

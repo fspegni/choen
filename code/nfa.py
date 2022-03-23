@@ -1,9 +1,14 @@
 from rei import Symbol, Star, Conc, Par, Union
+import random
+import string
 
 class State:
 
     def __init__(self, id:str):
         self.id = id
+
+    def __str__(self):
+        return f"State({self.id})"
 
 
 class Transition:
@@ -12,6 +17,9 @@ class Transition:
         self.source = source
         self.target = target
         self.label = label
+
+    def __str__(self):
+        return f"{self.source} -[{self.label}]-> {self.target}"
 
 
 class NFA:
@@ -56,20 +64,26 @@ class NFA:
 
         assert isinstance(source, str)
 
-        return self.transitions.filter(lambda curr: curr.source == source)
+        #return filter(lambda : curr.source == source, self.transitions.items())
+        res =[]
+        for symbol, transitions in self._transitions.get(source, {}).items():
+            res.extend(transitions)
 
+        return res
+
+    # TODO test this
     def transitions_to(self, target):
         if isinstance(target, State):
             target = target.id
 
         assert isinstance(target, str)
 
-        return self.transitions.filter(lambda curr: curr.target == target)
+        return filter(lambda curr: curr.target == target, self.transitions)
 
     def transitions_labeled(self, label:str):
-        return self.transitions.filter(lambda curr: curr.label == label)
+        return filter(lambda curr: curr.label == label, self.transitions)
 
-    def add_transition(self, source, target, label):
+    def add_transition(self, source, target, label=None):
 
         if isinstance(source, State):
             source = source.id
@@ -104,6 +118,17 @@ class NFA:
 
         return id_state in self._final
 
+    def set_final(self, state):
+        if isinstance(state, State):
+            state = state.id
+
+        assert isinstance(state, str)
+
+        if state not in self._states:
+            raise Exception(f"State {state} does not exist. Cannot set it final")
+
+        self._final.add(state)
+
     @property
     def initial(self) -> State:
 
@@ -136,14 +161,14 @@ class NFA:
             raise Exception(f"Initial state {self._initial} is not a valid state")
 
         if not curr_state:
-            print(f"Start from initial state: {self._initial}")
+            # print(f"Start from initial state: {self._initial}")
             curr_state = self._initial
         
         pos = 0
 
         while pos < len(input_string):
             symbol : str = input_string[pos]
-            print(f"Read symbol: {symbol} ...")
+            # print(f"Read symbol: {symbol} ...")
             pos = pos  + 1
 
             if curr_state not in self._transitions:
@@ -151,7 +176,7 @@ class NFA:
             
                 
             transitions : Transition = self._transitions[curr_state].get(symbol, [])
-            print(f"Outgoing transition from {curr_state} with {symbol}: {transitions}")
+            # print(f"Outgoing transition from {curr_state} with {symbol}: {transitions}")
 
             if len(transitions) == 0:
                 # symbol not recognized -> mark as non recognizing, return input not consumed
@@ -169,7 +194,7 @@ class NFA:
                 for t_out in transitions:
                     assert isinstance(t_out, Transition)
 
-                    print(f"Recursive call: read_string({input_string[pos:]},{t_out.target.id}) ...")
+                    # print(f"Recursive call: read_string({input_string[pos:]},{t_out.target.id}) ...")
                     recognized, reached, remaining = self.read_string(input_string[pos:], t_out.target.id)
                     if recognized:
                         return recognized, reached, remaining
@@ -186,19 +211,124 @@ class NFA:
         is_final = self.is_final(curr_state)
 
         return is_final, curr_state, input_string[pos:]
-        
+
+
+    def e_closure(self, state):
+
+        res = set([])
+        e_transitions = []
+        # e_transitions = filter(lambda t: t.label is None or t.label == "", self.transitions_from(state))
+        for t in self.transitions_from(state):
+            # print(f"Check transition: {t} ...")
+            if t.label is None or t.label == "":
+                e_transitions.append(t)
+
+
+        text_transitions = ', '.join(map(lambda t: str(t), e_transitions))
+        # print(f"Epsilon transitions from {state}: {text_transitions}")
+
+        for curr in e_transitions:
+            # print(f"Check {curr} ...")
+            assert isinstance(curr, Transition)
+
+            # print(f"Compare: {curr.target} vs {res}")
+            if curr.target not in res:
+                res.add(curr.target)
+                res = res.union(self.e_closure(curr.target))
+
+        return res
 
 
 def ReiToNFA(rei):
 
     if isinstance(rei, Symbol):
-        initial = str(rei)
+
+        i = State(random_string())
+        f = State(random_string())
+
+        a = NFA()
+        a.add_state(i)
+        a.add_state(f, final=True)
+
+        a.set_initial(s)
+
+        a.add_transition(i, f, rei.symbol)
+
+        return a
 
     elif isinstance(rei, Star):
-        pass
+        
+        a = ReiToNFA(rei.rei)
+
+        for f in rei.rei.final:
+            a.add_transition(f, a.initial)
+
+        return a
+
     elif isinstance(rei, Conc):
-        pass
+        
+        a = NFA()
+
+        first = True
+        prev = None
+
+        for curr in rei.items:
+            b = ReiToNFA(curr)
+            if first:
+                a.set_initial(b.initial)
+                first = False
+
+            for s in b.states:
+                a.add_state(s)
+
+            for t in b.transitions:
+                assert isinstance(t, Transition)
+
+                a.add_transition(t.source, t.target, t.label)
+
+            for f in prev.final:
+                a.add_transition(f, b.initial)
+
+            prev = b
+
+        assert prev is not None
+        for f in prev.final:
+            a.set_final(f)
+
+        return a
+
     elif isinstance(rei, Par):
-        pass
+        raise Exception("TODO: not implemented yet")
+
     elif isinstance(rei, Union):
-        pass
+        
+        i = State(random_string(8))
+        f = State(random_string(8))
+        
+        a = NFA()
+        a.add_state(i)
+        a.add_state(f, final=True)
+
+        a.set_initial(i)
+
+        for curr in rei.items:
+            b = ReiToNFA(curr)
+
+            for s in b.states:
+                a.add_state(s)
+
+            for t in b.transitions:
+                assert isinstance(t, Transition)
+                a.add_transition(t.source, t.target, t.label)
+
+            a.add_transition(i, a.initial)
+            for s in b.final:
+                a.add_transition(s, f)
+
+        return a              
+
+def random_string(length):
+    # choose from all lowercase letter
+    letters = string.ascii_lowercase
+    result_str = ''.join(random.choice(letters) for i in range(length))
+    print("Random string of length", length, "is:", result_str)
