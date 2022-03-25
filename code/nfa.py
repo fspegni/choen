@@ -148,7 +148,7 @@ class NFA:
         elif self._initial not in self._states:
             raise Exception(f"Wrong configuration: initial state '{self._initial}' does not exist")
 
-        return self._states.get[self._initial]
+        return self._states[self._initial]
 
     def set_initial(self, state):
         if isinstance(state, State):
@@ -261,14 +261,17 @@ def ReiToNFA(rei):
 
     if isinstance(rei, Symbol):
 
-        i = State(random_string())
-        f = State(random_string())
+        id_i = random_string()
+        i = State(id_i)
+
+        id_f = random_string()
+        f = State(id_f)
 
         a = NFA()
         a.add_state(i)
-        a.add_state(f, final=True)
+        a.add_state(f, is_final=True)
 
-        a.set_initial(s)
+        a.set_initial(i)
 
         a.add_transition(i, f, rei.symbol)
 
@@ -325,7 +328,7 @@ def ReiToNFA(rei):
         
         a = NFA()
         a.add_state(i)
-        a.add_state(f, final=True)
+        a.add_state(f, is_final=True)
 
         a.set_initial(i)
 
@@ -345,8 +348,10 @@ def ReiToNFA(rei):
 
         return a              
 
-def random_string(length):
+def random_string(length:int = 8):
     # choose from all lowercase letter
     letters = string.ascii_lowercase
     result_str = ''.join(random.choice(letters) for i in range(length))
     print("Random string of length", length, "is:", result_str)
+
+    return result_str

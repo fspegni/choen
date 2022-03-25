@@ -244,7 +244,7 @@ class TestChoreographyBasicCase(TestCase):
 
 
 
-class TestTranslateChoreographyToRei(TestCase):
+class TestChoreographyToRei(TestCase):
 
     def setUp(self):
 
@@ -793,3 +793,19 @@ class TestNFA(TestCase):
         assert remaining == ""
 
         
+class TestReiToNFA(TestCase):
+
+    def test_base_case(self):
+
+        r = rei.Symbol("foo")
+
+        a = nfa.ReiToNFA(r)
+
+        assert len(a.states) == 2
+        assert len(a.final) == 1
+        assert len(a.transitions) == 1
+        assert a.transitions[0].source == a.initial
+        assert a.transitions[0].target == a.final[0]
+        assert a.transitions[0].label == "foo"
+
+        print(f"NFA: {str(a)}")
