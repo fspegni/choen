@@ -529,6 +529,14 @@ class TestNFA(TestCase):
         assert len(transitions) == 1, f"Received: {transitions}"
         assert transitions[0].source == s5
 
+        transitions = list(a.transitions_to(s3))
+        assert len(transitions) == 1
+        assert transitions[0].target == s3
+
+        transitions = list(a.transitions_to(s5))
+        assert len(transitions) == 2
+        for t in transitions:
+            assert t.target == s5
 
 
     def test_epsilon_closure(self):
@@ -725,3 +733,63 @@ class TestNFA(TestCase):
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
         assert state == s8.id, f"Received: {accepted}, {state}, {remaining}"
         assert remaining == "", f"Received: {accepted}, {state}, {remaining}"
+
+    def test_automaton_with_epsilon(self):
+
+        s1 = nfa.State("s1")
+        s2 = nfa.State("s2")
+        s3 = nfa.State("s3")
+        s4 = nfa.State("s4")
+        s5 = nfa.State("s5")
+        s6 = nfa.State("s6")
+        s7 = nfa.State("s7")
+        s8 = nfa.State("s8")
+        s9 = nfa.State("s9")
+        s10 = nfa.State("s10")
+        s11 = nfa.State("s11")
+
+        a = nfa.NFA()
+        a.add_state(s1)
+        a.add_state(s2)
+        a.add_state(s3)
+        a.add_state(s4)
+        a.add_state(s5)
+        a.add_state(s6)
+        a.add_state(s7)
+        a.add_state(s8, is_final=True)
+        a.add_state(s9, is_final=True)
+        a.add_state(s10, is_final=True)
+        a.add_state(s11, is_final=True)
+
+        # 1st level
+        a.add_transition(s1, s2, "a")
+        a.add_transition(s1, s3, "a")
+
+        # 2nd level
+        a.add_transition(s2, s4, "b")
+        a.add_transition(s2, s5) # epsilon transition
+
+        a.add_transition(s3, s6, "b")
+        a.add_transition(s3, s7) # epsilon transition
+
+        # 3rd level
+        a.add_transition(s4, s8, "c")
+        a.add_transition(s5, s9, "d")
+
+        a.add_transition(s6, s10, "e")
+        a.add_transition(s7, s11, "f")
+
+
+        a.set_initial(s1)
+
+        accepted, state, remaining = a.read_string("ac")
+        assert accepted == False
+        assert state == s1.id, f"Received: {accepted}, {state}, {remaining}"
+        assert remaining == "c"
+
+        accepted, state, remaining = a.read_string("ad")
+        assert accepted == True
+        assert state == s9.id, f"Received: {accepted}, {state}, {remaining}"
+        assert remaining == ""
+
+        

@@ -2,6 +2,8 @@ from rei import Symbol, Star, Conc, Par, Union
 import random
 import string
 
+EPSILON = ""
+
 class State:
 
     def __init__(self, id:str):
@@ -58,32 +60,41 @@ class NFA:
 
         return res
 
-    def transitions_from(self, source):
+    def transitions_from(self, source, label=None):
         if isinstance(source, State):
             source = source.id
 
         assert isinstance(source, str)
 
         #return filter(lambda : curr.source == source, self.transitions.items())
-        res =[]
+        res = []
         for symbol, transitions in self._transitions.get(source, {}).items():
-            res.extend(transitions)
-
+            if label is None or symbol == label:
+                res.extend(transitions)
+            
         return res
 
-    # TODO test this
-    def transitions_to(self, target):
+    def transitions_to(self, target, label=None):
         if isinstance(target, State):
             target = target.id
 
         assert isinstance(target, str)
 
-        return filter(lambda curr: curr.target == target, self.transitions)
+        res = []
+        for source, dict_transitions in self._transitions.items():
+            for symbol, transitions in dict_transitions.items():
+                if label is None or label == symbol:
+                    for curr in transitions:
+                        assert isinstance(curr, Transition)
+                        if curr.target.id == target:
+                            res.append(curr)
+
+        return res
 
     def transitions_labeled(self, label:str):
         return filter(lambda curr: curr.label == label, self.transitions)
 
-    def add_transition(self, source, target, label=None):
+    def add_transition(self, source, target, label=EPSILON):
 
         if isinstance(source, State):
             source = source.id
@@ -175,8 +186,15 @@ class NFA:
                 raise Exception(f"State {curr_state} does not have outgoing transitions")
             
                 
-            transitions : Transition = self._transitions[curr_state].get(symbol, [])
+            # transitions : Transition = self._transitions[curr_state].get(symbol, [])
+            transitions = self.transitions_from(curr_state, symbol)
             # print(f"Outgoing transition from {curr_state} with {symbol}: {transitions}")
+            e_closure = self.e_closure(curr_state)
+
+            # add to the transition set also the transitions departing from the states in the
+            # epsilon-closure starting from current state
+            for curr in e_closure:
+                transitions.extend(self.transitions_from(curr, symbol))
 
             if len(transitions) == 0:
                 # symbol not recognized -> mark as non recognizing, return input not consumed
