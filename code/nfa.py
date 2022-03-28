@@ -23,6 +23,85 @@ class Transition:
     def __str__(self):
         return f"{self.source} -[{self.label}]-> {self.target}"
 
+class InputScanner:
+
+    def __init__(self, text : str, pos : int = 0):
+        self._text = text
+        self._input_len = len(text)
+        # self._pos = pos
+        self._positions = []
+
+        if pos > self._input_len:
+            raise Exception(f"Position not allowed: {pos}. Input length: {self._input_len}")
+
+        self._positions.append(pos)
+
+    @property
+    def eof(self) -> bool:
+        return self.pos >= self._input_len
+
+    @property
+    def bof(self) -> bool:
+        return self.pos == 0
+
+    @property
+    def pos(self) -> int:
+        if len(self._positions) == 0:
+            raise Exception("Unexpected empty stack of positions")
+
+        return self._positions[-1]
+
+    @property
+    def remaining(self):
+        return self._text[self.pos:]
+
+    # def set_pos(self, pos : int):
+    #     self._pos = pos
+
+    def scan_input(self) -> str:
+        if self.eof:
+            raise Exception("End-of-file reached")
+
+        if self.pos < 0:
+            raise Exception(f"Position not allowed in string. Position: {self._pos}. Input length: {self._input_len}")
+
+        pos_start = self.pos
+        delimiter = " "
+
+        if self._text[pos_start] in [ " ", "'" ]:
+            delimiter = self._text[pos_start]
+            pos_start = pos_start + 1
+            
+        pos_end = pos_start
+        token = ""
+        while pos_end < self._input_len and self._text[pos_end] != delimiter:
+            token = token + self._text[pos_end]
+            pos_end = pos_end + 1
+
+        if delimiter != " " and self._text[pos_end] != delimiter:
+            raise Exception(f"End reached without finding expected delimiter ({delimiter})")
+
+        token = self._text[pos_start:pos_end]
+        pos_end = pos_end + 1
+
+        # consume final spaces if present
+        while pos_end < self._input_len and self._text[pos_end] == " ":
+            pos_end = pos_end + 1
+
+        # self._pos = pos_end
+        self._positions.append(pos_end)
+
+        return token
+
+    def undo_reading(self) -> int:
+        if len(self._positions) == 0:
+            raise Exception("Cannot undo reading anymore. Reading stack empty")
+        if len(self._positions) == 1:
+            raise Exception(f"Cannot undo reading anymore. Reached the initial position: {self._positions[0]}")
+
+        pos_prev = self._positions.pop()
+        return pos_prev
+    
 
 class NFA:
 
@@ -150,6 +229,8 @@ class NFA:
 
         return self._states[self._initial]
 
+
+
     def set_initial(self, state):
         if isinstance(state, State):
             state = state.id
@@ -158,6 +239,8 @@ class NFA:
 
         self._initial = state
 
+        
+
     """
     Return a tuple:
     - bool  : whether the string was recognized
@@ -165,6 +248,8 @@ class NFA:
     - str   : remaining part of input that was not consumed
     """
     def read_string(self, input_string : str, curr_state : str = None):
+
+        iscan = InputScanner(input_string)
 
         if not self._initial:
             raise Exception(f"Cannot read string without an initial state")
@@ -175,17 +260,26 @@ class NFA:
             # print(f"Start from initial state: {self._initial}")
             curr_state = self._initial
         
-        pos = 0
+        # pos = 0
 
-        while pos < len(input_string):
-            symbol : str = input_string[pos]
+        # while pos < len(input_string):
+        
+        while not iscan.eof:
+
+            # symbol : str = input_string[pos]
+            # pos_last = iscan.pos
+            # assert pos_last >= 0
+            symbol : str = iscan.scan_input()
+            #pos = iscan.pos
+
             # print(f"Read symbol: {symbol} ...")
-            pos = pos  + 1
+            # pos = pos  + 1
 
             if curr_state not in self._transitions:
-                raise Exception(f"State {curr_state} does not have outgoing transitions")
+                # raise Exception(f"State {curr_state} does not have outgoing transitions")
+                iscan.undo_reading()
+                return False, curr_state, iscan.remaining
             
-                
             # transitions : Transition = self._transitions[curr_state].get(symbol, [])
             transitions = self.transitions_from(curr_state, symbol)
             # print(f"Outgoing transition from {curr_state} with {symbol}: {transitions}")
@@ -198,7 +292,8 @@ class NFA:
 
             if len(transitions) == 0:
                 # symbol not recognized -> mark as non recognizing, return input not consumed
-                return False, curr_state, input_string[pos-1:]
+                iscan.undo_reading()
+                return False, self.e_extension(curr_state), iscan.remaining  #input_string[pos-1:]
 
             elif len(transitions) == 1:
                 # deterministic transition -> continue
@@ -207,13 +302,14 @@ class NFA:
             else:
                 # non deterministic transition -> explore the tree, looking for one recognizing path
 
-                remaining_shortest = input_string[pos:]
+                # remaining_shortest = input_string[pos:]
+                remaining_shortest = iscan.remaining
                 state_shortest = curr_state
                 for t_out in transitions:
                     assert isinstance(t_out, Transition)
 
                     # print(f"Recursive call: read_string({input_string[pos:]},{t_out.target.id}) ...")
-                    recognized, reached, remaining = self.read_string(input_string[pos:], t_out.target.id)
+                    recognized, reached, remaining = self.read_string(iscan.remaining, t_out.target.id) #self.read_string(input_string[pos:], t_out.target.id)
                     if recognized:
                         return recognized, reached, remaining
 
@@ -226,12 +322,24 @@ class NFA:
 
 
         # all input was consumed -> check whether it's in a final state
+        # is_final = self.is_final(curr_state)
+        # if not is_final:
+        #     reachable = list(map(lambda s: s.id, self.e_closure(curr_state)))
+        #     # is_final = self.is_final(curr_state)
+        #     reachable_final = self._final.intersection(reachable)
+        #     if len(reachable_final) > 0:
+        #         is_final = True
+        #         curr_state = list(reachable_final)[0]
+        #     elif len(reachable) > 0:
+        #         is_final = False
+        #         curr_state = list(reachable)[0]
+        curr_state = self.e_extension(curr_state)
         is_final = self.is_final(curr_state)
 
-        return is_final, curr_state, input_string[pos:]
+        return is_final, curr_state, iscan.remaining # input_string[pos:]
 
 
-    def e_closure(self, state):
+    def e_closure(self, state : str):
 
         res = set([])
         e_transitions = []
@@ -249,12 +357,31 @@ class NFA:
             # print(f"Check {curr} ...")
             assert isinstance(curr, Transition)
 
-            # print(f"Compare: {curr.target} vs {res}")
-            if curr.target not in res:
+            print(f"Compare: {curr.target} vs {res}")
+            if curr.target != state and curr.target not in res:
                 res.add(curr.target)
-                res = res.union(self.e_closure(curr.target))
+                ec = self.e_closure(curr.target)
+                print(f"Add e-closure: {ec}")
+                res = res.union(ec)
 
         return res
+
+    def e_extension(self, state : str):
+
+        if self.is_final(state):
+            return state
+
+        reachable = list(map(lambda s: s.id, self.e_closure(state)))
+
+        reachable_final = list(self._final.intersection(set(reachable)))
+
+        if len(reachable_final) > 0:
+            return reachable_final[0]
+        elif len(reachable) > 0:
+            return reachable[0]
+        else:
+            return state
+
 
 
 def ReiToNFA(rei):
@@ -290,14 +417,15 @@ def ReiToNFA(rei):
         
         a = NFA()
 
-        first = True
+        # first = True
         prev = None
 
         for curr in rei.items:
+
             b = ReiToNFA(curr)
-            if first:
+            if prev is None: #first:
                 a.set_initial(b.initial)
-                first = False
+                # first = False
 
             for s in b.states:
                 a.add_state(s)
@@ -307,8 +435,9 @@ def ReiToNFA(rei):
 
                 a.add_transition(t.source, t.target, t.label)
 
-            for f in prev.final:
-                a.add_transition(f, b.initial)
+            if prev is not None:
+                for f in prev.final:
+                    a.add_transition(f, b.initial)
 
             prev = b
 
@@ -342,7 +471,7 @@ def ReiToNFA(rei):
                 assert isinstance(t, Transition)
                 a.add_transition(t.source, t.target, t.label)
 
-            a.add_transition(i, a.initial)
+            a.add_transition(i, b.initial)
             for s in b.final:
                 a.add_transition(s, f)
 
