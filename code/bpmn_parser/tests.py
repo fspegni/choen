@@ -911,4 +911,33 @@ class TestReiToNFA(TestCase):
         assert a.is_final(state)
         assert remaining == "zig", f"Received: {remaining}"
 
+    def test_start(self):
+
+        r = rei.Star(rei.Conc(rei.Symbol("foo"), rei.Symbol("fie")))
+
+        a = nfa.ReiToNFA(r)
+
+        accepted, state, remaining = a.read_string("foo fie")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie foo fie foo fie foo fie")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie foo fie foo")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie foo fie foo baz")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == "baz"
+
+
+
+
 

@@ -408,7 +408,7 @@ def ReiToNFA(rei):
         
         a = ReiToNFA(rei.rei)
 
-        for f in rei.rei.final:
+        for f in a.final:
             a.add_transition(f, a.initial)
 
         return a
