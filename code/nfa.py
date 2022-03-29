@@ -1,6 +1,7 @@
 from rei import Symbol, Star, Conc, Par, Union
 import random
 import string
+from deprecation import deprecated
 
 EPSILON = ""
 
@@ -118,11 +119,15 @@ class NFA:
     def states(self):
         return self._states.values()
 
-    def state(self, id:str) -> State:
+    def get_state(self, id:str) -> State:
         if id not in self._states:
             raise Exception(f"State {id} does not exist")
 
         return self._states[id]
+
+    @deprecated(details="Use the getter 'get_state'")
+    def state(self, id:str) -> State:
+        return self.get_state(id)
 
     def add_state(self, new_state:State, is_final:bool=False):
         self._states[new_state.id] = new_state
@@ -288,7 +293,8 @@ class NFA:
             # add to the transition set also the transitions departing from the states in the
             # epsilon-closure starting from current state
             for curr in e_closure:
-                transitions.extend(self.transitions_from(curr, symbol))
+                if curr.id != curr_state:
+                    transitions.extend(self.transitions_from(curr, symbol))
 
             if len(transitions) == 0:
                 # symbol not recognized -> mark as non recognizing, return input not consumed
@@ -339,9 +345,14 @@ class NFA:
         return is_final, curr_state, iscan.remaining # input_string[pos:]
 
 
-    def e_closure(self, state : str):
+    def e_closure(self, state):
 
-        res = set([])
+        if isinstance(state, State):
+            state = state.id
+
+        assert isinstance(state, str)
+
+        res = set([ self.state(state) ])
         e_transitions = []
         # e_transitions = filter(lambda t: t.label is None or t.label == "", self.transitions_from(state))
         for t in self.transitions_from(state):
@@ -357,11 +368,11 @@ class NFA:
             # print(f"Check {curr} ...")
             assert isinstance(curr, Transition)
 
-            print(f"Compare: {curr.target} vs {res}")
+            # print(f"Compare: {curr.target} vs {res}")
             if curr.target != state and curr.target not in res:
                 res.add(curr.target)
-                ec = self.e_closure(curr.target)
-                print(f"Add e-closure: {ec}")
+                ec = self.e_closure(curr.target.id)
+                # print(f"Add e-closure: {ec}")
                 res = res.union(ec)
 
         return res
@@ -481,6 +492,6 @@ def random_string(length:int = 8):
     # choose from all lowercase letter
     letters = string.ascii_lowercase
     result_str = ''.join(random.choice(letters) for i in range(length))
-    print("Random string of length", length, "is:", result_str)
+    # print("Random string of length", length, "is:", result_str)
 
     return result_str

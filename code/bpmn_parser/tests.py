@@ -569,22 +569,20 @@ class TestNFA(TestCase):
         a.set_initial(s1)
 
         c = a.e_closure(s1)
-        assert len(c) == 0, f"Received: {c}"
+        assert len(c) == 1, f"Received: {c}"
+        assert c == set([s1])
 
         c = a.e_closure(s2)
-        assert len(c) == 4, f"Received: {c}"
-        assert c == set([ s1, s3, s4, s5 ])
-
-        c = a.e_closure(s2)
-        assert len(c) == 4, f"Received: {c}"
-        assert c == set([ s1, s3, s4, s5 ])
+        assert len(c) == 5, f"Received: {c}"
+        assert c == set([ s1, s2, s3, s4, s5 ])
 
         c = a.e_closure(s4)
-        assert len(c) == 0, f"Received: {c}"
+        assert len(c) == 1, f"Received: {c}"
+        assert c == set([ s4 ])
 
         c = a.e_closure(s5)
-        assert len(c) == 1, f"Received: {c}"
-        assert c == set([ s1 ])
+        assert len(c) == 2, f"Received: {c}"
+        assert c == set([ s1, s5 ])
 
     def test_automaton_linear(self):
         s1 = nfa.State("s1")
@@ -911,7 +909,7 @@ class TestReiToNFA(TestCase):
         assert a.is_final(state)
         assert remaining == "zig", f"Received: {remaining}"
 
-    def test_start(self):
+    def test_star(self):
 
         r = rei.Star(rei.Conc(rei.Symbol("foo"), rei.Symbol("fie")))
 

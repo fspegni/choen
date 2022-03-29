@@ -102,6 +102,9 @@ class Conc(REI):
             if isinstance(curr, Conc):
                 self.items.extend(curr.items)
             else:
+                if isinstance(curr, str):
+                    curr = Symbol(curr)
+
                 self.items.append(curr)
 
         # self.items = list(items)
@@ -129,7 +132,7 @@ class Conc(REI):
 class Par(REI):
 
     def __init__(self, *items):
-        self.items = list(items)
+        self.items = list(map(lambda curr: Symbol(curr) if isinstance(curr, str) else curr, items))
 
     def __str__(self):
         return "(" + " & ".join(map(lambda curr: str(curr), self.items)) + ")"
@@ -142,7 +145,7 @@ class Par(REI):
 class Union(REI):
 
     def __init__(self, *items):
-        self.items = list(items)
+        self.items = list(map(lambda curr: Symbol(curr) if isinstance(curr, str) else curr, items))
 
     def __str__(self):
         return "(" + " | ".join(map(lambda curr: str(curr), self.items)) + ")"
