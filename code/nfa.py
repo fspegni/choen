@@ -1,6 +1,7 @@
-from rei import Symbol, Star, Conc, Par, Union
+from rei import REI, Symbol, Star, Conc, Par, Union
 import random
 import string
+import itertools
 from deprecation import deprecated
 
 EPSILON = ""
@@ -180,19 +181,28 @@ class NFA:
 
     """
     Return the set of all transitions departing from the passed source state. If a label is 
-    specified, only thos transitions that share that label are returned.
+    specified, only those transitions that share that label are returned.
     """
-    def transitions_from(self, source, label=None):
+    def transitions_from(self, source, label=None, target=None):
         if isinstance(source, State):
             source = source.id
 
         assert isinstance(source, str)
 
+        if target and isinstance(target, State):
+            target = target.id
+
+        assert target is None or isinstance(target, str)
+
         #return filter(lambda : curr.source == source, self.transitions.items())
         res = []
         for symbol, transitions in self._transitions.get(source, {}).items():
-            if label is None or symbol == label:
-                res.extend(transitions)
+            if (label is None or symbol == label):
+                for t in transitions:
+                    assert isinstance(t, Transition)
+                    # res.extend(transitions)
+                    if target is None or t.target.id == target:
+                        res.append(t)
             
         return set(res)
 
@@ -200,14 +210,22 @@ class NFA:
     Return the set of all transitions reaching the passed target state. If a label is specified,
     only thos transitions that share that label are returned.
     """
-    def transitions_to(self, target, label=None):
+    def transitions_to(self, target, label=None, source=None):
         if isinstance(target, State):
             target = target.id
 
         assert isinstance(target, str)
 
+        if source and isinstance(source, State):
+            source = source.id
+
+        assert source is None or isinstance(source, str)
+
         res = []
-        for source, dict_transitions in self._transitions.items():
+        for s, dict_transitions in self._transitions.items():
+            if source and source != s:
+                continue
+
             for symbol, transitions in dict_transitions.items():
                 if label is None or label == symbol:
                     for curr in transitions:
@@ -219,6 +237,12 @@ class NFA:
 
     def transitions_labeled(self, label:str):
         return filter(lambda curr: curr.label == label, self.transitions)
+
+    """
+    This is just an alias
+    """
+    def transitions_from_to(self, source, target, label=None):
+        return self.transitions_from(source, label=label, target=target)
 
     """
     Add a transition to the automaton. Note that since transitions are immutable objects,
@@ -424,8 +448,9 @@ class NFA:
         #         curr_state = list(reachable)[0]
         curr_state = self.e_extension(curr_state)
         is_final = self.is_final(curr_state)
+        remaining = iscan.remaining
 
-        return is_final, curr_state, iscan.remaining # input_string[pos:]
+        return is_final and len(remaining) == 0, curr_state, remaining # input_string[pos:]
 
 
     def e_closure(self, state):
@@ -507,6 +532,7 @@ def ReiToNFA(rei) -> NFA:
         return a
 
     elif isinstance(rei, Conc):
+        assert len(rei.items) > 0
         
         a = NFA()
 
@@ -538,9 +564,76 @@ def ReiToNFA(rei) -> NFA:
         return a
 
     elif isinstance(rei, Par):
-        raise Exception("TODO: not implemented yet")
+        assert len(rei.items) > 0
+
+        a = NFA()
+
+        nfa_children = []
+        state_ids = []
+        state_ids_initial = []
+
+        # the i-th element is a mapping from the states in the i-th automaton 
+        # to the composite (product) states induced by it
+        # state_ids_map = []
+
+        for curr in rei.items:
+            assert isinstance(curr, REI)
+
+            b = ReiToNFA(curr)
+            nfa_children.append(b)
+
+            automata_state_ids = map(lambda s: s.id, b.states)
+            state_ids.append(automata_state_ids)
+            state_ids_initial.append(b.initial.id)
+
+        for sid_parts in itertools.product(*state_ids):
+            sid_composite = "__".join(sid_parts)
+
+            is_final = True
+            for nfa,sid in zip(nfa_children, sid_parts):
+                assert isinstance(nfa, NFA)
+                assert isinstance(sid, str)
+
+                is_final = nfa.is_final(sid)
+                if not is_final:
+                    break
+                
+            a.add_state(State(sid_composite), is_final=is_final)
+
+        for s in a.states:
+            s_parts = s.id.split("__")
+            
+            for t in a.states:
+                t_parts = t.id.split("__")
+
+                # -1 : not found
+                # -2 : too many differences
+                # >= 0 : exactly one difference at the stored position
+                pos_diff = -1
+                for pos, (s_sid, t_sid) in enumerate(zip(s_parts, t_parts)):
+                    # TODO the condition below does not allow to capture/translate loops
+                    if s_sid != t_sid:
+                        if pos_diff >= 0:
+                            pos_diff = -2
+                            break
+                        else:
+                            pos_diff = pos
+
+                if pos_diff >= 0:
+                    source = s_parts[pos_diff]
+                    target = t_parts[pos_diff]
+                    transitions = nfa_children[pos_diff].transitions_from_to(source, target)    
+                    for tran in transitions:
+                        assert isinstance(tran, Transition)
+                        a.add_transition(s, t, tran.label)
+
+
+        a.set_initial("__".join(state_ids_initial))
+    
+        return a
 
     elif isinstance(rei, Union):
+        assert len(rei.items) > 0
         
         i = State()
         

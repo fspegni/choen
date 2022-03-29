@@ -1068,3 +1068,46 @@ class TestReiToNFA(TestCase):
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
         assert not a.is_final(state)
         assert remaining == "zog"
+
+
+    def test_par(self):
+
+        r = rei.Par(rei.Conc("foo", "fie", "fez"), rei.Conc("zog", "zip"))
+
+        a = nfa.ReiToNFA(r)
+
+        accepted, state, remaining = a.read_string("")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie fez")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("zog zip")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie fez zog zip")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+        
+        accepted, state, remaining = a.read_string("foo zog fie fez zip")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+        
+        accepted, state, remaining = a.read_string("zog zip foo fie fez")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+        
+        accepted, state, remaining = a.read_string("zip zog foo fie fez")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == "zip zog foo fie fez"
+        
