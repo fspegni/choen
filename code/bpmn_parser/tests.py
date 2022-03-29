@@ -1111,3 +1111,45 @@ class TestReiToNFA(TestCase):
         assert not a.is_final(state)
         assert remaining == "zip zog foo fie fez"
         
+
+class TestChoToNFA(TestCase):
+
+    def setUp(self):
+
+        choreographies = [
+            ("diagram", "diagram.bpmn", ),
+            ("diagram_minimal", "diagram_minimal.bpmn"),
+            ("diagram_basic", "diagram_basic.bpmn"),
+            ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
+            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+
+        ]
+
+        for name, filename in choreographies:
+            c:Choreography = Choreography()
+            c.name = name
+            c.resource = os.path.join(settings.MEDIA_ROOT, filename)
+            c.save()
+
+    def test_minimal(self):
+        
+        c:Choreography = Choreography.objects.get(name="diagram_minimal")
+
+        r, match = rei.ChoToRei(c)
+
+        a = nfa.ReiToNFA(r)
+
+        accepted, state, remaining = a.read_string("")
+        assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie")
+        assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == "foo fie"

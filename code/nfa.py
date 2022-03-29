@@ -1,4 +1,4 @@
-from rei import REI, Symbol, Star, Conc, Par, Union
+from rei import REI, Start, End, Symbol, Star, Conc, Par, Union
 import random
 import string
 import itertools
@@ -505,7 +505,15 @@ class NFA:
 
 def ReiToNFA(rei) -> NFA:
 
-    if isinstance(rei, Symbol):
+    if isinstance(rei, Start) or isinstance(rei, End):
+        s = State()
+        a = NFA()
+
+        a.add_state(s, is_final=True)
+        a.set_initial(s)
+        return a
+
+    elif isinstance(rei, Symbol):
 
         i = State()
         f = State()
