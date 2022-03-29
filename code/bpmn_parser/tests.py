@@ -440,6 +440,23 @@ class TestNFA(TestCase):
 
         assert s.id == "foo"
 
+    def test_state_identity(self):
+
+        s1 = nfa.State("foo")
+        s2 = nfa.State("fie")
+        s3 = nfa.State("foo")
+
+        assert s1 is not s2
+        assert s2 is not s3
+        assert s1 is not s3
+
+        assert s1 != s2
+        assert s1 == s3
+        assert s2 != s3
+
+
+        assert len(set([s1,s2,s3,s2,s3])) == 2
+
     def test_transition(self):
         s1 = nfa.State("foo")
         s2 = nfa.State("fie")
@@ -448,6 +465,31 @@ class TestNFA(TestCase):
         assert t.source == s1
         assert t.target == s2
         assert t.label == "boo"
+
+    def test_transition_identity(self):
+        s1 = nfa.State("foo")
+        s2 = nfa.State("fie")
+        s3 = nfa.State("foo")
+
+        t1 = nfa.Transition(s1, s2, "foo")
+        t2 = nfa.Transition(s1, s2)
+        t3 = nfa.Transition(s1, s2, "fez")
+        t4 = nfa.Transition(s1, s2)
+        t5 = nfa.Transition(s2, s1, "foo")
+        t6 = nfa.Transition(s1, s2, "foo")
+
+        assert t1 is not t6
+        assert t1 == t6
+
+        assert t1 != t5
+        
+        assert t1 != t2
+        assert t2 == t4
+        assert t1 != t4
+
+        assert t1 == nfa.Transition(s1, s2, "foo")
+
+        assert len(set([t1,t2,t3,t4,t5,t6])) == 4
 
     def test_empty_automaton(self):
         a = nfa.NFA()
