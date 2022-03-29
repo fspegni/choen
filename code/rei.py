@@ -374,3 +374,19 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
         else:
             raise Exception(f"Node type not handle {node_type}. Node: {node}. Node tag: {node.tag}.  Node name: {node.attrib.get('name')}. Node id: {node.attrib.get('id')}.")
 
+def render_receive (cho:Choreography, node:ElementType):
+    print(f"Choreography: {cho}")
+    print(f"Node: {node} : {node.attrib['id']} : {node.attrib.get('name')}")
+    messages = cho.messages(node)
+
+    symbol = node.attrib["id"]
+    if len(messages) > 0:
+        initiator = cho.initiator(node)
+        recipients = cho.recipients(node)
+
+        assert len(recipients) == 1
+        target = recipients[0].attrib["name"].replace(" ", "_")
+        msg = messages[0].replace(" ","_")
+        symbol = f"{target}?{msg}"
+
+    return Symbol(symbol)

@@ -404,27 +404,9 @@ class TestChoreographyToRei(TestCase):
 
     def test_translation_with_messages(self):
 
-        def handle_task (cho:Choreography, node:ElementType):
-            print(f"Choreography: {cho}")
-            print(f"Node: {node} : {node.attrib['id']} : {node.attrib.get('name')}")
-            messages = cho.messages(node)
-
-            symbol = node.attrib["id"]
-            if len(messages) > 0:
-                initiator = cho.initiator(node)
-                recipients = cho.recipients(node)
-
-                assert len(recipients) == 1
-                target = recipients[0].attrib["name"].replace(" ", "_")
-                msg = messages[0].replace(" ","_")
-                symbol = f"{target}?{msg}"
-
-            return rei.Symbol(symbol)
-
-
         c:Choreography = Choreography.objects.get(name="diagram_gateways_nested_dangling")
 
-        r, match = rei.ChoToRei(c, handle_task)
+        r, match = rei.ChoToRei(c, rei.render_receive)
 
         print(f"REI ({c.name}): {r}")
         print(f"REI ({c.name},latex): {r.latex}")
@@ -1136,7 +1118,7 @@ class TestChoToNFA(TestCase):
             c.resource = os.path.join(settings.MEDIA_ROOT, filename)
             c.save()
 
-    def test_minimal(self):
+    def test_diagram_minimal(self):
         
         c:Choreography = Choreography.objects.get(name="diagram_minimal")
 
@@ -1153,3 +1135,41 @@ class TestChoToNFA(TestCase):
         assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
         assert a.is_final(state)
         assert remaining == "foo fie"
+
+
+    def test_diagram_basic(self):
+        
+        c:Choreography = Choreography.objects.get(name="diagram_basic")
+
+        r, match = rei.ChoToRei(c)
+
+        a = nfa.ReiToNFA(r)
+
+        accepted, state, remaining = a.read_string("")
+        assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie")
+        assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == "foo fie"
+
+    
+    def test_diagram(self):
+        
+        c:Choreography = Choreography.objects.get(name="diagram")
+
+        r, match = rei.ChoToRei(c, rei.render_receive)
+# '^Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza$'
+        a = nfa.ReiToNFA(r)
+
+        accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza")
+        assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Customer?pizza")
+        assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert not a.is_final(state)
+        assert remaining == "Customer?pizza"
