@@ -1161,7 +1161,6 @@ class TestChoToNFA(TestCase):
         c:Choreography = Choreography.objects.get(name="diagram")
 
         r, match = rei.ChoToRei(c, rei.render_receive)
-# '^Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza$'
         a = nfa.ReiToNFA(r)
 
         accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza")
@@ -1173,3 +1172,27 @@ class TestChoToNFA(TestCase):
         assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
         assert not a.is_final(state)
         assert remaining == "Customer?pizza"
+
+    def test_nested(self):
+        
+        c:Choreography = Choreography.objects.get(name="diagram_gateways_nested")
+
+        r, match = rei.ChoToRei(c, rei.render_receive)
+        a = nfa.ReiToNFA(r)
+# '^Pizza_Place?pizza_order (Pizza_Place?Message_0rkgt7n | Delivery_Boy?Message_1mi4idx Customer?pizza (Delivery_Boy?Message_0oddh8c Customer?Message_1fakyw2 & Delivery_Boy?Message_08qtv9f))$'
+
+        accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Pizza_Place?Message_0rkgt7n")
+        assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza Delivery_Boy?Message_0oddh8c Delivery_Boy?Message_08qtv9f Customer?Message_1fakyw2")
+        assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        # the example below is missing a message expected by the parallel gateway (viz. Delivery_Boy?Message_0oddh8c)
+        accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza Delivery_Boy?Message_0oddh8c Customer?Message_1fakyw2")
+        assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
