@@ -915,6 +915,12 @@ class TestReiToNFA(TestCase):
 
         a = nfa.ReiToNFA(r)
 
+
+        accepted, state, remaining = a.read_string("")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
         accepted, state, remaining = a.read_string("foo fie")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
         assert a.is_final(state)
@@ -935,6 +941,21 @@ class TestReiToNFA(TestCase):
         assert not a.is_final(state)
         assert remaining == "baz"
 
+    def test_union_star(self):
+
+        r = rei.Star(rei.Union(rei.Conc("foo", "fie"), rei.Conc("zig", "zag")))
+
+        a = nfa.ReiToNFA(r)
+
+        accepted, state, remaining = a.read_string("")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
 
 
 

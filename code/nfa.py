@@ -7,22 +7,56 @@ EPSILON = ""
 
 class State:
 
-    def __init__(self, id:str):
-        self.id = id
+    def __init__(self, id:str = None):
+        # use name-mangling (aka double-underscore prefix) 
+        # to avoid overwriting the original attribute, thus enforcing 
+        # immutability of the object
+        if not id:
+            id = random_string(8)
+
+        self.__id = id
 
     def __str__(self):
-        return f"State({self.id})"
+        return f"State({self.__id})"
 
+    def __hash__(self):
+        return hash(hash(str(self)))
+
+    @property
+    def id(self):
+        return self.__id
+
+    def __eq__(self, other):
+        return self.__class__ == other.__class__ and hash(self) == hash(other)
 
 class Transition:
 
     def __init__(self, source:State, target:State, label:str=None):
-        self.source = source
-        self.target = target
-        self.label = label
+        # as State, use name-mangling to enforce immutability of object
+        self.__source = source
+        self.__target = target
+        self.__label = label
 
     def __str__(self):
-        return f"{self.source} -[{self.label}]-> {self.target}"
+        return f"{self.__source} -[{self.__label}]-> {self.__target}"
+
+    def __hash__(self):
+        return hash(hash(str(self)))
+
+    def __eq__(self, other):
+        return self.__class__ == other.__class__ and hash(self) == hash(other)
+
+    @property
+    def source(self):
+        return self.__source
+
+    @property
+    def target(self):
+        return self.__target
+
+    @property
+    def label(self):
+        return self.__label
 
 class InputScanner:
 
@@ -144,6 +178,10 @@ class NFA:
 
         return res
 
+    """
+    Return the set of all transitions departing from the passed source state. If a label is 
+    specified, only thos transitions that share that label are returned.
+    """
     def transitions_from(self, source, label=None):
         if isinstance(source, State):
             source = source.id
@@ -156,8 +194,12 @@ class NFA:
             if label is None or symbol == label:
                 res.extend(transitions)
             
-        return res
+        return set(res)
 
+    """
+    Return the set of all transitions reaching the passed target state. If a label is specified,
+    only thos transitions that share that label are returned.
+    """
     def transitions_to(self, target, label=None):
         if isinstance(target, State):
             target = target.id
@@ -173,21 +215,37 @@ class NFA:
                         if curr.target.id == target:
                             res.append(curr)
 
-        return res
+        return set(res)
 
     def transitions_labeled(self, label:str):
         return filter(lambda curr: curr.label == label, self.transitions)
 
+    """
+    Add a transition to the automaton. Note that since transitions are immutable objects,
+    we identify transitions that have the same source *and* same target *and* same label. 
+    As a consequence, in case two identical transitions are added to the same automaton, only
+    one will be returned later on.
+    """
     def add_transition(self, source, target, label=EPSILON):
 
         if isinstance(source, State):
+            source_state = source
             source = source.id
+        else:
+            source_state = self._states[source]
+        
+        assert isinstance(source, str)
+        assert isinstance(source_state, State)
 
         if isinstance(target, State):
+            target_state = target
             target = target.id
+        else:
+            target_state = self._states[target]
+        
+        assert isinstance(target, str)
+        assert isinstance(target_state, State)
 
-        source_state = self._states[source]
-        target_state = self._states[target]
         transition_set = self._transitions.get(source, {})
         labeled_transition_set = transition_set.get(label, set([]))
         labeled_transition_set.add(Transition(source_state, target_state, label))
@@ -195,6 +253,9 @@ class NFA:
         transition_set[label] = labeled_transition_set
         self._transitions[source] = transition_set
 
+    """
+    Return the states that are actually final states
+    """
     @property
     def final(self):
         res = []
@@ -207,22 +268,44 @@ class NFA:
 
         return res # [ self._states[id] for id in self._final ]
 
+    """
+    Return whether or not the passed state id corresponds to a final state
+    """
     def is_final(self, id_state:str) -> bool: 
         if id_state not in self._states:
             raise Exception(f"State {id_state} does not exist")
 
         return id_state in self._final
 
-    def set_final(self, state):
-        if isinstance(state, State):
-            state = state.id
+    """
+    Add one or more states to the set of final states
+    """
+    def add_final(self, *states):
+        
+        for state in states:
+            if isinstance(state, State):
+                state = state.id
 
-        assert isinstance(state, str)
+            assert isinstance(state, str)
 
-        if state not in self._states:
-            raise Exception(f"State {state} does not exist. Cannot set it final")
+            if state not in self._states:
+                raise Exception(f"State {state} does not exist. Cannot set it final")
 
-        self._final.add(state)
+            self._final.add(state)
+
+    """
+    Replace the entire set of final states with the newly passed list of states
+    """
+    def set_final(self, *states):
+        prev_final = self._final.copy()
+
+        self._final.clear()
+        try:
+            self.add_final(*states)
+        except Exception as e:
+            # in case of errors, restore previous final states
+            self._final = prev_final
+            raise e
 
     @property
     def initial(self) -> State:
@@ -294,7 +377,7 @@ class NFA:
             # epsilon-closure starting from current state
             for curr in e_closure:
                 if curr.id != curr_state:
-                    transitions.extend(self.transitions_from(curr, symbol))
+                    transitions = transitions.union(self.transitions_from(curr, symbol))
 
             if len(transitions) == 0:
                 # symbol not recognized -> mark as non recognizing, return input not consumed
@@ -395,15 +478,12 @@ class NFA:
 
 
 
-def ReiToNFA(rei):
+def ReiToNFA(rei) -> NFA:
 
     if isinstance(rei, Symbol):
 
-        id_i = random_string()
-        i = State(id_i)
-
-        id_f = random_string()
-        f = State(id_f)
+        i = State()
+        f = State()
 
         a = NFA()
         a.add_state(i)
@@ -417,10 +497,24 @@ def ReiToNFA(rei):
 
     elif isinstance(rei, Star):
         
-        a = ReiToNFA(rei.rei)
+        a : NFA = ReiToNFA(rei.rei)
+
+        i = State()
+        # f = State()
+
+        a.add_state(i)
+        # a.add_state(f)
+
+        # a.add_transition(f, i)
+        a.add_transition(i, a.initial)
+        # a.add_transition(i, f)
 
         for f in a.final:
-            a.add_transition(f, a.initial)
+            a.add_transition(f, i)
+
+        # a.set_final(f)
+        a.set_initial(i)
+        a.add_final(i)
 
         return a
 
@@ -453,8 +547,9 @@ def ReiToNFA(rei):
             prev = b
 
         assert prev is not None
-        for f in prev.final:
-            a.set_final(f)
+        # for f in prev.final:
+        #     a.set_final(f)
+        a.set_final(*prev.final)
 
         return a
 
@@ -463,8 +558,8 @@ def ReiToNFA(rei):
 
     elif isinstance(rei, Union):
         
-        i = State(random_string(8))
-        f = State(random_string(8))
+        i = State()
+        f = State()
         
         a = NFA()
         a.add_state(i)
