@@ -988,5 +988,41 @@ class TestReiToNFA(TestCase):
         assert a.is_final(state)
         assert remaining == "big fie"
 
+    def test_union_star_nondeterminism(self):
+
+        r = rei.Conc(rei.Star(rei.Union(
+                        rei.Conc("foo", "fie"), 
+                        rei.Conc("foo", "fie", "fez"))), 
+                    "zog")
+
+        a = nfa.ReiToNFA(r)
 
 
+        accepted, state, remaining = a.read_string("")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
+
+
+        accepted, state, remaining = a.read_string("foo fie zog")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+
+        accepted, state, remaining = a.read_string("foo fie fez zog")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+
+        accepted, state, remaining = a.read_string("zog")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+
+        accepted, state, remaining = a.read_string("foo zog")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == "zog"
