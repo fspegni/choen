@@ -957,6 +957,36 @@ class TestReiToNFA(TestCase):
         assert a.is_final(state)
         assert remaining == ""
 
+        accepted, state, remaining = a.read_string("zig zag")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie zig zag")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie zig zag zig zag")
+        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie zig fie")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == "fie"
+
+
+        accepted, state, remaining = a.read_string("foo fie zig")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert not a.is_final(state)
+        assert remaining == ""
+
+        accepted, state, remaining = a.read_string("foo fie big fie")
+        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert a.is_final(state)
+        assert remaining == "big fie"
 
 
 

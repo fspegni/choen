@@ -499,22 +499,10 @@ def ReiToNFA(rei) -> NFA:
         
         a : NFA = ReiToNFA(rei.rei)
 
-        i = State()
-        # f = State()
-
-        a.add_state(i)
-        # a.add_state(f)
-
-        # a.add_transition(f, i)
-        a.add_transition(i, a.initial)
-        # a.add_transition(i, f)
-
         for f in a.final:
-            a.add_transition(f, i)
+            a.add_transition(f, a.initial)
 
-        # a.set_final(f)
-        a.set_initial(i)
-        a.add_final(i)
+        a.add_final(a.initial)
 
         return a
 
@@ -522,15 +510,13 @@ def ReiToNFA(rei) -> NFA:
         
         a = NFA()
 
-        # first = True
         prev = None
 
         for curr in rei.items:
 
             b = ReiToNFA(curr)
-            if prev is None: #first:
+            if prev is None:
                 a.set_initial(b.initial)
-                # first = False
 
             for s in b.states:
                 a.add_state(s)
@@ -547,8 +533,6 @@ def ReiToNFA(rei) -> NFA:
             prev = b
 
         assert prev is not None
-        # for f in prev.final:
-        #     a.set_final(f)
         a.set_final(*prev.final)
 
         return a
@@ -559,11 +543,9 @@ def ReiToNFA(rei) -> NFA:
     elif isinstance(rei, Union):
         
         i = State()
-        f = State()
         
         a = NFA()
         a.add_state(i)
-        a.add_state(f, is_final=True)
 
         a.set_initial(i)
 
@@ -578,8 +560,7 @@ def ReiToNFA(rei) -> NFA:
                 a.add_transition(t.source, t.target, t.label)
 
             a.add_transition(i, b.initial)
-            for s in b.final:
-                a.add_transition(s, f)
+            a.add_final(*b.final)
 
         return a              
 
