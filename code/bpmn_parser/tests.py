@@ -1285,6 +1285,8 @@ class TestEnforcer(TestCase):
 
         e = Enforcer(n)
 
+        # step 1
+
         s1 = e._curr_state
 
         in_event = "Pizza_Place?pizza_order"
@@ -1292,5 +1294,39 @@ class TestEnforcer(TestCase):
 
         s2 = e._curr_state
 
+
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
         assert s1 != s2
+
+        # step 2 (sending something not related to the choreography)
+
+        in_event = "Pizza_Place!foo_fie"
+        out_event = e.process_input(in_event)
+
+        assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
+        assert e._curr_state == s2
+
+        # step 2 (receiving the expected message in the choreography)
+
+        in_event = "Delivery_Boy?Message_1mi4idx"
+        out_event = e.process_input(in_event)
+
+        assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
+        assert e._curr_state != s2
+
+        # step 3 (receiving another choreography message)
+        s2 = e._curr_state
+
+        in_event = "Customer?pizza"
+        out_event = e.process_input(in_event)
+
+        assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
+        assert e._curr_state != s2
+
+        # step 3 (sending the expected choreography message)
+        s2 = e._curr_state
+        in_event = "Delivery_Boy!pizza"
+        out_event = e.process_input(in_event)
+
+        assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
+        assert e._curr_state == s2

@@ -136,7 +136,7 @@ class Enforcer:
 
     # RULES below
 
-    def rule_send(event):
+    def rule_send(self, event):
         return event
 
     def rule_receive_now(self, event):
