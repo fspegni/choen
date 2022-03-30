@@ -371,6 +371,8 @@ class NFA:
         if not curr_state:
             # print(f"Start from initial state: {self._initial}")
             curr_state = self._initial
+
+        assert isinstance(curr_state, str)
         
         # pos = 0
 

@@ -1278,3 +1278,19 @@ class TestEnforcer(TestCase):
         with self.assertRaises(Exception) as context:
             e.buffer_remove("a1", "m1")
 
+    def test_process_receive(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram")
+        n = c.to_nfa()
+
+        e = Enforcer(n)
+
+        s1 = e._curr_state
+
+        in_event = "Pizza_Place?pizza_order"
+        out_event = e.process_input(in_event)
+
+        s2 = e._curr_state
+
+        assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
+        assert s1 != s2
