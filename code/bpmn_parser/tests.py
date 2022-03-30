@@ -1287,12 +1287,12 @@ class TestEnforcer(TestCase):
 
         # step 1
 
-        s1 = e._curr_state
+        s1 = e.curr_state
 
         in_event = "Pizza_Place?pizza_order"
         out_event = e.process_input(in_event)
 
-        s2 = e._curr_state
+        s2 = e.curr_state
 
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
@@ -1304,7 +1304,7 @@ class TestEnforcer(TestCase):
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e._curr_state == s2
+        assert e.curr_state == s2
 
         # step 2 (receiving the expected message in the choreography)
 
@@ -1312,21 +1312,58 @@ class TestEnforcer(TestCase):
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e._curr_state != s2
+        assert e.curr_state != s2
 
         # step 3 (receiving another choreography message)
-        s2 = e._curr_state
+        s2 = e.curr_state
 
         in_event = "Customer?pizza"
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e._curr_state != s2
+        assert e.curr_state != s2
 
         # step 3 (sending the expected choreography message)
-        s2 = e._curr_state
+        s2 = e.curr_state
         in_event = "Delivery_Boy!pizza"
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e._curr_state == s2
+        assert e.curr_state == s2
+
+    def test_process_receive_delayed(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram")
+        n = c.to_nfa()
+
+        e = Enforcer(n)
+
+        # step 1
+
+        s1 = e.curr_state
+
+        in_event = in_event_first = "Customer?pizza"
+        out_event = e.process_input(in_event)
+
+        assert out_event == ""
+        assert e.curr_state == s1
+
+        in_event = "Pizza_Place?pizza_order"
+        out_event = e.process_input(in_event)
+
+        assert out_event == in_event
+        assert e.curr_state != s1
+
+        s1 = e.curr_state
+
+        in_event = "Delivery_Boy?Message_1mi4idx"
+        out_event = e.process_input(in_event)
+
+        assert out_event == in_event
+        assert e.curr_state != s1
+
+        s1 = e.curr_state
+        out_event = e.process_check()
+
+        assert out_event == in_event_first
+        assert e.curr_state != s1

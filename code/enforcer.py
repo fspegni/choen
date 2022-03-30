@@ -80,13 +80,16 @@ class Enforcer:
     def buffer_find_usable_message(self):
         found = None
 
+        e_closure = self._nfa.e_closure(self._curr_state)
+
         for actor, actor_buffer in self._buffer.items():
             for message, counter in actor_buffer.items():
                 if counter > 0:
                     event = f"{actor}?{message}"
-                    if self._nfa.transitions_from(actor, event):
-                        found = (actor, message)
-                        break
+                    for s in e_closure:
+                        if self._nfa.transitions_from(s, event):
+                            found = (actor, message)
+                            break
         
         return found
     
@@ -114,11 +117,15 @@ class Enforcer:
 
     def process_check(self):
 
+        out = ""
+
         try:
             actor, message = self.buffer_find_usable_message()
-            self.rule_receive_buffered(actor, message)
+            out = self.rule_receive_buffered(actor, message)
         except Exception:
             pass
+
+        return out
 
     # CONDITIONS below
 
@@ -165,4 +172,7 @@ class Enforcer:
         assert remaining == "", f"Expected empty remaining after processing event. Event : {event} : Remaining : {remaining}"
 
         self._curr_state = new_state
-        self._buffer[actor][message] = counter - 1   
+        self.buffer_remove(actor, message)
+        # self._buffer[actor][message] = counter - 1   
+
+        return event
