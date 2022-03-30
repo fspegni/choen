@@ -5,6 +5,7 @@ import os
 from django.conf import settings
 
 from bpmn_parser.models import Choreography, NS, ElementType
+from enforcer import Enforcer
 import rei
 import nfa
 
@@ -333,12 +334,10 @@ class TestChoreographyToRei(TestCase):
 
         c:Choreography = Choreography.objects.get(name="diagram_gateways_mismatch")
         
-        try:
+
+        with self.assertRaises(AssertionError) as context:
             r, match = rei.ChoToRei(c)
-            assert False, f"Expected excepion during the convertion. Received: {r}"
-        except AssertionError:
-            # this error is expected, because of a mismatch in the use of gateways
-            assert True
+        
 
     def test_translation_gateways_dangling(self):
 
@@ -481,11 +480,9 @@ class TestNFA(TestCase):
         assert len(a.final) == 0
         assert a.initial == None
 
-        try:
+        with self.assertRaises(Exception) as context:
             result, state, remaining = a.read_string("foofie")
-            assert False, f"Exception expected, received: {result},{state},{remaining}"
-        except Exception:
-            assert True
+
 
     def test_final_states(self):
 
@@ -849,11 +846,9 @@ class TestInputScanner(TestCase):
         assert token == "fez", f"Received: {token}"
         assert iscan.eof
 
-        try:
+        with self.assertRaises(Exception) as context:
             token = iscan.scan_input()
-            assert False, "An exception was expected when scanning input after EOF, but it didn't happen"
-        except Exception:
-            assert True
+
 
     def test_scan_tokens_with_spaces(self):
 
@@ -871,11 +866,9 @@ class TestInputScanner(TestCase):
         assert token == "fez", f"Received: {token}"
         assert iscan.eof
 
-        try:
+        with self.assertRaises(Exception) as context:
+            # it should throw an exception for scanning the input after EOF
             token = iscan.scan_input()
-            assert False, "An exception was expected when scanning input after EOF, but it didn't happen"
-        except Exception:
-            assert True
 
 
 
@@ -1198,3 +1191,90 @@ class TestChoToNFA(TestCase):
         assert accepted == False, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
         assert not a.is_final(state)
         assert remaining == ""
+
+
+class TestEnforcer(TestCase):
+
+    def setUp(self):
+
+        choreographies = [
+            ("diagram", "diagram.bpmn", ),
+            ("diagram_minimal", "diagram_minimal.bpmn"),
+            ("diagram_basic", "diagram_basic.bpmn"),
+            ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
+            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+
+        ]
+
+        for name, filename in choreographies:
+            c:Choreography = Choreography()
+            c.name = name
+            c.resource = os.path.join(settings.MEDIA_ROOT, filename)
+            c.save()
+
+    def test_initialization(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram")
+        n = c.to_nfa()
+
+        e = Enforcer(n)
+
+        assert not e.buffer, f"Expected empty buffer, received: {self.buffer}"
+        assert e.buffer_empty
+
+        with self.assertRaises(Exception) as context:
+            # an exception is expected if initializing the Enforcer without an NFA
+            e1 = Enforcer(None)
+
+
+    def test_buffer(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram")
+        n = c.to_nfa()
+
+        e = Enforcer(n)
+
+        e.buffer_add("a1", "m1")
+        
+        assert not e.buffer_empty()
+
+        e.buffer_add("a1", "m1")
+        e.buffer_add("a1", "m2")
+        e.buffer_add("a2", "m3")
+
+        assert e.buffer_has_message(actor="a1")
+        assert e.buffer_has_message(message="m1")
+        assert e.buffer_has_message(message="m3")
+
+        assert not e.buffer_has_message(message="a3")
+        assert not e.buffer_has_message(actor="a2", message="m1")
+        assert e.buffer_has_message(actor="a1", message="m2")
+        
+        assert e.buffer_has_message(actor="a1", message="m1")
+
+        # remove first copy of a1?m1
+        e.buffer_remove("a1","m1")
+
+        assert e.buffer_has_message(actor="a1", message="m1")
+
+        # remove second copy of a1?m1
+        e.buffer_remove("a1","m1")
+
+        assert not e.buffer_has_message(actor="a1", message="m1")
+
+
+        assert not e.buffer_empty()
+
+        e.buffer_remove("a1", "m2")
+        e.buffer_remove("a2", "m3")
+
+        assert e.buffer_empty()
+
+        with self.assertRaises(Exception) as context:
+            e.buffer_remove("a1", "m1")
+
