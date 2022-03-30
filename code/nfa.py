@@ -503,7 +503,7 @@ class NFA:
 
 
 
-def ReiToNFA(rei) -> NFA:
+def ReiToNFA(rei : REI) -> NFA:
 
     if isinstance(rei, Start) or isinstance(rei, End):
         s = State()

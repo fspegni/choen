@@ -1122,9 +1122,9 @@ class TestChoToNFA(TestCase):
         
         c:Choreography = Choreography.objects.get(name="diagram_minimal")
 
-        r, match = rei.ChoToRei(c)
-
-        a = nfa.ReiToNFA(r)
+        # r, match = rei.ChoToRei(c)
+        # a = nfa.ReiToNFA(r)
+        a = c.to_nfa()
 
         accepted, state, remaining = a.read_string("")
         assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
@@ -1141,9 +1141,9 @@ class TestChoToNFA(TestCase):
         
         c:Choreography = Choreography.objects.get(name="diagram_basic")
 
-        r, match = rei.ChoToRei(c)
-
-        a = nfa.ReiToNFA(r)
+        # r, match = rei.ChoToRei(c)
+        # a = nfa.ReiToNFA(r)
+        a = c.to_nfa()
 
         accepted, state, remaining = a.read_string("")
         assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
@@ -1160,8 +1160,9 @@ class TestChoToNFA(TestCase):
         
         c:Choreography = Choreography.objects.get(name="diagram")
 
-        r, match = rei.ChoToRei(c, rei.render_receive)
-        a = nfa.ReiToNFA(r)
+        # r, match = rei.ChoToRei(c, rei.render_receive)
+        # a = nfa.ReiToNFA(r)
+        a = c.to_nfa()
 
         accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza")
         assert accepted == True, f"Received: {accepted}, State: {state}, Remaining: {remaining}"
@@ -1177,8 +1178,9 @@ class TestChoToNFA(TestCase):
         
         c:Choreography = Choreography.objects.get(name="diagram_gateways_nested")
 
-        r, match = rei.ChoToRei(c, rei.render_receive)
-        a = nfa.ReiToNFA(r)
+        a = c.to_nfa()
+        # r, match = rei.ChoToRei(c, rei.render_receive)
+        # a = nfa.ReiToNFA(r)
 # '^Pizza_Place?pizza_order (Pizza_Place?Message_0rkgt7n | Delivery_Boy?Message_1mi4idx Customer?pizza (Delivery_Boy?Message_0oddh8c Customer?Message_1fakyw2 & Delivery_Boy?Message_08qtv9f))$'
 
         accepted, state, remaining = a.read_string("Pizza_Place?pizza_order Pizza_Place?Message_0rkgt7n")

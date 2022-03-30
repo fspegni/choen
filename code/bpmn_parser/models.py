@@ -6,7 +6,8 @@ from jinja2 import Environment, PackageLoader
 
 import xml.etree.ElementTree as ET
 from django.utils.text import slugify
-
+# from nfa import ReiToNFA, NFA
+# from rei import REI, ChoToRei
 
 NS = {
     "bpmn2": "http://www.omg.org/spec/BPMN/20100524/MODEL",
@@ -367,3 +368,14 @@ class Choreography(models.Model):
 
 
         return res
+
+    def to_rei(self):
+        from rei import ChoToRei, render_receive
+        exp, closure = ChoToRei(self, render_receive)
+        return exp
+
+    def to_nfa(self):
+        from nfa import ReiToNFA
+        rei = self.to_rei()
+
+        return ReiToNFA(rei)

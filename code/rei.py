@@ -196,28 +196,24 @@ class NFA:
         else:
             print("<none>")
 
-
+"""
+Return a pair (rei, closure) denoting:
+- rei : a regular expression with interleaving, of type REI
+- closure : the "most recent" opening gateway (that must be "closed"), in order to have
+            a well-balanced BPMN choreography diagram
+"""
 def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:ElementType=None):
     import rei
 
     atoms = {}
 
     if node is None:
-        # begin
-
-        # rei_head = rei.Symbol("start")
         rei_head = rei.Start()
 
         assert len(cho.startEvents) == 1
         node = cho.startEvents[0]
 
-        # print(f">>> START found ({cho.name}): {node} : '{node.tag}'")
-        # node_type = cho.node_type(node)
-        # assert node_type == "START", f"Expected node of type 'START'. Found : Node: {node}. Tag: {node.tag}. Type: {node_type}"
         expect_node_type(cho, node, "START")
-
-        # print(f"Node: {node} - Type: {node_type}")
-
 
         cho_start = cho.startEvents[0]
         cho_next = cho.next(cho_start)
@@ -226,7 +222,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
         closure = None
 
         if len(cho_next) == 0:
-            # rei_rest = rei.Symbol("end")
             rei_rest = rei.End()
         elif len(cho_next) == 1:
             rei_rest, closure = ChoToRei(cho, handle_task, cho_next[0], match)
@@ -240,14 +235,11 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
     
     else:
         node_type = cho.node_type(node)
-        # print(f"Node: {node} - Type: {node_type}")
 
         if node_type == "END":
-            # return rei.Symbol("end"), None
             return rei.End(), None
 
         elif node_type == "TASK":
-            # rei_head = rei.Symbol(node.attrib["name"])
             if handle_task is None:
                 handle_task = lambda cho,node: rei.Symbol(node.attrib["name"])
 
@@ -258,7 +250,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             closure = None
 
             if len(cho_next) == 0:
-                # rei_rest = rei.Symbol("end")
                 rei_rest = rei.End()
             elif len(cho_next) == 1:
                 rei_rest, closure = ChoToRei(cho, handle_task, cho_next[0], match)
@@ -269,7 +260,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
                 return rei.Conc(rei_head, rei_rest), closure
             else:
                 return rei_head, closure
-            # return rei.Conc(rei_head, rei_rest), closure
 
         elif node_type == "GW_EX_OPEN":
             branches = []
@@ -278,16 +268,12 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             gw_closure = None
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, handle_task, curr, node)
-                # assert cho.node_type(closure) == "GW_EX_CLOSE", f"Expected closure node of type 'GW_EX_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
                 expect_node_type(cho, closure, [ None, "GW_EX_CLOSE" ])
                 assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
     
                 if rei_branch:
                     branches.append(rei_branch)
-
-            # assert gw_closure != None
-            # assert len(cho.next(gw_closure)) == 1
 
             rei_head = rei.Union(*branches)
 
@@ -311,7 +297,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, handle_task, curr, node)
                 expect_node_type(cho, closure, ["GW_PAR_CLOSE",None])
-                # assert cho.node_type(closure) == "GW_PAR_CLOSE", f"Expected closure node of type 'GW_PAR_CLOSE'. Found: Node: {closure} - Type: {cho.node_type(closure)}"
                 assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
                 
@@ -325,7 +310,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             match_rest = None
 
             if gw_closure:
-                # assert gw_closure != None
                 assert len(cho.next(gw_closure)) == 1
 
                 rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match)
@@ -342,7 +326,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             gw_closure = None
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, handle_task, curr, node)
-                # assert cho.node_type(closure) == "GW_INC_CLOSE"
                 expect_node_type(cho, closure, ["GW_INC_CLOSE",None])
                 assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
@@ -357,7 +340,6 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             match_rest = None
 
             if gw_closure:
-                # assert gw_closure != None
                 assert len(cho.next(gw_closure)) == 1
 
                 rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match)
