@@ -6,15 +6,15 @@ class Enforcer:
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._nfa = nfa
         self._buffer = {}
-        self._curr_state = self._nfa.initial.id
+        self._curr_states = set([ self._nfa.initial.id ])
 
     @property
     def buffer(self) -> dict:
         return self._buffer
 
     @property
-    def curr_state(self) -> str:
-        return self._curr_state
+    def curr_states(self) -> str:
+        return self._curr_states
 
     @property
     def nfa(self):
@@ -80,7 +80,7 @@ class Enforcer:
     def buffer_find_usable_message(self):
         found = None
 
-        e_closure = self._nfa.e_closure(self._curr_state)
+        e_closure = self._nfa.e_closure(self._curr_states)
 
         for actor, actor_buffer in self._buffer.items():
             for message, counter in actor_buffer.items():
@@ -131,7 +131,7 @@ class Enforcer:
 
     def condition_rule_receive_now(self, event):
 
-        e_closure = self._nfa.e_closure(self._curr_state)
+        e_closure = self._nfa.e_closure(self._curr_states)
 
         for curr in e_closure:
             enabled_transitions = self._nfa.transitions_from(curr, event)
@@ -147,10 +147,21 @@ class Enforcer:
         return event
 
     def rule_receive_now(self, event):
-        accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
-        assert remaining == "", f"Expected empty remaining after processing event. Event : {event} : Remaining : {remaining}"
-        
-        self._curr_state = new_state
+        # accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
+        # accepted, new_state, remaining = self._nfa.read_symbol(event, self._curr_state)
+
+        reached = set()
+        for s in self._curr_states:
+
+            s_reached = self._nfa.read_symbol(event, s)
+
+            assert len(s_reached) > 0, f"Expected to reach some state after consuming event {event}"
+            
+            reached = reached.union(s_reached)
+
+            # self._curr_states = reached
+
+        self._curr_states = reached
         return event
 
     def rule_receive_delayed(self, actor, message):
@@ -167,12 +178,18 @@ class Enforcer:
 
         event = f"{actor}?{message}"
 
-        accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
+        reached = set()
+        # accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
+        for s in self._curr_states:
+            s_reached  = self._nfa.read_symbol(event, s)
 
-        assert remaining == "", f"Expected empty remaining after processing event. Event : {event} : Remaining : {remaining}"
+            assert len(s_reached) > 0, f"Expected some state is reached after consuming event {event}"
 
-        self._curr_state = new_state
+            reached = reached.union(s_reached)
+            # self._curr_state = new_state
+        
         self.buffer_remove(actor, message)
         # self._buffer[actor][message] = counter - 1   
+        self._curr_states = reached
 
         return event

@@ -1,3 +1,4 @@
+from lib2to3.pygram import Symbols
 from rei import REI, Start, End, Symbol, Star, Conc, Par, Union
 import random
 import string
@@ -5,6 +6,22 @@ import itertools
 from deprecation import deprecated
 
 EPSILON = ""
+
+# class UndoReadingException(Exception):
+    
+#     def __init__(self, symbol, *args, **kwargs):
+#         self.symbol = symbol
+#         super.__ini__(*args, **kwargs)
+
+
+def random_string(length:int = 8):
+    # choose from all lowercase letter
+    letters = string.ascii_lowercase
+    result_str = ''.join(random.choice(letters) for i in range(length))
+    # print("Random string of length", length, "is:", result_str)
+
+    return result_str
+
 
 class State:
 
@@ -293,13 +310,24 @@ class NFA:
         return res # [ self._states[id] for id in self._final ]
 
     """
-    Return whether or not the passed state id corresponds to a final state
+    Return whether or not the passed states contain at least one final (accepting) state
     """
-    def is_final(self, id_state:str) -> bool: 
-        if id_state not in self._states:
-            raise Exception(f"State {id_state} does not exist")
+    def is_final(self, states) -> bool:
+        if isinstance(states, State):
+            states = set([ states.id ])
+        elif isinstance(states, str):
+            states = set([ states ])
 
-        return id_state in self._final
+        assert isinstance(states, set)
+
+        for s in states:
+            if s not in self._states:
+                raise Exception(f"State {s} does not exist")
+
+            if s in self._final:
+                return True
+        
+        return False
 
     """
     Add one or more states to the set of final states
@@ -353,15 +381,92 @@ class NFA:
 
         
 
+    # """
+    # Return a tuple:
+    # - bool  : whether the string was recognized
+    # - State : the final state reached consuming all possible characters from the input string
+    # - str   : remaining part of input that was not consumed
+    # """
+    # def read_string_old(self, input_string : str, curr_state : str = None):
+
+    #     iscan = InputScanner(input_string)
+
+    #     if not self._initial:
+    #         raise Exception(f"Cannot read string without an initial state")
+    #     elif self._initial not in self._states:
+    #         raise Exception(f"Initial state {self._initial} is not a valid state")
+
+    #     if not curr_state:
+    #         curr_state = self._initial
+
+    #     assert isinstance(curr_state, str)
+        
+    #     while not iscan.eof:
+
+    #         symbol : str = iscan.scan_input()
+
+    #         if curr_state not in self._transitions:
+    #             # raise Exception(f"State {curr_state} does not have outgoing transitions")
+    #             iscan.undo_reading()
+    #             return False, curr_state, iscan.remaining
+            
+    #         transitions = self.transitions_from(curr_state, symbol)
+    #         e_closure = self.e_closure(curr_state)
+
+    #         # add to the transition set also the transitions departing from the states in the
+    #         # epsilon-closure starting from current state
+    #         for curr in e_closure:
+    #             if curr.id != curr_state:
+    #                 transitions = transitions.union(self.transitions_from(curr, symbol))
+
+    #         if len(transitions) == 0:
+    #             # symbol not recognized -> mark as non recognizing, return input not consumed
+    #             iscan.undo_reading()
+    #             new_state, _ = self.e_extension(curr_state)
+    #             return False, new_state, iscan.remaining  #input_string[pos-1:]
+
+    #         elif len(transitions) == 1:
+    #             # deterministic transition -> continue
+    #             curr_state = list(transitions)[0].target.id
+            
+    #         else:
+    #             # non deterministic transition -> explore the tree, looking for one recognizing path
+
+    #             remaining_shortest = iscan.remaining
+    #             state_shortest = curr_state
+    #             for t_out in transitions:
+    #                 assert isinstance(t_out, Transition)
+
+    #                 recognized, reached, remaining = self.read_string(iscan.remaining, t_out.target.id) 
+    #                 if recognized:
+    #                     return recognized, reached, remaining
+
+    #                 # store the shortest remaining string, to be returned in case no path can recognize
+    #                 if not remaining_shortest or len(remaining) < len(remaining_shortest):
+    #                     remaining_shortest = remaining
+    #                     state_shortest = reached
+
+    #             return False, state_shortest, remaining_shortest
+
+    #     # before returning, consume as much empty transition as possible, at the same
+    #     # time stopping if a final state is reached
+    #     new_state, is_final  = self.e_extension(curr_state)
+    #     remaining = iscan.remaining
+
+    #     return is_final and len(remaining) == 0, new_state, remaining # input_string[pos:]
+
+
     """
     Return a tuple:
     - bool  : whether the string was recognized
     - State : the final state reached consuming all possible characters from the input string
     - str   : remaining part of input that was not consumed
     """
-    def read_string(self, input_string : str, curr_state : str = None):
+    def read_string(self, input_string : str, curr_state = None):
+
 
         iscan = InputScanner(input_string)
+
 
         if not self._initial:
             raise Exception(f"Cannot read string without an initial state")
@@ -371,107 +476,180 @@ class NFA:
         if not curr_state:
             # print(f"Start from initial state: {self._initial}")
             curr_state = self._initial
+        elif isinstance(curr_state, State):
+            curr_state = curr_state.id
 
         assert isinstance(curr_state, str)
-        
-        # pos = 0
 
-        # while pos < len(input_string):
+
+        assert isinstance(curr_state, str), f"Expected string, received: {curr_state}"
         
+        reached = set()
+
         while not iscan.eof:
 
-            # symbol : str = input_string[pos]
-            # pos_last = iscan.pos
-            # assert pos_last >= 0
             symbol : str = iscan.scan_input()
-            #pos = iscan.pos
 
-            # print(f"Read symbol: {symbol} ...")
-            # pos = pos  + 1
+            reached = self.read_symbol(symbol, curr_state)
+            num_reached = len(reached)
+
+            if num_reached == 0:
+                iscan.undo_reading()
+                new_state, _ = self.e_extension(curr_state)
+                return False, set([new_state]), iscan.remaining    
+            elif num_reached == 1:
+                # deterministic transition -> continue
+                curr_state = reached.pop()
+
+            else:
+                # non deterministic transition -> explore the tree, looking for one recognizing path
+
+                # remaining_shortest = None
+                # state_shortest = None
+                remaining_shortest = None
+                remaining_reachable = set()
+                accepting_reachable = set()
+
+                for s in reached:
+                    # assert isinstance(t_out, Transition)
+                    assert isinstance(s, str)
+
+                    accepted, s_next, remaining = self.read_string(iscan.remaining, s) 
+                    # if accepted:
+                    #     return accepted, s_next, remaining
+                    # else:
+                    #     # store the shortest remaining string, to be returned in case no path can recognize
+                    #     if not remaining_shortest or len(remaining) < len(remaining_shortest):
+                    #         remaining_shortest = remaining
+                    #         state_shortest = s_next
+
+                    if accepted:
+                        assert remaining == ""
+                        accepting_reachable = accepting_reachable.union(s_next)
+                    else:
+                        if remaining_shortest is None or len(remaining) < len(remaining_shortest):
+                            remaining_shortest = remaining
+                            remaining_reachable = s_next
+                        elif remaining_shortest == remaining:
+                            remaining_reachable = remaining_reachable.union(s_next)
+
+                if accepting_reachable:
+                    return True, accepting_reachable, ""
+                else:
+                    return False, remaining_reachable, remaining_shortest
+
+        # before returning, consume as much empty transitions as possible, at the same
+        # time stopping if a final state is reached
+        
+        
+        # new_state, is_final = self.e_extension(curr_state)
+        # remaining = iscan.remaining
+        # is_accepted = is_final and len(remaining) == 0
+
+        e_closure = self.e_closure(curr_state)
+        remaining = iscan.remaining
+        is_accepted = self.is_final(e_closure)
+
+        return is_accepted, e_closure, remaining # input_string[pos:]
+
+
+
+    def read_symbol(self, symbol : str, curr_state : str):
+
+            reached = set([])
 
             if curr_state not in self._transitions:
                 # raise Exception(f"State {curr_state} does not have outgoing transitions")
-                iscan.undo_reading()
-                return False, curr_state, iscan.remaining
+                # iscan.undo_reading()
+                # return False, curr_state, iscan.remaining
+                # raise UndoReadingException(symbol)
+                return set()
             
-            # transitions : Transition = self._transitions[curr_state].get(symbol, [])
             transitions = self.transitions_from(curr_state, symbol)
-            # print(f"Outgoing transition from {curr_state} with {symbol}: {transitions}")
             e_closure = self.e_closure(curr_state)
 
             # add to the transition set also the transitions departing from the states in the
             # epsilon-closure starting from current state
             for curr in e_closure:
-                if curr.id != curr_state:
+                if curr != curr_state:
                     transitions = transitions.union(self.transitions_from(curr, symbol))
 
             if len(transitions) == 0:
                 # symbol not recognized -> mark as non recognizing, return input not consumed
-                iscan.undo_reading()
-                return False, self.e_extension(curr_state), iscan.remaining  #input_string[pos-1:]
+                # iscan.undo_reading()
+                # new_state, _ = self.e_extension(curr_state)
+                # return False, new_state, iscan.remaining  #input_string[pos-1:]
+                # raise UndoReadingException(symbol)
+                return set()
 
             elif len(transitions) == 1:
                 # deterministic transition -> continue
-                curr_state = list(transitions)[0].target.id
-            
+                curr_state = list(transitions)[0].target
+                reached.add(curr_state.id)
+
             else:
                 # non deterministic transition -> explore the tree, looking for one recognizing path
 
                 # remaining_shortest = input_string[pos:]
-                remaining_shortest = iscan.remaining
-                state_shortest = curr_state
+                # remaining_shortest = iscan.remaining
+                # state_shortest = curr_state
                 for t_out in transitions:
                     assert isinstance(t_out, Transition)
 
-                    # print(f"Recursive call: read_string({input_string[pos:]},{t_out.target.id}) ...")
-                    recognized, reached, remaining = self.read_string(iscan.remaining, t_out.target.id) #self.read_string(input_string[pos:], t_out.target.id)
-                    if recognized:
-                        return recognized, reached, remaining
+                    reached.add(t_out.target.id)
 
-                    # store the shortest remaining string, to be returned in case no path can recognize
-                    if not remaining_shortest or len(remaining) < len(remaining_shortest):
-                        remaining_shortest = remaining
-                        state_shortest = reached
+                #     # print(f"Recursive call: read_string({input_string[pos:]},{t_out.target.id}) ...")
+                #     recognized, reached, remaining = self.read_string(iscan.remaining, t_out.target.id) #self.read_string(input_string[pos:], t_out.target.id)
+                #     if recognized:
+                #         return recognized, reached, remaining
 
-                return False, state_shortest, remaining_shortest
+                #     # store the shortest remaining string, to be returned in case no path can recognize
+                #     if not remaining_shortest or len(remaining) < len(remaining_shortest):
+                #         remaining_shortest = remaining
+                #         state_shortest = reached
+
+                # return False, state_shortest, remaining_shortest
+
+            for curr in reached:
+                reached = reached.union(self.e_closure(curr))
+
+            return reached
+
+    """
+    Returns a set of state reachable starting at the passed state by using only epsilon transitions
+    """
+    def e_closure(self, states) -> set:
+
+        # if isinstance(states, State):
+        #     state = state.id
+
+        # assert isinstance(state, str)
+
+        # res = set([ self.state(state) ])
+
+        #### FROM HERE
+        # states = set()
+
+        if isinstance(states, State):
+            states = set([ states.id ])
+        elif isinstance(states, str):
+            states = set([ states ])
+            
+        assert isinstance(states, set), f"A single state or a set of states was expected. Received: {states}"
+
+        res = states
 
 
-        # all input was consumed -> check whether it's in a final state
-        # is_final = self.is_final(curr_state)
-        # if not is_final:
-        #     reachable = list(map(lambda s: s.id, self.e_closure(curr_state)))
-        #     # is_final = self.is_final(curr_state)
-        #     reachable_final = self._final.intersection(reachable)
-        #     if len(reachable_final) > 0:
-        #         is_final = True
-        #         curr_state = list(reachable_final)[0]
-        #     elif len(reachable) > 0:
-        #         is_final = False
-        #         curr_state = list(reachable)[0]
-        curr_state = self.e_extension(curr_state)
-        is_final = self.is_final(curr_state)
-        remaining = iscan.remaining
-
-        return is_final and len(remaining) == 0, curr_state, remaining # input_string[pos:]
-
-
-    def e_closure(self, state):
-
-        if isinstance(state, State):
-            state = state.id
-
-        assert isinstance(state, str)
-
-        res = set([ self.state(state) ])
         e_transitions = []
         # e_transitions = filter(lambda t: t.label is None or t.label == "", self.transitions_from(state))
-        for t in self.transitions_from(state):
-            # print(f"Check transition: {t} ...")
-            if t.label is None or t.label == "":
-                e_transitions.append(t)
+        for s in states:
+            for t in self.transitions_from(s):
+                # print(f"Check transition: {t} ...")
+                if t.label is None or t.label == "":
+                    e_transitions.append(t)
 
 
-        text_transitions = ', '.join(map(lambda t: str(t), e_transitions))
+        # text_transitions = ', '.join(map(lambda t: str(t), e_transitions))
         # print(f"Epsilon transitions from {state}: {text_transitions}")
 
         for curr in e_transitions:
@@ -479,30 +657,50 @@ class NFA:
             assert isinstance(curr, Transition)
 
             # print(f"Compare: {curr.target} vs {res}")
-            if curr.target != state and curr.target not in res:
-                res.add(curr.target)
+            if curr.target.id not in res:
+                # res.add(curr.target.id)
                 ec = self.e_closure(curr.target.id)
                 # print(f"Add e-closure: {ec}")
                 res = res.union(ec)
 
         return res
 
-    def e_extension(self, state : str):
+    """
+    Tries to reach a final state by consuming as much epsilon-transitions as possible.
 
+    Returns a pair:
+    - str  : a state id reached after consuming zero or more empty transitions
+    - bool : whether the returned state is final or not
+    """
+    def e_extension(self, state) -> str:
+
+        if isinstance(state, State):
+            state = state.id
+
+        assert isinstance(state, str)
+
+        result = None
         if self.is_final(state):
-            return state
-
-        reachable = list(map(lambda s: s.id, self.e_closure(state)))
-
-        reachable_final = list(self._final.intersection(set(reachable)))
-
-        if len(reachable_final) > 0:
-            return reachable_final[0]
-        elif len(reachable) > 0:
-            return reachable[0]
+            # return state, True
+            result = (state, True)
         else:
-            return state
 
+            # reachable = list(map(lambda s: s.id, self.e_closure(state)))
+            reachable = self.e_closure(state)
+
+            reachable_final = list(self._final.intersection(set(reachable)))
+
+            if len(reachable_final) > 0:
+                # return reachable_final[0], True
+                result = (reachable_final.pop(), True)
+            elif len(reachable) > 0:
+                # return reachable[0], False
+                result = (reachable.pop(), False)
+            else:
+                # return state, False
+                result = (state, False)
+
+        return result
 
 
 def ReiToNFA(rei : REI) -> NFA:
@@ -666,11 +864,3 @@ def ReiToNFA(rei : REI) -> NFA:
             a.add_final(*b.final)
 
         return a              
-
-def random_string(length:int = 8):
-    # choose from all lowercase letter
-    letters = string.ascii_lowercase
-    result_str = ''.join(random.choice(letters) for i in range(length))
-    # print("Random string of length", length, "is:", result_str)
-
-    return result_str

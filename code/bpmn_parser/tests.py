@@ -481,7 +481,7 @@ class TestNFA(TestCase):
         assert a.initial == None
 
         with self.assertRaises(Exception) as context:
-            result, state, remaining = a.read_string("foofie")
+            result, states, remaining = a.read_string("foofie")
 
 
     def test_final_states(self):
@@ -591,19 +591,19 @@ class TestNFA(TestCase):
 
         c = a.e_closure(s1)
         assert len(c) == 1, f"Received: {c}"
-        assert c == set([s1])
+        assert c == set([s1.id])
 
         c = a.e_closure(s2)
         assert len(c) == 5, f"Received: {c}"
-        assert c == set([ s1, s2, s3, s4, s5 ])
+        assert c == set([ s1.id, s2.id, s3.id, s4.id, s5.id ])
 
         c = a.e_closure(s4)
         assert len(c) == 1, f"Received: {c}"
-        assert c == set([ s4 ])
+        assert c == set([ s4.id ])
 
         c = a.e_closure(s5)
         assert len(c) == 2, f"Received: {c}"
-        assert c == set([ s1, s5 ])
+        assert c == set([ s1.id, s5.id ])
 
     def test_automaton_linear(self):
         s1 = nfa.State("s1")
@@ -626,9 +626,9 @@ class TestNFA(TestCase):
 
         a.set_initial(s1)
 
-        accepted, state, remaining = a.read_string("a b c d")
+        accepted, states, remaining = a.read_string("a b c d")
         assert accepted == True
-        assert state == s5.id
+        assert s5.id in states
         assert remaining == ""
 
     def test_automaton_loop(self):
@@ -648,59 +648,59 @@ class TestNFA(TestCase):
         a.add_transition(s2, s1, "a")
 
         # examples of strings that are accepted by the regular expression
-        accepted, state, remaining = a.read_string("a b b b b b b b b b b b b b")
+        accepted, states, remaining = a.read_string("a b b b b b b b b b b b b b")
 
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s2.id
+        assert s2.id in states
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("a b b b b b b a a b b b b b b b")
+        accepted, states, remaining = a.read_string("a b b b b b b a a b b b b b b b")
 
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s2.id
+        assert s2.id in states
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("a b b b b b b a a b b b b b b b a a")
+        accepted, states, remaining = a.read_string("a b b b b b b a a b b b b b b b a a")
 
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s2.id
+        assert s2.id in states
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("a")
+        accepted, states, remaining = a.read_string("a")
 
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s2.id
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
+        assert s2.id in states
         assert remaining == ""
 
         # example of strings that are not accepted by the regular expression
-        accepted, state, remaining = a.read_string("a a")
+        accepted, states, remaining = a.read_string("a a")
 
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s1.id
+        assert s1.id in states
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("a a b b")
+        accepted, states, remaining = a.read_string("a a b b")
 
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s1.id
+        assert s1.id in states
         assert remaining == "b b"
 
-        accepted, state, remaining = a.read_string("a b b b b b a a b a")
+        accepted, states, remaining = a.read_string("a b b b b b a a b a")
 
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s1.id
+        assert s1.id in states
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("")
+        accepted, states, remaining = a.read_string("")
 
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s1.id
+        assert s1.id in states
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("a b b b b b b c d e f")
+        accepted, states, remaining = a.read_string("a b b b b b b c d e f")
 
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s2.id
+        assert s2.id in states
         assert remaining == "c d e f"
 
     def test_automaton_non_deterministic(self):
@@ -751,11 +751,11 @@ class TestNFA(TestCase):
 
         a.set_initial(s1)
 
-        accepted, state, remaining = a.read_string("a b c")
+        accepted, states, remaining = a.read_string("a b c")
 
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert state == s8.id, f"Received: {accepted}, {state}, {remaining}"
-        assert remaining == "", f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
+        assert s8.id in states, f"Received: {accepted}, {states}, {remaining}"
+        assert remaining == "", f"Received: {accepted}, {states}, {remaining}"
 
     def test_automaton_with_epsilon(self):
 
@@ -805,14 +805,15 @@ class TestNFA(TestCase):
 
         a.set_initial(s1)
 
-        accepted, state, remaining = a.read_string("a c")
+        accepted, states, remaining = a.read_string("a c")
         assert accepted == False
-        assert state == s1.id, f"Received: {accepted}, {state}, {remaining}"
+        assert s5.id in states
+        assert s7.id in states
         assert remaining == "c"
 
-        accepted, state, remaining = a.read_string("a d")
+        accepted, states, remaining = a.read_string("a d")
         assert accepted == True
-        assert state == s9.id, f"Received: {accepted}, {state}, {remaining}"
+        assert s9.id in states, f"Received: {accepted}, {states}, {remaining}"
         assert remaining == ""
 
 
@@ -880,19 +881,19 @@ class TestReiToNFA(TestCase):
 
         a = nfa.ReiToNFA(r)
 
-        accepted, state, remaining = a.read_string("foo")
+        accepted, states, remaining = a.read_string("foo")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("fie")
+        accepted, states, remaining = a.read_string("fie")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert state == a.initial.id
+        assert a.initial.id in states
         assert remaining == "fie"
 
-        accepted, state, remaining = a.read_string("foo fie")
+        accepted, states, remaining = a.read_string("foo fie")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == "fie"
 
         assert len(a.states) == 2
@@ -911,51 +912,50 @@ class TestReiToNFA(TestCase):
 
         a = nfa.ReiToNFA(r)
 
-        accepted, state, remaining = a.read_string("foo fie")
+        accepted, states, remaining = a.read_string("foo fie")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("zig zag")
+        accepted, states, remaining = a.read_string("zig zag")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie zig")
+        accepted, states, remaining = a.read_string("foo fie zig")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == "zig", f"Received: {remaining}"
 
     def test_star(self):
 
-        r = rei.Star(rei.Conc(rei.Symbol("foo"), rei.Symbol("fie")))
+        r = rei.Star(rei.Conc("foo", "fie"))
 
         a = nfa.ReiToNFA(r)
 
-
-        accepted, state, remaining = a.read_string("")
+        accepted, states, remaining = a.read_string("")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie")
+        accepted, states, remaining = a.read_string("foo fie")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie foo fie foo fie foo fie")
+        accepted, states, remaining = a.read_string("foo fie foo fie foo fie foo fie")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie foo fie foo")
+        accepted, states, remaining = a.read_string("foo fie foo fie foo")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert not a.is_final(state)
+        assert not a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie foo fie foo baz")
+        accepted, states, remaining = a.read_string("foo fie foo fie foo baz")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert not a.is_final(state)
+        assert not a.is_final(states)
         assert remaining == "baz"
 
     def test_union_star(self):
@@ -964,45 +964,45 @@ class TestReiToNFA(TestCase):
 
         a = nfa.ReiToNFA(r)
 
-        accepted, state, remaining = a.read_string("")
+        accepted, states, remaining = a.read_string("")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie")
+        accepted, states, remaining = a.read_string("foo fie")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("zig zag")
+        accepted, states, remaining = a.read_string("zig zag")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie zig zag")
+        accepted, states, remaining = a.read_string("foo fie zig zag")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie zig zag zig zag")
+        accepted, states, remaining = a.read_string("foo fie zig zag zig zag")
         assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie zig fie")
+        accepted, states, remaining = a.read_string("foo fie zig fie")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert not a.is_final(state)
+        assert not a.is_final(states)
         assert remaining == "fie"
 
 
-        accepted, state, remaining = a.read_string("foo fie zig")
+        accepted, states, remaining = a.read_string("foo fie zig")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert not a.is_final(state)
+        assert not a.is_final(states)
         assert remaining == ""
 
-        accepted, state, remaining = a.read_string("foo fie big fie")
+        accepted, states, remaining = a.read_string("foo fie big fie")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
-        assert a.is_final(state)
+        assert a.is_final(states)
         assert remaining == "big fie"
 
     def test_union_star_nondeterminism(self):
@@ -1287,12 +1287,12 @@ class TestEnforcer(TestCase):
 
         # step 1
 
-        s1 = e.curr_state
+        s1 = e.curr_states
 
         in_event = "Pizza_Place?pizza_order"
         out_event = e.process_input(in_event)
 
-        s2 = e.curr_state
+        s2 = e.curr_states
 
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
@@ -1304,7 +1304,7 @@ class TestEnforcer(TestCase):
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e.curr_state == s2
+        assert e.curr_states == s2
 
         # step 2 (receiving the expected message in the choreography)
 
@@ -1312,24 +1312,24 @@ class TestEnforcer(TestCase):
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e.curr_state != s2
+        assert e.curr_states != s2
 
         # step 3 (receiving another choreography message)
-        s2 = e.curr_state
+        s2 = e.curr_states
 
         in_event = "Customer?pizza"
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e.curr_state != s2
+        assert e.curr_states != s2
 
         # step 3 (sending the expected choreography message)
-        s2 = e.curr_state
+        s2 = e.curr_states
         in_event = "Delivery_Boy!pizza"
         out_event = e.process_input(in_event)
 
         assert out_event == in_event, f"Expected {in_event}. Received: {out_event}"
-        assert e.curr_state == s2
+        assert e.curr_states == s2
 
     def test_process_receive_delayed(self):
 
@@ -1340,30 +1340,46 @@ class TestEnforcer(TestCase):
 
         # step 1
 
-        s1 = e.curr_state
+        s1 = e.curr_states
 
         in_event = in_event_first = "Customer?pizza"
         out_event = e.process_input(in_event)
 
         assert out_event == ""
-        assert e.curr_state == s1
+        assert e.curr_states == s1
 
         in_event = "Pizza_Place?pizza_order"
         out_event = e.process_input(in_event)
 
         assert out_event == in_event
-        assert e.curr_state != s1
+        assert e.curr_states != s1
 
-        s1 = e.curr_state
+        s1 = e.curr_states
 
         in_event = "Delivery_Boy?Message_1mi4idx"
         out_event = e.process_input(in_event)
 
         assert out_event == in_event
-        assert e.curr_state != s1
+        assert e.curr_states != s1
 
-        s1 = e.curr_state
+        s1 = e.curr_states
         out_event = e.process_check()
 
         assert out_event == in_event_first
-        assert e.curr_state != s1
+        assert e.curr_states != s1
+
+
+    def test_reordering(self):
+
+        c:Choreography = Choreography.objects.get(name="diagram")
+        n = c.to_nfa()
+
+        e = Enforcer(n)
+
+        in_events = "Customer?pizza Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx"
+        out_events = "Pizza_Place?pizza_order Delivery_Boy?Message_1mi4idx Customer?pizza"
+
+        res = e.process_input(in_events)
+
+        assert res == out_events
+        assert e.nfa.is_final(e.curr_states)
