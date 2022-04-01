@@ -1,4 +1,5 @@
 import nfa
+import traceback
 
 class Enforcer:
 
@@ -193,3 +194,61 @@ class Enforcer:
         self._curr_states = reached
 
         return event
+
+
+from enforcer import *
+from bpmn_parser.models import *
+
+
+from prompt_toolkit import prompt
+
+class UI:
+
+    def __init__(self, *args, **kwargs):
+        self._registry = {
+            "load": self.cmd_load,
+            "exit": self.cmd_quit,
+            "quit": self.cmd_quit
+
+        }
+
+    def command(self, cmd, *args, **kwargs):
+        print(f"Execute: {cmd}")
+        handler = self._registry.get(cmd, None)
+
+        if handler:
+            handler(args, *kwargs)
+        else:
+            print(f"ERROR: Command not recognized: {cmd} {' ' .join(args)}")
+
+    def cmd_load(self, *args, **kwargs):
+        print(f"TODO: load")
+
+    def cmd_quit(self, *args, **kwargs):
+        print(f"Good bye")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.cmd_quit()
+
+
+def cli(*args, **kwargs):
+
+    with UI() as ui:
+
+        while True:
+            try:
+                userin = prompt(">> ")
+                userin_parts = userin.split(" ")
+                ui.command(*userin_parts)
+            except (EOFError, KeyboardInterrupt):
+                break
+            except Exception as e:
+                traceback.print_exc()
+
+    # c = Choreography.objects.get()
+
+    # e : Enforcer = Enforcer()
+
