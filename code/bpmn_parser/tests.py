@@ -650,19 +650,19 @@ class TestNFA(TestCase):
         # examples of strings that are accepted by the regular expression
         accepted, states, remaining = a.read_string("a b b b b b b b b b b b b b")
 
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert s2.id in states
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("a b b b b b b a a b b b b b b b")
 
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert s2.id in states
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("a b b b b b b a a b b b b b b b a a")
 
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert s2.id in states
         assert remaining == ""
 
@@ -675,31 +675,31 @@ class TestNFA(TestCase):
         # example of strings that are not accepted by the regular expression
         accepted, states, remaining = a.read_string("a a")
 
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert s1.id in states
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("a a b b")
 
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert s1.id in states
         assert remaining == "b b"
 
         accepted, states, remaining = a.read_string("a b b b b b a a b a")
 
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert s1.id in states
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("")
 
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert s1.id in states
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("a b b b b b b c d e f")
 
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert s2.id in states
         assert remaining == "c d e f"
 
@@ -882,17 +882,17 @@ class TestReiToNFA(TestCase):
         a = nfa.ReiToNFA(r)
 
         accepted, states, remaining = a.read_string("foo")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("fie")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert a.initial.id in states
         assert remaining == "fie"
 
         accepted, states, remaining = a.read_string("foo fie")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == "fie"
 
@@ -913,17 +913,17 @@ class TestReiToNFA(TestCase):
         a = nfa.ReiToNFA(r)
 
         accepted, states, remaining = a.read_string("foo fie")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("zig zag")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie zig")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == "zig", f"Received: {remaining}"
 
@@ -934,27 +934,27 @@ class TestReiToNFA(TestCase):
         a = nfa.ReiToNFA(r)
 
         accepted, states, remaining = a.read_string("")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie foo fie foo fie foo fie")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie foo fie foo")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert not a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie foo fie foo baz")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert not a.is_final(states)
         assert remaining == "baz"
 
@@ -965,43 +965,43 @@ class TestReiToNFA(TestCase):
         a = nfa.ReiToNFA(r)
 
         accepted, states, remaining = a.read_string("")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("zig zag")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie zig zag")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie zig zag zig zag")
-        assert accepted == True, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == True, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie zig fie")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert not a.is_final(states)
         assert remaining == "fie"
 
 
         accepted, states, remaining = a.read_string("foo fie zig")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert not a.is_final(states)
         assert remaining == ""
 
         accepted, states, remaining = a.read_string("foo fie big fie")
-        assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
+        assert accepted == False, f"Received: {accepted}, {states}, {remaining}"
         assert a.is_final(states)
         assert remaining == "big fie"
 
@@ -1042,7 +1042,7 @@ class TestReiToNFA(TestCase):
         accepted, state, remaining = a.read_string("foo zog")
         assert accepted == False, f"Received: {accepted}, {state}, {remaining}"
         assert not a.is_final(state)
-        assert remaining == "zog"
+        assert remaining == "zog", f"Received: {remaining}"
 
 
     def test_par(self):
