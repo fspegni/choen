@@ -1,5 +1,7 @@
 import nfa
 import traceback
+import sys
+import os
 
 class Enforcer:
 
@@ -202,27 +204,113 @@ from bpmn_parser.models import *
 
 from prompt_toolkit import prompt
 
+class Model:
+
+    def __init__(self):
+        self._store = {}
+
+    def add_object(self, name, obj):
+        self._store[name] = obj
+
+    def get_object(self, name):
+        return self._store.get(name, None)
+
+
 class UI:
 
     def __init__(self, *args, **kwargs):
         self._registry = {
+            "init": self.cmd_init,
             "load": self.cmd_load,
+            "start": self.cmd_start,
             "exit": self.cmd_quit,
             "quit": self.cmd_quit
-
         }
+        self._model = Model()
 
     def command(self, cmd, *args, **kwargs):
         print(f"Execute: {cmd}")
         handler = self._registry.get(cmd, None)
 
         if handler:
-            handler(args, *kwargs)
+            handler(*args, **kwargs)
         else:
             print(f"ERROR: Command not recognized: {cmd} {' ' .join(args)}")
 
-    def cmd_load(self, *args, **kwargs):
-        print(f"TODO: load")
+    def cmd_init(self, *args, **kwargs):
+
+        choreographies = [
+            ("diagram", "diagram.bpmn", ),
+            ("diagram_minimal", "diagram_minimal.bpmn"),
+            ("diagram_basic", "diagram_basic.bpmn"),
+            ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
+            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+
+        ]
+
+        for name, filename in choreographies:
+            attribs = {
+                "name": name,
+                "resource": os.path.join(settings.MEDIA_ROOT, filename),
+            }
+            
+            c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
+            if created:
+                print(f"Choreography {name} imported ...")
+            else:
+                print(f"Choreography {name} already exists ...")
+
+            # c.name = name
+            # c.resource = os.path.join(settings.MEDIA_ROOT, filename)
+            # c.save()
+
+
+    def cmd_load(self, name, *args, **kwargs):
+        c : Choreography = Choreography.objects.get(name=name)
+        self._model.add_object("choreography", c)
+
+
+    def cmd_start(self, *args, **kwargs):
+
+        c : Choreography = self._model.get_object("choreography")
+
+        nfa : nfa.NFA = c.to_nfa()
+
+        e = Enforcer(nfa)
+
+
+        while True:
+            try:
+                print("+>> ", end="")
+                user_in = sys.stdin.readline().strip()
+
+                if len(user_in) == 0:
+                    continue
+                
+                try:
+                    out = e.process_input(user_in)
+                    if out:
+                        print(out)
+                    out = e.process_check()
+                    if out:
+                        print(out)
+                except Exception as e:
+                    traceback.print_exc()
+
+            except EOFError as e:
+                # traceback.print_exc()
+                print("Abort command")
+                break
+            except Exception as e:
+                traceback.print_exc()
+                print("Unexpected error. Abort command")
+                break
+
 
     def cmd_quit(self, *args, **kwargs):
         print(f"Good bye")
