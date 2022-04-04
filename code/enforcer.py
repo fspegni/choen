@@ -158,20 +158,17 @@ class Enforcer:
         return event
 
     def rule_receive_now(self, event):
-        # accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
-        # accepted, new_state, remaining = self._nfa.read_symbol(event, self._curr_state)
 
         reached = set()
         for s in self._curr_states:
 
             s_reached = self._nfa.read_symbol(event, s)
 
-            # TODO l'asserzione sotto non e` vera in tutti i casi
-            assert len(s_reached) > 0, f"Expected to reach some state after consuming event {event}"
+            if len(s_reached) == 0:
+                print(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+            else:
+                reached = reached.union(s_reached)
             
-            reached = reached.union(s_reached)
-
-            # self._curr_states = reached
 
         self._curr_states = reached
         return event
