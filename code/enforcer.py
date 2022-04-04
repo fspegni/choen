@@ -7,9 +7,10 @@ class Enforcer:
 
     def __init__(self, nfa : nfa.NFA):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
-        self._nfa = nfa
+        self._nfa : nfa.NFA = nfa
         self._buffer = {}
         self._curr_states = set([ self._nfa.initial.id ])
+        self._debug : bool = True
 
     @property
     def buffer(self) -> dict:
@@ -22,6 +23,9 @@ class Enforcer:
     @property
     def nfa(self):
         return self._nfa
+
+    def set_debug(self, debug: bool):
+        self._debug = debug
 
     # UTILS
 
@@ -122,7 +126,7 @@ class Enforcer:
                 out = self.rule_receive_delayed(actor, message)
         
         nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
-        print(f"(* Non-determism factor: {nd_factor} *)")
+        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
 
         return out
 
@@ -165,7 +169,7 @@ class Enforcer:
             s_reached = self._nfa.read_symbol(event, s)
 
             if len(s_reached) == 0:
-                print(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
             else:
                 reached = reached.union(s_reached)
             
@@ -193,7 +197,7 @@ class Enforcer:
             s_reached = self._nfa.read_symbol(event, s)
 
             if len(s_reached) == 0:
-                print(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
             else:
                 reached = reached.union(s_reached)
             # self._curr_state = new_state
@@ -202,11 +206,15 @@ class Enforcer:
         # self._buffer[actor][message] = counter - 1   
 
         nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
-        print(f"(* Non-determism factor: {nd_factor} *)")
+        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
         self._curr_states = reached
 
 
         return event
+
+    def _debug_log(self, text):
+        if self._debug:
+            print(text)
 
 
 from enforcer import *
@@ -237,6 +245,7 @@ class UI:
             "init"  : self.cmd_init,
             # "load"  : self.cmd_load,
             "start" : self.cmd_start,
+            "debug" : self.cmd_debug,
             "help"  : self.cmd_help,
             "dump"  : self.cmd_dump,
             "exit"  : self.cmd_quit,
@@ -244,6 +253,7 @@ class UI:
         }
         self._model = Model()
         self._enforcer = None
+        self._debug = True
 
     def prompt(self):
         userin = None
@@ -329,6 +339,21 @@ class UI:
             # c.resource = os.path.join(settings.MEDIA_ROOT, filename)
             # c.save()
 
+
+    def cmd_debug(self, *args, **kwargs):
+
+        status = "on"
+        if len(args) > 0:
+            status = args[0]
+
+        if status not in [ "on", "off" ]:
+            raise Exception(f"Status not recognized: {status}")
+
+        print(f"Set debug mode : {status}")
+
+        self._debug = (status == "on")
+        if self._enforcer:
+            self._enforcer.set_debug(self._debug)
 
     def cmd_load(self, name, *args, **kwargs):
         c : Choreography = Choreography.objects.get(name=name)
