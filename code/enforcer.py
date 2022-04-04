@@ -92,9 +92,12 @@ class Enforcer:
                     for s in e_closure:
                         if self._nfa.transitions_from(s, event):
                             found = (actor, message)
-                            break
+                            return found
+                            # break
         
-        return found
+        #return found
+        raise Exception("No usable message found")
+
     
     # PROCESSORS
 
@@ -102,9 +105,11 @@ class Enforcer:
 
         out = None
 
+        num_states_pre = len(self._curr_states)
+
         if "!" in event:
             # actor, message = event.split("!")
-            return self.rule_send(event)
+            out = self.rule_send(event)
 
         elif "?" in event:
             actor, message = event.split("?")
@@ -116,6 +121,9 @@ class Enforcer:
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
                 out = self.rule_receive_delayed(actor, message)
         
+        nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
+        print(f"(* Non-determism factor: {nd_factor} *)")
+
         return out
 
     def process_check(self):
@@ -158,6 +166,7 @@ class Enforcer:
 
             s_reached = self._nfa.read_symbol(event, s)
 
+            # TODO l'asserzione sotto non e` vera in tutti i casi
             assert len(s_reached) > 0, f"Expected to reach some state after consuming event {event}"
             
             reached = reached.union(s_reached)
@@ -184,16 +193,21 @@ class Enforcer:
         reached = set()
         # accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
         for s in self._curr_states:
-            s_reached  = self._nfa.read_symbol(event, s)
+            s_reached = self._nfa.read_symbol(event, s)
 
-            assert len(s_reached) > 0, f"Expected some state is reached after consuming event {event}"
-
-            reached = reached.union(s_reached)
+            if len(s_reached) == 0:
+                print(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+            else:
+                reached = reached.union(s_reached)
             # self._curr_state = new_state
         
         self.buffer_remove(actor, message)
         # self._buffer[actor][message] = counter - 1   
+
+        nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
+        print(f"(* Non-determism factor: {nd_factor} *)")
         self._curr_states = reached
+
 
         return event
 
@@ -218,24 +232,73 @@ class Model:
 
 class UI:
 
+    PROMPT_ENFORCER = "+> "
+    PROMPT_CLI = ">> "
+
     def __init__(self, *args, **kwargs):
         self._registry = {
-            "init": self.cmd_init,
-            "load": self.cmd_load,
-            "start": self.cmd_start,
-            "exit": self.cmd_quit,
-            "quit": self.cmd_quit
+            "init"  : self.cmd_init,
+            # "load"  : self.cmd_load,
+            "start" : self.cmd_start,
+            "help"  : self.cmd_help,
+            "dump"  : self.cmd_dump,
+            "exit"  : self.cmd_quit,
+            "quit"  : self.cmd_quit
         }
         self._model = Model()
+        self._enforcer = None
 
-    def command(self, cmd, *args, **kwargs):
+    def prompt(self):
+        userin = None
+        if self._enforcer:
+            userin = prompt(self.PROMPT_ENFORCER)
+        else:
+            userin = prompt(self.PROMPT_CLI)
+
+        return userin
+
+    def process_input(self, userin):
+        if self._enforcer:
+            return self._process_input_enforcer(userin)
+        else:
+            return self._process_input_cli(userin)
+
+    def _process_input_cli(self, userin : str):
+
+        userin_parts = userin.split(" ")
+        cmd = userin_parts[0]
+        cmd_args = userin_parts[1:]
+
         print(f"Execute: {cmd}")
         handler = self._registry.get(cmd, None)
 
         if handler:
-            handler(*args, **kwargs)
+            handler(*cmd_args)
         else:
-            print(f"ERROR: Command not recognized: {cmd} {' ' .join(args)}")
+            print(f"ERROR: Command not recognized: {cmd} {' ' .join(cmd_args)}")
+
+
+    def _process_input_enforcer(self, userin : str):
+
+        assert self._enforcer is not None
+
+        if userin[0] == "/":
+            return self._process_input_cli(userin[1:])
+        else:
+            out = self._enforcer.process_input(userin)
+            if out:
+                print(out)
+        
+            while True:
+                out1 = self._enforcer.process_check()
+                if out1:
+                    print(out1)
+                else:
+                    break
+            
+            if self._enforcer.nfa.is_final(self._enforcer.curr_states):
+                self._enforcer = None
+
 
     def cmd_init(self, *args, **kwargs):
 
@@ -279,41 +342,52 @@ class UI:
 
         c : Choreography = self._model.get_object("choreography")
 
+        if len(args) > 0:
+            c = Choreography.objects.get(name=args[0])
+
+        if not c:
+            raise Exception("You must load a choreography or start a choreography")
+
         nfa : nfa.NFA = c.to_nfa()
 
-        e = Enforcer(nfa)
-
-
-        while True:
-            try:
-                print("+>> ", end="")
-                user_in = sys.stdin.readline().strip()
-
-                if len(user_in) == 0:
-                    continue
-                
-                try:
-                    out = e.process_input(user_in)
-                    if out:
-                        print(out)
-                    out = e.process_check()
-                    if out:
-                        print(out)
-                except Exception as e:
-                    traceback.print_exc()
-
-            except EOFError as e:
-                # traceback.print_exc()
-                print("Abort command")
-                break
-            except Exception as e:
-                traceback.print_exc()
-                print("Unexpected error. Abort command")
-                break
-
+        self._enforcer = Enforcer(nfa)
 
     def cmd_quit(self, *args, **kwargs):
         print(f"Good bye")
+
+    def cmd_help(self, *args, **kwargs):
+        print("Available commands: ")
+        print(", ".join(self._registry.keys()))
+
+    def cmd_dump(self, *args, **kwargs):
+        if self._enforcer is None:
+            print("You must start the enforcer, before dumping the state")
+            return
+
+        nfa = self._enforcer.nfa
+        if len(args) > 0:
+            if args[0] == "curr_states":    
+                print("Current states: ")
+                # print(", ".join(self._enforcer._curr_states))
+                for s in self._enforcer._curr_states:
+                    label = str(s)
+                    if nfa.is_initial(s):
+                        label = f"{label} : i"
+                    if nfa.is_final(s):
+                        label = f"{label} : f"
+                    print(label)
+            elif args[0] == "transitions":
+                print("Transitions: ")
+                print("\n".join(map(lambda t: str(t), nfa.transitions)))
+            elif args[0] == "states":
+                print("States: ")
+                for s in nfa.states:
+                    label = str(s)
+                    if nfa.is_initial(s):
+                        label = f"{label} : i"
+                    if nfa.is_final(s):
+                        label = f"{label} : f"
+                    print(label)
 
     def __enter__(self):
         return self
@@ -328,15 +402,10 @@ def cli(*args, **kwargs):
 
         while True:
             try:
-                userin = prompt(">> ")
-                userin_parts = userin.split(" ")
-                ui.command(*userin_parts)
+                userin = ui.prompt()
+                ui.process_input(userin)
             except (EOFError, KeyboardInterrupt):
                 break
             except Exception as e:
                 traceback.print_exc()
-
-    # c = Choreography.objects.get()
-
-    # e : Enforcer = Enforcer()
 

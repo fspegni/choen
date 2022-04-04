@@ -170,7 +170,7 @@ class NFA:
     def __init__(self):
         self._states = {}
         self._transitions = {}
-        self._initial:State = None
+        self._initial:str = None
         self._final = set([])
 
     def __str__(self):
@@ -335,6 +335,12 @@ class NFA:
                 return True
         
         return False
+
+    def is_initial(self, state):
+        if isinstance(state, State):
+            state = state.id
+        
+        return self._initial == state
 
     """
     Add one or more states to the set of final states
