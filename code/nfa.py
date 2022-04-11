@@ -172,9 +172,14 @@ class NFA:
         self._transitions = {}
         self._initial:str = None
         self._final = set([])
+        self._iscan : InputScanner = None
 
     def __str__(self):
         return f"{len(self.states)} states, {len(self.transitions)} transitions, initial: {self._initial}, {len(self.final)} final states"
+
+    @property
+    def iscan(self) -> InputScanner:
+        return self._iscan
 
     @property
     def states(self):

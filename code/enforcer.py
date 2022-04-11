@@ -105,26 +105,28 @@ class Enforcer:
     
     # PROCESSORS
 
-    def process_input(self, event : str):
-
+    def process_input(self, event_stream : str):
         out = None
-
         num_states_pre = len(self._curr_states)
+        iscan = nfa.InputScanner(event_stream)
 
-        if "!" in event:
-            # actor, message = event.split("!")
-            out = self.rule_send(event)
+        while not iscan.eof:        
+            event = iscan.scan_input()
+            
+            if "!" in event:
+                # actor, message = event.split("!")
+                out = self.rule_send(event)
 
-        elif "?" in event:
-            actor, message = event.split("?")
+            elif "?" in event:
+                actor, message = event.split("?")
 
-            if self.condition_rule_receive_now(event):
-                out = self.rule_receive_now(event)
-            else:
-                # TODO add check that the message may actually be consumed afterwards;
-                # without this check, it does not make sense to implement the rule "Cannot receive" 
-                out = self.rule_receive_delayed(actor, message)
-        
+                if self.condition_rule_receive_now(event):
+                    out = self.rule_receive_now(event)
+                else:
+                    # TODO add check that the message may actually be consumed afterwards;
+                    # without this check, it does not make sense to implement the rule "Cannot receive" 
+                    out = self.rule_receive_delayed(actor, message)
+            
         nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
 
