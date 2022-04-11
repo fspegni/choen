@@ -410,6 +410,17 @@ class UI:
                     if nfa.is_final(s):
                         label = f"{label} : f"
                     print(label)
+            elif args[0] == "buffer":
+                print("Buffer: ")
+                for actor,actor_buffer in self._enforcer.buffer.items():
+                    for message,counter in actor_buffer.items():
+                        if counter > 0:
+                            msg = f"{actor}?{message}"
+                            if counter > 1:
+                                msg = f"{msg} (x {counter})"
+
+                            print(msg)
+
 
     def __enter__(self):
         return self
