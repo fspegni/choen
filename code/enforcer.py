@@ -245,7 +245,7 @@ class UI:
     def __init__(self, *args, **kwargs):
         self._registry = {
             "init"  : self.cmd_init,
-            # "load"  : self.cmd_load,
+            "load"  : self.cmd_load,
             "start" : self.cmd_start,
             "debug" : self.cmd_debug,
             "help"  : self.cmd_help,
