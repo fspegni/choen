@@ -18,9 +18,8 @@ Next you can provide your input to the enforcer and see how it reacts.
 
 ## Linux/Ubuntu without VSCode
 
-In order to test the current status of the project, do the following:
+In order to test the current status of the project, follow a guide for creating a virtualenv (e.g. [see this](https://www.freecodecamp.org/news/virtualenv-with-virtualenvwrapper-on-ubuntu-18-04/)). Next, do the following:
 
-1. create virtual env
 1. export DJANGO_SETTINGS_MODULE=bpmn2solidity.settings
 1. export PYTHONPATH=/home/<USER>/git/bpmn2solidity/code:$PYTHONPATH
 1. django-admin test bpmn_parser
