@@ -4,6 +4,11 @@
 1. execute the following commands:
 ```
 $ workon <your_virtual_env>
+$ django-admin shell
+>> solcx.solc_install('0.7.6')
+```
+3. execute the following commands:
+```
 $ django-admin cli
 ```
 A prompt appears. At this stage you can execute the following commands (each followed by a return):
@@ -11,6 +16,12 @@ A prompt appears. At this stage you can execute the following commands (each fol
 init
 load <diagram_name>
 start
+```
+NOTE: The first time, before the command init, you have to execute the following command, to create the tables in the database:
+```
+migrate
+```
+
 ```
 Next you can provide your input to the enforcer and see how it reacts.
 
