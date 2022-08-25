@@ -9,6 +9,7 @@ from enforcer import Enforcer
 import rei
 import nfa
 import contracts
+from contract_parser import Parser
 
 class TestChoreographyBasicCase(TestCase):
 
@@ -1425,7 +1426,7 @@ class TestContracts(TestCase):
         
         assert v.name == "foo"
         assert v.type == "uint8"
-        assert v.compile() == "uint8 foo;"
+        assert v.compile() == "uint8 foo"
 
 
     def test_functions(self):
@@ -1443,3 +1444,9 @@ class TestContracts(TestCase):
 
     # def test_contract(self):
     #     c = contracts.Contract()
+
+    def test_contractGeneration(self):
+        parser: Parser = Parser()
+        contract = parser.createContract()
+        assert contract == "prova", f"{contract}"
+        
