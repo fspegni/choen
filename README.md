@@ -22,7 +22,7 @@ NOTE: The first time, before the command init, you have to execute the following
 migrate
 ```
 
-```
+
 Next you can provide your input to the enforcer and see how it reacts.
 
 # Developing
@@ -48,5 +48,19 @@ If you want to use the terminal, after having configured your virtualenv (see De
 $ workon <your_virtual_env>
 $ ./test.sh
 ```
+
+# Test the creation of the smart contract
+For testing the creation of the smart contract from a choreography you can launch the test with the command:
+```
+$ ./test.sh
+```
+and automatically a folder "contracts" is created. It contains the smart contracts and a file "\<SmartContractName\>_combined.json" with the abi and the runtime of the contract generated.
+
+Now you can manually test the smart contract functionalities using RemixIDE (https://remix.ethereum.org/). Once you've opened the IDE you have to load the contract within your workspace. In this case, you can choose either to use the default workspace or to create a new one (this is recommended). From the menu on the left click on "Deploy & run transactions" and you can choose an environment, for example, Remix VM (Berlin). Finally, click on "Deploy" and the deployed smart contract appears in the bottom section, where you can test the different functionalities of the contract.
+
+
+
+
+
 
 
