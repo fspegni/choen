@@ -4,10 +4,10 @@ pragma abicoder v2;
 
 contract DiagramGatewaysNestedNFA {
 
-	string[] states = ['yfgyzbfp', 'qzevqixn', 'qywzcadt', 'uhwwsgsc', 'utukhopa', 'xzgoizmu', 'rffwtveg', 'oqcasiad', 'zbnzwjri', 'mudoejnw', 'wnwxwypy__qaxoqdcb', 'wnwxwypy__kbbsvpru', 'okfxdsme__qaxoqdcb', 'okfxdsme__kbbsvpru', 'bklbjzfy__qaxoqdcb', 'bklbjzfy__kbbsvpru', 'dvjgzjpj__qaxoqdcb', 'dvjgzjpj__kbbsvpru', 'oyshqwer'];
+	string[] states = ['xexrqtna', 'gayofqvw', 'ishlmmja', 'ftrfpvbc', 'wlbwyccj', 'iwxcjvfg', 'dovfjkvx', 'qsqvzvkm', 'ngauaufq', 'wmnslgub', 'ygsrasxv__azghwvrz', 'ygsrasxv__jfklsvol', 'kidzozpl__azghwvrz', 'kidzozpl__jfklsvol', 'jiegbuaf__azghwvrz', 'jiegbuaf__jfklsvol', 'fdtxptyn__azghwvrz', 'fdtxptyn__jfklsvol', 'qxacezld'];
 	string[] tmpStates;
-	string initialState = "yfgyzbfp";
-	string[] finalStates = ['oyshqwer'];
+	string initialState = "xexrqtna";
+	string[] finalStates = ['qxacezld'];
 	string[] currentStates;
 	string[] message;
 	string epsilon;
@@ -16,28 +16,28 @@ contract DiagramGatewaysNestedNFA {
 	mapping(string => mapping(string => string[])) transitions;
 
 	constructor() public {
-		transitions["qzevqixn"]["order pizza"]=["qywzcadt"];
-		transitions["yfgyzbfp"][""]=["qzevqixn"];
-		transitions["utukhopa"]["New Activity"]=["xzgoizmu"];
-		transitions["uhwwsgsc"][""]=["utukhopa"];
-		transitions["uhwwsgsc"][""]=["rffwtveg"];
-		transitions["rffwtveg"]["hand over pizza"]=["oqcasiad"];
-		transitions["zbnzwjri"]["deliver pizza"]=["mudoejnw"];
-		transitions["oqcasiad"][""]=["zbnzwjri"];
-		transitions["wnwxwypy__qaxoqdcb"]["Another task"]=["wnwxwypy__kbbsvpru"];
-		transitions["wnwxwypy__qaxoqdcb"]["Something"]=["okfxdsme__qaxoqdcb"];
-		transitions["wnwxwypy__kbbsvpru"]["Something"]=["okfxdsme__kbbsvpru"];
-		transitions["okfxdsme__qaxoqdcb"]["Another task"]=["okfxdsme__kbbsvpru"];
-		transitions["okfxdsme__qaxoqdcb"][""]=["bklbjzfy__qaxoqdcb"];
-		transitions["okfxdsme__kbbsvpru"][""]=["bklbjzfy__kbbsvpru"];
-		transitions["bklbjzfy__qaxoqdcb"]["Another task"]=["bklbjzfy__kbbsvpru"];
-		transitions["bklbjzfy__qaxoqdcb"]["Something else"]=["dvjgzjpj__qaxoqdcb"];
-		transitions["bklbjzfy__kbbsvpru"]["Something else"]=["dvjgzjpj__kbbsvpru"];
-		transitions["dvjgzjpj__qaxoqdcb"]["Another task"]=["dvjgzjpj__kbbsvpru"];
-		transitions["mudoejnw"][""]=["wnwxwypy__qaxoqdcb"];
-		transitions["qywzcadt"][""]=["uhwwsgsc"];
-		transitions["dvjgzjpj__kbbsvpru"][""]=["oyshqwer"];
-		transitions["xzgoizmu"][""]=["oyshqwer"];
+		transitions["gayofqvw"]["order pizza"]=["ishlmmja"];
+		transitions["xexrqtna"][""]=["gayofqvw"];
+		transitions["wlbwyccj"]["New Activity"]=["iwxcjvfg"];
+		transitions["ftrfpvbc"][""]=["wlbwyccj"];
+		transitions["ftrfpvbc"][""]=["dovfjkvx"];
+		transitions["dovfjkvx"]["hand over pizza"]=["qsqvzvkm"];
+		transitions["ngauaufq"]["deliver pizza"]=["wmnslgub"];
+		transitions["qsqvzvkm"][""]=["ngauaufq"];
+		transitions["ygsrasxv__azghwvrz"]["Another task"]=["ygsrasxv__jfklsvol"];
+		transitions["ygsrasxv__azghwvrz"]["Something"]=["kidzozpl__azghwvrz"];
+		transitions["ygsrasxv__jfklsvol"]["Something"]=["kidzozpl__jfklsvol"];
+		transitions["kidzozpl__azghwvrz"]["Another task"]=["kidzozpl__jfklsvol"];
+		transitions["kidzozpl__azghwvrz"][""]=["jiegbuaf__azghwvrz"];
+		transitions["kidzozpl__jfklsvol"][""]=["jiegbuaf__jfklsvol"];
+		transitions["jiegbuaf__azghwvrz"]["Another task"]=["jiegbuaf__jfklsvol"];
+		transitions["jiegbuaf__azghwvrz"]["Something else"]=["fdtxptyn__azghwvrz"];
+		transitions["jiegbuaf__jfklsvol"]["Something else"]=["fdtxptyn__jfklsvol"];
+		transitions["fdtxptyn__azghwvrz"]["Another task"]=["fdtxptyn__jfklsvol"];
+		transitions["wmnslgub"][""]=["ygsrasxv__azghwvrz"];
+		transitions["ishlmmja"][""]=["ftrfpvbc"];
+		transitions["fdtxptyn__jfklsvol"][""]=["qxacezld"];
+		transitions["iwxcjvfg"][""]=["qxacezld"];
 		
 		delete tmpStates;
 		tmpStates.push(initialState);
@@ -46,28 +46,8 @@ contract DiagramGatewaysNestedNFA {
 	
 	
 
-	function getStates() public view returns (string[] memory){
-		return states;
-	}
-	
-	
-	function getCurrentStates() public view returns (string[] memory){
-		return currentStates;
-	}
-	
-	
-	function isFinal() public view returns (bool){
-		return end;
-	}
-	
-	
-	function isInitial() public view returns (bool){
-		return start;
-	}
-	
-	
-	function getMessage() public view returns (string[] memory){
-		return message;
+	function strCompare(string memory stringA, string memory stringB) private returns (bool){
+		return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));
 	}
 	
 	
@@ -78,7 +58,7 @@ contract DiagramGatewaysNestedNFA {
 	
 	function stateAlreadyExists(string memory s, string[] memory states) private returns (bool){
 		for (uint i = 0; i < states.length; i++) {
-		    if (keccak256(abi.encodePacked(s)) == keccak256(abi.encodePacked(states[i]))) {
+		    if (strCompare(s,states[i])) {
 		        return true;
 		    }
 		}
@@ -90,11 +70,11 @@ contract DiagramGatewaysNestedNFA {
 		start = false;
 		end = false;
 		for (uint i = 0; i < states.length; i++) {
-		    if (keccak256(abi.encodePacked(states[i])) == keccak256(abi.encodePacked(initialState))) {
+		    if (strCompare(states[i],initialState)) {
 		            start = true;
 		        }
 		        for (uint k = 0; k < finalStates.length; k++) {
-		            if (keccak256(abi.encodePacked(states[i])) == keccak256(abi.encodePacked(finalStates[k]))) {
+		            if (strCompare(states[i],finalStates[k])) {
 		                end = true;
 		           }
 		        }
@@ -119,6 +99,31 @@ contract DiagramGatewaysNestedNFA {
 		}
 		checkInitialAndFinalStates(tmpStates);
 		return tmpStates;
+	}
+	
+	
+	function getStates() public view returns (string[] memory){
+		return states;
+	}
+	
+	
+	function getCurrentStates() public view returns (string[] memory){
+		return currentStates;
+	}
+	
+	
+	function isFinal() public view returns (bool){
+		return end;
+	}
+	
+	
+	function isInitial() public view returns (bool){
+		return start;
+	}
+	
+	
+	function getMessage() public view returns (string[] memory){
+		return message;
 	}
 	
 	

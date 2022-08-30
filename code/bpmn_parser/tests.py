@@ -1447,6 +1447,8 @@ class TestContracts(TestCase):
 
     def test_contractGeneration(self):
         parser: Parser = Parser()
-        contract = parser.createContract()
-        assert contract == "prova", f"{contract}"
+        try:
+            parser.createContract()
+        except Exception:
+            self.fail("The contract is not created")    
         

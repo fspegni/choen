@@ -4,10 +4,10 @@ pragma abicoder v2;
 
 contract DiagramGatewaysNFA {
 
-	string[] states = ['oqatcupc', 'ipxfwwej', 'plxgmgty', 'witjcuwa', 'ngqltbgx', 'uozsxwqj', 'pjtotlpx', 'geeeasmo', 'rmspibnm', 'wnxpqggv', 'ufwshdhy'];
+	string[] states = ['cbrnbltc', 'bgvianmb', 'ddeksmgq', 'yqabnuiv', 'mrwsfzcy', 'wxfyrycw', 'alyegbme', 'bazbofur', 'treliwwl', 'mbpvqyek', 'dwjyxtds'];
 	string[] tmpStates;
-	string initialState = "oqatcupc";
-	string[] finalStates = ['ufwshdhy'];
+	string initialState = "cbrnbltc";
+	string[] finalStates = ['dwjyxtds'];
 	string[] currentStates;
 	string[] message;
 	string epsilon;
@@ -16,17 +16,17 @@ contract DiagramGatewaysNFA {
 	mapping(string => mapping(string => string[])) transitions;
 
 	constructor() public {
-		transitions["ipxfwwej"]["order pizza"]=["plxgmgty"];
-		transitions["oqatcupc"][""]=["ipxfwwej"];
-		transitions["ngqltbgx"]["New Activity"]=["uozsxwqj"];
-		transitions["witjcuwa"][""]=["ngqltbgx"];
-		transitions["witjcuwa"][""]=["pjtotlpx"];
-		transitions["pjtotlpx"]["hand over pizza"]=["geeeasmo"];
-		transitions["rmspibnm"]["deliver pizza"]=["wnxpqggv"];
-		transitions["geeeasmo"][""]=["rmspibnm"];
-		transitions["plxgmgty"][""]=["witjcuwa"];
-		transitions["uozsxwqj"][""]=["ufwshdhy"];
-		transitions["wnxpqggv"][""]=["ufwshdhy"];
+		transitions["bgvianmb"]["order pizza"]=["ddeksmgq"];
+		transitions["cbrnbltc"][""]=["bgvianmb"];
+		transitions["mrwsfzcy"]["New Activity"]=["wxfyrycw"];
+		transitions["yqabnuiv"][""]=["mrwsfzcy"];
+		transitions["yqabnuiv"][""]=["alyegbme"];
+		transitions["alyegbme"]["hand over pizza"]=["bazbofur"];
+		transitions["treliwwl"]["deliver pizza"]=["mbpvqyek"];
+		transitions["bazbofur"][""]=["treliwwl"];
+		transitions["ddeksmgq"][""]=["yqabnuiv"];
+		transitions["mbpvqyek"][""]=["dwjyxtds"];
+		transitions["wxfyrycw"][""]=["dwjyxtds"];
 		
 		delete tmpStates;
 		tmpStates.push(initialState);
@@ -35,28 +35,8 @@ contract DiagramGatewaysNFA {
 	
 	
 
-	function getStates() public view returns (string[] memory){
-		return states;
-	}
-	
-	
-	function getCurrentStates() public view returns (string[] memory){
-		return currentStates;
-	}
-	
-	
-	function isFinal() public view returns (bool){
-		return end;
-	}
-	
-	
-	function isInitial() public view returns (bool){
-		return start;
-	}
-	
-	
-	function getMessage() public view returns (string[] memory){
-		return message;
+	function strCompare(string memory stringA, string memory stringB) private returns (bool){
+		return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));
 	}
 	
 	
@@ -67,7 +47,7 @@ contract DiagramGatewaysNFA {
 	
 	function stateAlreadyExists(string memory s, string[] memory states) private returns (bool){
 		for (uint i = 0; i < states.length; i++) {
-		    if (keccak256(abi.encodePacked(s)) == keccak256(abi.encodePacked(states[i]))) {
+		    if (strCompare(s,states[i])) {
 		        return true;
 		    }
 		}
@@ -79,11 +59,11 @@ contract DiagramGatewaysNFA {
 		start = false;
 		end = false;
 		for (uint i = 0; i < states.length; i++) {
-		    if (keccak256(abi.encodePacked(states[i])) == keccak256(abi.encodePacked(initialState))) {
+		    if (strCompare(states[i],initialState)) {
 		            start = true;
 		        }
 		        for (uint k = 0; k < finalStates.length; k++) {
-		            if (keccak256(abi.encodePacked(states[i])) == keccak256(abi.encodePacked(finalStates[k]))) {
+		            if (strCompare(states[i],finalStates[k])) {
 		                end = true;
 		           }
 		        }
@@ -108,6 +88,31 @@ contract DiagramGatewaysNFA {
 		}
 		checkInitialAndFinalStates(tmpStates);
 		return tmpStates;
+	}
+	
+	
+	function getStates() public view returns (string[] memory){
+		return states;
+	}
+	
+	
+	function getCurrentStates() public view returns (string[] memory){
+		return currentStates;
+	}
+	
+	
+	function isFinal() public view returns (bool){
+		return end;
+	}
+	
+	
+	function isInitial() public view returns (bool){
+		return start;
+	}
+	
+	
+	function getMessage() public view returns (string[] memory){
+		return message;
 	}
 	
 	

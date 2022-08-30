@@ -1,6 +1,7 @@
 from codeop import Compile
 import solcx
 from django.conf import settings
+import os
 
 class Compileable(object):
 
@@ -180,12 +181,14 @@ contract {self._name} {{
                              output_values = ["abi","bin-runtime"],
                              solc_version = "0.7.6",
                              output_dir = f"{settings.BASE_DIR}\..\public\contracts",
+                             overwrite=True
         )
 
         try:
             smartContract_file = open(f"{settings.BASE_DIR}\..\public\contracts/{self.name}.sol","w")
             try:
                 smartContract_file.write(contract_text)
+                os.rename(f"{settings.BASE_DIR}\..\public\contracts\combined.json",f"{settings.BASE_DIR}\..\public\contracts\{self.name}_combined.json")       
             except:
                 print("Something went wrong when writing to the file")
             finally:

@@ -31,8 +31,8 @@ class Parser:
             c.save()
             
 
-    def createContract(self) -> str:
-        choreography:Choreography = Choreography.objects.get(name="diagram_gateways_nested")
+    def createContract(self):
+        choreography:Choreography = Choreography.objects.get(name="diagram_gateways")
         r, match = rei.ChoToRei(choreography)
         n = nfa.ReiToNFA(r)
 
@@ -62,6 +62,66 @@ currentStates = e_closure(tmpStates);"""
         c.add_constructor(Constructor([], constructorBody))
 
         #Smart contract functions
+        c.add_function(Function("strCompare",
+                                [Variable("stringA", "string", "memory"), Variable("stringB", "string", "memory")],
+                                "return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));",
+                                "private",
+                                "bool"))
+
+        c.add_function(Function("transitionFrom",
+                                [Variable("state","string","memory"), Variable("label","string","memory")],
+                                "return transitions[state][label];",
+                                "private",
+                                "string[] memory"))
+
+        c.add_function(Function("stateAlreadyExists",
+                        [Variable("s","string","memory"), Variable("states","string[]","memory")],
+                        """for (uint i = 0; i < states.length; i++) {
+    if (strCompare(s,states[i])) {
+        return true;
+    }
+}
+return false;""",
+                        "private",
+                        "bool"))
+
+        c.add_function(Function("checkInitialAndFinalStates",
+                        [Variable("states", "string[]","memory")],
+                        """start = false;
+end = false;
+for (uint i = 0; i < states.length; i++) {
+    if (strCompare(states[i],initialState)) {
+            start = true;
+        }
+        for (uint k = 0; k < finalStates.length; k++) {
+            if (strCompare(states[i],finalStates[k])) {
+                end = true;
+           }
+        }
+    }""",
+                        "private",))
+
+        c.add_function(Function("e_closure",
+                        [Variable("states","string[]","memory")],
+                        """delete tmpStates;
+tmpStates = states;
+bool found = (tmpStates.length > 0);
+while (found) {
+    found = false;
+    for (uint i = 0; i < tmpStates.length; i++) {
+        for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
+            if (!stateAlreadyExists(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
+                tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
+                found = true;
+            }
+        }
+    }
+}
+checkInitialAndFinalStates(tmpStates);
+return tmpStates;""",
+                        "private",
+                        "string[] memory"))
+
         c.add_function(Function("getStates",
                                 [],
                                 "return states;",
@@ -91,60 +151,6 @@ currentStates = e_closure(tmpStates);"""
                                 "return message;",
                                 "public view",
                                 "string[] memory"))
-        
-        c.add_function(Function("transitionFrom",
-                                [Variable("state","string","memory"), Variable("label","string","memory")],
-                                "return transitions[state][label];",
-                                "private",
-                                "string[] memory"))
-
-        c.add_function(Function("stateAlreadyExists",
-                        [Variable("s","string","memory"), Variable("states","string[]","memory")],
-                        """for (uint i = 0; i < states.length; i++) {
-    if (keccak256(abi.encodePacked(s)) == keccak256(abi.encodePacked(states[i]))) {
-        return true;
-    }
-}
-return false;""",
-                        "private",
-                        "bool"))
-
-        c.add_function(Function("checkInitialAndFinalStates",
-                        [Variable("states", "string[]","memory")],
-                        """start = false;
-end = false;
-for (uint i = 0; i < states.length; i++) {
-    if (keccak256(abi.encodePacked(states[i])) == keccak256(abi.encodePacked(initialState))) {
-            start = true;
-        }
-        for (uint k = 0; k < finalStates.length; k++) {
-            if (keccak256(abi.encodePacked(states[i])) == keccak256(abi.encodePacked(finalStates[k]))) {
-                end = true;
-           }
-        }
-    }""",
-                        "private",))
-
-        c.add_function(Function("e_closure",
-                        [Variable("states","string[]","memory")],
-                        """delete tmpStates;
-tmpStates = states;
-bool found = (tmpStates.length > 0);
-while (found) {
-    found = false;
-    for (uint i = 0; i < tmpStates.length; i++) {
-        for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
-            if (!stateAlreadyExists(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
-                tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
-                found = true;
-            }
-        }
-    }
-}
-checkInitialAndFinalStates(tmpStates);
-return tmpStates;""",
-                        "private",
-                        "string[] memory"))
 
         c.add_function(Function("transition",
                                 [Variable("label","string","memory")],
@@ -160,5 +166,5 @@ message.push(label);
 currentStates = e_closure(tmpStates);""",
                                 "public"))
 
-        return c.compile()
+        c.compile()
     
