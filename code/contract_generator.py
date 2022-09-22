@@ -6,7 +6,7 @@ import os
 from django.conf import settings
 
 
-class Parser:
+class ContractGenerator:
     
     def setUp(self):
 
@@ -31,8 +31,8 @@ class Parser:
             c.save()
             
 
-    def createContract(self):
-        choreography:Choreography = Choreography.objects.get(name="diagram_gateways")
+    def createContract(self, choreographyName: str):
+        choreography:Choreography = Choreography.objects.get(name=choreographyName)
         r, match = rei.ChoToRei(choreography)
         n = nfa.ReiToNFA(r)
 
@@ -52,8 +52,16 @@ class Parser:
 
         #Smart contract constructor
         constructorBody = ""
+        transitionsDict = {}
         for t in n.transitions:
-            constructorBody += 'transitions["' + str(t.source.id) + '"]["' + str(t.label) + '"]=["' + str(t.target.id) + '"];\n'
+            if f"{t.source.id}.{t.label}" not in transitionsDict.keys():
+                transitionsDict[f"{t.source.id}.{t.label}"] = [t.target.id]
+            else:
+                transitionsDict[f"{t.source.id}.{t.label}"].append(str(t.target.id))
+        
+        for key in transitionsDict:
+            key = key.split(".")
+            constructorBody += f"transitions['{key[0]}']['{key[1]}'] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
         constructorBody += """
 delete tmpStates;
 tmpStates.push(initialState);
@@ -68,13 +76,7 @@ currentStates = e_closure(tmpStates);"""
                                 "private",
                                 "bool"))
 
-        c.add_function(Function("transitionFrom",
-                                [Variable("state","string","memory"), Variable("label","string","memory")],
-                                "return transitions[state][label];",
-                                "private",
-                                "string[] memory"))
-
-        c.add_function(Function("stateAlreadyExists",
+        c.add_function(Function("contains",
                         [Variable("s","string","memory"), Variable("states","string[]","memory")],
                         """for (uint i = 0; i < states.length; i++) {
     if (strCompare(s,states[i])) {
@@ -101,6 +103,19 @@ for (uint i = 0; i < states.length; i++) {
     }""",
                         "private",))
 
+        c.add_function(Function("union",
+                        [Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
+                        """delete tmpStates;
+tmpStates = arrayA;
+for (uint i = 0; i < arrayB.length; i++) {
+    if(!contains(arrayB[i], tmpStates)) {
+        tmpStates.push(arrayB[i]);
+    }
+}
+return tmpStates;""",
+                        "private",
+                        "string[] memory"))
+
         c.add_function(Function("e_closure",
                         [Variable("states","string[]","memory")],
                         """delete tmpStates;
@@ -110,7 +125,7 @@ while (found) {
     found = false;
     for (uint i = 0; i < tmpStates.length; i++) {
         for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
-            if (!stateAlreadyExists(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
+            if (!contains(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
                 tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
                 found = true;
             }
@@ -152,19 +167,38 @@ return tmpStates;""",
                                 "public view",
                                 "string[] memory"))
 
+        c.add_function(Function("transitionFrom",
+                                [Variable("state","string","memory"), Variable("label","string","memory")],
+                                "return transitions[state][label];",
+                                "public",
+                                "string[] memory"))
+
         c.add_function(Function("transition",
                                 [Variable("label","string","memory")],
                                 """delete tmpStates;
 for (uint i = 0; i < currentStates.length; i++) {
     string[] memory s = transitionFrom(currentStates[i],label);
-    for(uint j=0; j< s.length; j++) {
-        tmpStates.push(s[j]);
-        }
+    tmpStates = union(tmpStates, s);
 }
 require(tmpStates.length != 0);
 message.push(label);
 currentStates = e_closure(tmpStates);""",
                                 "public"))
+        
+        c.add_function(Function("checkEnabledTransitions",
+                        [Variable("symbol","string","memory")],
+                        """for (uint i = 0; i < currentStates.length; i++) {
+    string[] memory s_reached = transitionFrom(currentStates[i], symbol);
+    if (s_reached.length > 0) return true;
+    //reached = union(reached, s_reached); 
+}
+return false;""",
+                        "public",
+                        "bool"))
+        
+        return c
+    
+    def compileContract(self, contract: Contract):
+        return contract.compile()
 
-        c.compile()
     

@@ -2,12 +2,18 @@
 pragma solidity >= 0.7.6;
 pragma abicoder v2;
 
+
+
+
 contract DiagramGatewaysNFA {
 
-	string[] states = ['cbrnbltc', 'bgvianmb', 'ddeksmgq', 'yqabnuiv', 'mrwsfzcy', 'wxfyrycw', 'alyegbme', 'bazbofur', 'treliwwl', 'mbpvqyek', 'dwjyxtds'];
+
+
+
+	string[] states = ['pewyrmlg', 'enudxeag', 'gfuwnisl', 'edtbcqoa', 'dwjulywl', 'kbglflll', 'bkucnlof', 'aouyhtfr', 'imkgyzpp', 'wbsgkunm', 'sqahuohj'];
 	string[] tmpStates;
-	string initialState = "cbrnbltc";
-	string[] finalStates = ['dwjyxtds'];
+	string initialState = "pewyrmlg";
+	string[] finalStates = ['sqahuohj'];
 	string[] currentStates;
 	string[] message;
 	string epsilon;
@@ -16,17 +22,16 @@ contract DiagramGatewaysNFA {
 	mapping(string => mapping(string => string[])) transitions;
 
 	constructor() public {
-		transitions["bgvianmb"]["order pizza"]=["ddeksmgq"];
-		transitions["cbrnbltc"][""]=["bgvianmb"];
-		transitions["mrwsfzcy"]["New Activity"]=["wxfyrycw"];
-		transitions["yqabnuiv"][""]=["mrwsfzcy"];
-		transitions["yqabnuiv"][""]=["alyegbme"];
-		transitions["alyegbme"]["hand over pizza"]=["bazbofur"];
-		transitions["treliwwl"]["deliver pizza"]=["mbpvqyek"];
-		transitions["bazbofur"][""]=["treliwwl"];
-		transitions["ddeksmgq"][""]=["yqabnuiv"];
-		transitions["mbpvqyek"][""]=["dwjyxtds"];
-		transitions["wxfyrycw"][""]=["dwjyxtds"];
+		transitions['enudxeag']['order pizza'] = ['gfuwnisl'];
+		transitions['pewyrmlg'][''] = ['enudxeag'];
+		transitions['dwjulywl']['New Activity'] = ['kbglflll'];
+		transitions['edtbcqoa'][''] = ['bkucnlof', 'dwjulywl'];
+		transitions['bkucnlof']['hand over pizza'] = ['aouyhtfr'];
+		transitions['imkgyzpp']['deliver pizza'] = ['wbsgkunm'];
+		transitions['aouyhtfr'][''] = ['imkgyzpp'];
+		transitions['gfuwnisl'][''] = ['edtbcqoa'];
+		transitions['kbglflll'][''] = ['sqahuohj'];
+		transitions['wbsgkunm'][''] = ['sqahuohj'];
 		
 		delete tmpStates;
 		tmpStates.push(initialState);
@@ -40,7 +45,7 @@ contract DiagramGatewaysNFA {
 	}
 	
 	
-	function transitionFrom(string memory state, string memory label) private returns (string[] memory){
+	function transitionFrom(string memory state, string memory label) public returns (string[] memory){
 		return transitions[state][label];
 	}
 	
@@ -68,6 +73,18 @@ contract DiagramGatewaysNFA {
 		           }
 		        }
 		    }
+	}
+	
+	
+	function union(string[] memory arrayA, string[] memory arrayB) private returns (string[] memory){
+		delete tmpStates;
+		tmpStates = arrayA;
+		for (uint i = 0; i < arrayB.length; i++) {
+		    if(!stateAlreadyExists(arrayB[i], tmpStates)) {
+		        tmpStates.push(arrayB[i]);
+		    }
+		}
+		return tmpStates;
 	}
 	
 	
@@ -120,13 +137,21 @@ contract DiagramGatewaysNFA {
 		delete tmpStates;
 		for (uint i = 0; i < currentStates.length; i++) {
 		    string[] memory s = transitionFrom(currentStates[i],label);
-		    for(uint j=0; j< s.length; j++) {
-		        tmpStates.push(s[j]);
-		        }
+		    tmpStates = union(tmpStates, s);
 		}
 		require(tmpStates.length != 0);
 		message.push(label);
 		currentStates = e_closure(tmpStates);
+	}
+	
+	
+	function checkEnabledTransitions(string memory symbol) public returns (bool){
+		for (uint i = 0; i < currentStates.length; i++) {
+		    string[] memory s_reached = transitionFrom(currentStates[i], symbol);
+		    if (s_reached.length > 0) return true;
+		    //reached = union(reached, s_reached); 
+		}
+		return false;
 	}
 	
 	

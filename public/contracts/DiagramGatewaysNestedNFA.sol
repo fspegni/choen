@@ -2,12 +2,15 @@
 pragma solidity >= 0.7.6;
 pragma abicoder v2;
 
+
 contract DiagramGatewaysNestedNFA {
 
-	string[] states = ['xexrqtna', 'gayofqvw', 'ishlmmja', 'ftrfpvbc', 'wlbwyccj', 'iwxcjvfg', 'dovfjkvx', 'qsqvzvkm', 'ngauaufq', 'wmnslgub', 'ygsrasxv__azghwvrz', 'ygsrasxv__jfklsvol', 'kidzozpl__azghwvrz', 'kidzozpl__jfklsvol', 'jiegbuaf__azghwvrz', 'jiegbuaf__jfklsvol', 'fdtxptyn__azghwvrz', 'fdtxptyn__jfklsvol', 'qxacezld'];
+
+
+	string[] states = ['zxonooqw', 'jprzliuy', 'dsvnozvh', 'mpwzwzkw', 'ucdhwcxj', 'vfseipap', 'esunnavw', 'btmofkhk', 'lykhzxmg', 'jvfwobcl', 'mkadoavx__bqcqkjvx', 'mkadoavx__dbjusalw', 'hcynxnsj__bqcqkjvx', 'hcynxnsj__dbjusalw', 'kcajdyan__bqcqkjvx', 'kcajdyan__dbjusalw', 'lteafkcd__bqcqkjvx', 'lteafkcd__dbjusalw', 'aobhnhxq'];
 	string[] tmpStates;
-	string initialState = "xexrqtna";
-	string[] finalStates = ['qxacezld'];
+	string initialState = "zxonooqw";
+	string[] finalStates = ['aobhnhxq'];
 	string[] currentStates;
 	string[] message;
 	string epsilon;
@@ -16,28 +19,27 @@ contract DiagramGatewaysNestedNFA {
 	mapping(string => mapping(string => string[])) transitions;
 
 	constructor() public {
-		transitions["gayofqvw"]["order pizza"]=["ishlmmja"];
-		transitions["xexrqtna"][""]=["gayofqvw"];
-		transitions["wlbwyccj"]["New Activity"]=["iwxcjvfg"];
-		transitions["ftrfpvbc"][""]=["wlbwyccj"];
-		transitions["ftrfpvbc"][""]=["dovfjkvx"];
-		transitions["dovfjkvx"]["hand over pizza"]=["qsqvzvkm"];
-		transitions["ngauaufq"]["deliver pizza"]=["wmnslgub"];
-		transitions["qsqvzvkm"][""]=["ngauaufq"];
-		transitions["ygsrasxv__azghwvrz"]["Another task"]=["ygsrasxv__jfklsvol"];
-		transitions["ygsrasxv__azghwvrz"]["Something"]=["kidzozpl__azghwvrz"];
-		transitions["ygsrasxv__jfklsvol"]["Something"]=["kidzozpl__jfklsvol"];
-		transitions["kidzozpl__azghwvrz"]["Another task"]=["kidzozpl__jfklsvol"];
-		transitions["kidzozpl__azghwvrz"][""]=["jiegbuaf__azghwvrz"];
-		transitions["kidzozpl__jfklsvol"][""]=["jiegbuaf__jfklsvol"];
-		transitions["jiegbuaf__azghwvrz"]["Another task"]=["jiegbuaf__jfklsvol"];
-		transitions["jiegbuaf__azghwvrz"]["Something else"]=["fdtxptyn__azghwvrz"];
-		transitions["jiegbuaf__jfklsvol"]["Something else"]=["fdtxptyn__jfklsvol"];
-		transitions["fdtxptyn__azghwvrz"]["Another task"]=["fdtxptyn__jfklsvol"];
-		transitions["wmnslgub"][""]=["ygsrasxv__azghwvrz"];
-		transitions["ishlmmja"][""]=["ftrfpvbc"];
-		transitions["fdtxptyn__jfklsvol"][""]=["qxacezld"];
-		transitions["iwxcjvfg"][""]=["qxacezld"];
+		transitions['jprzliuy']['order pizza'] = ['dsvnozvh'];
+		transitions['zxonooqw'][''] = ['jprzliuy'];
+		transitions['ucdhwcxj']['New Activity'] = ['vfseipap'];
+		transitions['mpwzwzkw'][''] = ['ucdhwcxj', 'esunnavw'];
+		transitions['esunnavw']['hand over pizza'] = ['btmofkhk'];
+		transitions['lykhzxmg']['deliver pizza'] = ['jvfwobcl'];
+		transitions['btmofkhk'][''] = ['lykhzxmg'];
+		transitions['mkadoavx__bqcqkjvx']['Another task'] = ['mkadoavx__dbjusalw'];
+		transitions['mkadoavx__bqcqkjvx']['Something'] = ['hcynxnsj__bqcqkjvx'];
+		transitions['mkadoavx__dbjusalw']['Something'] = ['hcynxnsj__dbjusalw'];
+		transitions['hcynxnsj__bqcqkjvx']['Another task'] = ['hcynxnsj__dbjusalw'];
+		transitions['hcynxnsj__bqcqkjvx'][''] = ['kcajdyan__bqcqkjvx'];
+		transitions['hcynxnsj__dbjusalw'][''] = ['kcajdyan__dbjusalw'];
+		transitions['kcajdyan__bqcqkjvx']['Another task'] = ['kcajdyan__dbjusalw'];
+		transitions['kcajdyan__bqcqkjvx']['Something else'] = ['lteafkcd__bqcqkjvx'];
+		transitions['kcajdyan__dbjusalw']['Something else'] = ['lteafkcd__dbjusalw'];
+		transitions['lteafkcd__bqcqkjvx']['Another task'] = ['lteafkcd__dbjusalw'];
+		transitions['jvfwobcl'][''] = ['mkadoavx__bqcqkjvx'];
+		transitions['dsvnozvh'][''] = ['mpwzwzkw'];
+		transitions['vfseipap'][''] = ['aobhnhxq'];
+		transitions['lteafkcd__dbjusalw'][''] = ['aobhnhxq'];
 		
 		delete tmpStates;
 		tmpStates.push(initialState);
