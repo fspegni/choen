@@ -2,10 +2,11 @@ import nfa
 import traceback
 import sys
 import os
+import re
 
 class Engine:
 
-    def __init__(self): #, nfa : nfa.NFA):
+    def __init__(self):
         self._debug : bool = True
 
 
@@ -46,6 +47,29 @@ class Engine:
         raise Exception("This is an abstract method, you should implement it")
 
 
+    # RULE CONDITIONS
+    def condition_rule_send(self, event):
+        raise Exception("This is an abstract method, you should implement it")
+
+    def condition_rule_receive_now(self, event):
+        raise Exception("This is an abstract method, you should implement it")
+
+    def condition_rule_receive_delayed(self, event):
+        raise Exception("This is an abstract method, you should implement it")
+    
+    # RULE EFFECTS
+    def rule_send(self, event):
+        raise Exception("This is an abstract method, you should implement it")
+    
+    def rule_receive_now(self, event):
+
+        raise Exception("This is an abstract method, you should implement it")
+
+    def rule_receive_delayed(self, event):
+
+        raise Exception("This is an abstract method, you should implement it")
+
+
 class EngineOffChain(Engine):
 
     def __init__(self, nfa : nfa.NFA):
@@ -71,7 +95,6 @@ class EngineOffChain(Engine):
     # UTILS
 
     def _buffer_add(self, actor : str, message : str):
-        # actor, message = str.split("?")
 
         actor_buffer = self._buffer.get(actor, {})
         message_counter = actor_buffer.get(message, 0)
@@ -146,7 +169,18 @@ class EngineOffChain(Engine):
 
     # CONDITIONS below
 
+    def condition_rule_send(self, event):
+        #return "!" in event
+        m = re.match("^[^?!]+![^!?]+$", event) 
+        self._debug_log(f"(* Condition rule receive send: {event} => {m} *)")
+        return m is not None
+
     def condition_rule_receive_now(self, event):
+
+        m = re.match("^[^!?]+\?[^!?]+$", event) 
+        self._debug_log(f"(* Condition rule receive now 1st: {event} => {m} *)")
+        if m is None:
+            return False
 
         for curr in self._curr_states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
@@ -155,6 +189,12 @@ class EngineOffChain(Engine):
                 return True
 
         return False
+
+    def condition_rule_receive_delayed(self, event):    
+
+        m = re.match("^[^!?]+\?[^!?]+$", event) 
+        self._debug_log(f"(* Condition rule receive delayed: {event} => {m} *)")
+        return m is not None
 
     # RULES below
 
@@ -177,7 +217,9 @@ class EngineOffChain(Engine):
         self._curr_states = reached
         return event
 
-    def rule_receive_delayed(self, actor, message):
+#    def rule_receive_delayed(self, actor, message):
+    def rule_receive_delayed(self, event):
+        actor, message = event.split("?")
         self._buffer_add(actor, message)
         return ""
 
@@ -249,20 +291,24 @@ class Enforcer:
         out = None
         num_states_pre = self._engine.get_num_states() #en(self._curr_states)
 
-        if "!" in event:
+#        if "!" in event:
             # actor, message = event.split("!")
+        if self._engine.condition_rule_send(event):
             out = self._engine.rule_send(event)
 
-        elif "?" in event:
-            actor, message = event.split("?")
-
-            if self._engine.condition_rule_receive_now(event):
+#        elif "?" in event:
+#            actor, message = event.split("?")
+        elif self._engine.condition_rule_receive_now(event):
                 out = self._engine.rule_receive_now(event)
-            else:
+
+        elif self._engine.condition_rule_receive_delayed(event):
                 # TODO add check that the message may actually be consumed afterwards;
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
-                out = self._engine.rule_receive_delayed(actor, message)
-        
+            #out = self._engine.rule_receive_delayed(actor, message)
+            out = self._engine.rule_receive_delayed(event)
+        else:
+            self._debug_log("(* No matching condition *)")        
+
         nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
 
