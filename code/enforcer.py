@@ -3,14 +3,9 @@ import traceback
 import sys
 import os
 
-#class Enforcer:
 class Engine:
 
     def __init__(self): #, nfa : nfa.NFA):
-#        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
-#        self._nfa : nfa.NFA = nfa
-#        self._buffer = {}
-#        self._curr_states = set([ self._nfa.initial.id ])
         self._debug : bool = True
 
 
@@ -57,7 +52,7 @@ class EngineOffChain(Engine):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._nfa : nfa.NFA = nfa
         self._buffer = {}
-        self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))  #set([ self._nfa.initial.id ])
+        self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))
         self._debug : bool = True
 
 
@@ -95,103 +90,22 @@ class EngineOffChain(Engine):
         actor_buffer[message] = message_counter - 1
         self._buffer[actor] = actor_buffer
 
-##    def buffer_dump(self):
-##        print("BUFFER:")
-##        for actor, actor_buffer in self._buffer.items():
-##            for msg, counter in actor_buffer.items():
-##                for i in range(counter):
-##                    print(f"{actor}?{msg}")
-
-##    def buffer_has_message(self, actor=None, message=None):
-##        if actor is not None:
-##            if actor not in self._buffer:
-##                return False
-##            else:
-##                return message is None or \
-##                    (message in self._buffer[actor] and self._buffer[actor][message] > 0)
-##
-##        elif message is not None:
-##            
-##            for actor, actor_buffer in self._buffer.items():
-##                if message in actor_buffer:
-##                    return True
-##            
-##            return False
-##
-##        else:
-##            raise Exception("Please, specify either an actor or a message as argument, or both")
-        
-##    def buffer_empty(self) -> bool:
-##        for actor, actor_buffer in self._buffer.items():
-##            for msg, counter in actor_buffer.items():
-##                if counter > 0:
-##                    return False
-##
-##        return True
-
     
     def _buffer_find_usable_message(self):
         found = None
-
-#        e_closure = self._nfa.e_closure(self._curr_states)
 
         for actor, actor_buffer in self._buffer.items():
             for message, counter in actor_buffer.items():
                 if counter > 0:
                     event = f"{actor}?{message}"
-#                    for s in e_closure:
                     for s in self._curr_states:
                         if self._nfa.transitions_from(s, event):
                             found = (actor, message)
                             return found
-                            # break
         
-        #return found
         raise Exception("No usable message found")
 
     
-##    # PROCESSORS
-##
-##    def process_input(self, event_stream : str):
-##        out = None
-##        num_states_pre = len(self._curr_states)
-##        iscan = nfa.InputScanner(event_stream)
-##
-##        while not iscan.eof:        
-##            event = iscan.scan_input()
-##            
-##            if "!" in event:
-##                # actor, message = event.split("!")
-##                out = self.rule_send(event)
-##
-##            elif "?" in event:
-##                actor, message = event.split("?")
-##
-##                if self.condition_rule_receive_now(event):
-##                    out = self.rule_receive_now(event)
-##                else:
-##                    # TODO add check that the message may actually be consumed afterwards;
-##                    # without this check, it does not make sense to implement the rule "Cannot receive" 
-##                    out = self.rule_receive_delayed(actor, message)
-##            
-##        nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
-##        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-##
-##        return out
-##
-##    def process_check(self):
-##
-##        out = ""
-##
-##        try:
-##            actor, message = self.buffer_find_usable_message()
-##            out = self.rule_receive_buffered(actor, message)
-##        except Exception:
-##            pass
-##
-##        return out
-##
-
     # INTERFACE methods
 
     def ended(self):
@@ -217,7 +131,6 @@ class EngineOffChain(Engine):
             s = s.id
         
         res = (s in self._curr_states)
-        #self._debug_log(f"(* is_state_current : {s} vs {self._curr_states} => {res} *)")
         return res
 
     def get_buffer_items(self):
@@ -225,10 +138,7 @@ class EngineOffChain(Engine):
 
         for actor,actor_buffer in self.buffer.items():
             for message,counter in actor_buffer.items():
-                #if counter > 0:
-                    #msg = f"{actor}?{message}" 
                 for i in range(counter):
-#                    items.append(f"{actor}?{message}")
                     items.append((actor, message))
         return items
 
@@ -238,9 +148,6 @@ class EngineOffChain(Engine):
 
     def condition_rule_receive_now(self, event):
 
-#        e_closure = self._nfa.e_closure(self._curr_states)
-
-#        for curr in e_closure:
         for curr in self._curr_states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
 
@@ -285,7 +192,6 @@ class EngineOffChain(Engine):
         event = f"{actor}?{message}"
 
         reached = set()
-        # accepted, new_state, remaining = self._nfa.read_string(event, self._curr_state)
         for s in self._curr_states:
             s_reached = self._nfa.read_symbol(event, s)
 
@@ -293,10 +199,8 @@ class EngineOffChain(Engine):
                 self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
             else:
                 reached = reached.union(s_reached)
-            # self._curr_state = new_state
         
         self._buffer_remove(actor, message)
-        # self._buffer[actor][message] = counter - 1   
 
         nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
@@ -315,9 +219,6 @@ class Enforcer:
 
     def __init__(self, nfa : nfa.NFA):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
-#        self._nfa : nfa.NFA = nfa
-#        self._buffer = {}
-#        self._curr_states = set([ self._nfa.initial.id ])
         self._debug : bool = True
 
         self._engine = EngineOffChain(nfa)
@@ -347,10 +248,6 @@ class Enforcer:
     def process_input(self, event): #event_stream : str):
         out = None
         num_states_pre = self._engine.get_num_states() #en(self._curr_states)
-#        iscan = nfa.InputScanner(event_stream)
-
-#        while not iscan.eof:        
-#            event = iscan.scan_input()
 
         if "!" in event:
             # actor, message = event.split("!")
@@ -366,7 +263,6 @@ class Enforcer:
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
                 out = self._engine.rule_receive_delayed(actor, message)
         
-#        nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
         nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
 
@@ -477,9 +373,6 @@ class UI:
 
         assert self._enforcer is not None
 
-#        if userin[0] == "/":
-#            return self._process_command(userin[1:])
-#        else:
 
         iscan = nfa.InputScanner(event_stream)
 
@@ -497,7 +390,6 @@ class UI:
                 else:
                     break                   
             
-#        if self._enforcer.nfa.is_final(self._enforcer.curr_states):
         if self._enforcer.ended():
             self._debug_log("(* Ended *)")       
             self._enforcer = None
@@ -530,10 +422,6 @@ class UI:
                 print(f"Choreography {name} imported ...")
             else:
                 print(f"Choreography {name} already exists ...")
-
-            # c.name = name
-            # c.resource = os.path.join(settings.MEDIA_ROOT, filename)
-            # c.save()
 
 
     def cmd_debug(self, *args, **kwargs):
@@ -592,20 +480,15 @@ class UI:
             print("You must start the enforcer, before dumping the state")
             return
 
-        #nfa = self._enforcer.nfa
         if len(args) == 0:
             print("Please specify an argument: dump <curr_states|states|transitions|buffer>")
         else:
             if args[0] == "curr_states":    
                 print("\nCurrent states: \n")
-                # print(", ".join(self._enforcer._curr_states))
-                #for s in self._enforcer._curr_states:
                 for s in self._enforcer.engine.get_curr_states():
                     label = str(s)
-                    #if nfa.is_initial(s):
                     if self._enforcer.engine.is_state_initial(s):
                         label = f"{label} : i"
-                    #if nfa.is_final(s):
                     if self._enforcer.engine.is_state_final(s):
                         label = f"{label} : f"
                     print(label)
@@ -613,31 +496,24 @@ class UI:
 
             elif args[0] == "transitions":
                 print("\nTransitions (*=enabled): \n")
-#                print("\n".join(map(lambda t: str(t), self._enforcer.engine.get_transitions()))) #nfa.transitions)))
-#                res = []
                 for t in self._enforcer.engine.get_transitions():
 
                     t_repr = str(t)
-#                    self._debug_log(f"(* Check transition {t} *) => {t_repr}")
                     if self._enforcer.engine.is_state_current(t.source):
                         t_repr = f" * {t_repr}"
                     else:
                         t_repr = f"   {t_repr}"
 
                     print(t_repr)
-                    #res.append(t_repr)
-#                return "\n".join(res)a
 
             elif args[0] == "states":
                 print("\nStates (*=current, i=initial, f=final) : \n")
-                for s in self._enforcer.engine.get_all_states(): #nfa.states:
+                for s in self._enforcer.engine.get_all_states():
                     label = str(s)
-                    #if nfa.is_initial(s):
 
                     if self._enforcer.engine.is_state_initial(s):
                         label = f"{label} : i"
 
-                    #if nfa.is_final(s):
                     if self._enforcer.engine.is_state_final(s):
                         label = f"{label} : f"
 
@@ -652,12 +528,7 @@ class UI:
             elif args[0] == "buffer":
                 print("\nBuffer: \n")
                 for actor,message in self._enforcer.engine.get_buffer_items():
-#                for actor,actor_buffer in self._enforcer.buffer.items():
-#                    for message,counter in actor_buffer.items():
-#                        if counter > 0:
                     msg = f"{actor}?{message}"
-#                            if counter > 1:
-#                                msg = f"{msg} (x {counter})"
 
                     print(msg)
 
