@@ -3,14 +3,42 @@ import traceback
 import sys
 import os
 
-class Enforcer:
+#class Enforcer:
+class Engine:
+
+    def __init__(self): #, nfa : nfa.NFA):
+#        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+#        self._nfa : nfa.NFA = nfa
+#        self._buffer = {}
+#        self._curr_states = set([ self._nfa.initial.id ])
+        self._debug : bool = True
+
+
+    def set_debug(self, debug: bool):
+        self._debug = debug
+
+    # DEBUG LOG
+    def _debug_log(self, text):
+        if self._debug:
+            print(text)
+
+
+    def get_num_states(self):
+        raise Exception("This is an abstract method, you should implement it")
+
+    def ended(self):
+        raise Exception("This is an abstract method, you should implement it")
+
+
+class EngineOffChain(Engine):
 
     def __init__(self, nfa : nfa.NFA):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._nfa : nfa.NFA = nfa
         self._buffer = {}
-        self._curr_states = set([ self._nfa.initial.id ])
+        self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))  #set([ self._nfa.initial.id ])
         self._debug : bool = True
+
 
     @property
     def buffer(self) -> dict:
@@ -24,12 +52,9 @@ class Enforcer:
     def nfa(self):
         return self._nfa
 
-    def set_debug(self, debug: bool):
-        self._debug = debug
-
     # UTILS
 
-    def buffer_add(self, actor : str, message : str):
+    def _buffer_add(self, actor : str, message : str):
         # actor, message = str.split("?")
 
         actor_buffer = self._buffer.get(actor, {})
@@ -37,7 +62,7 @@ class Enforcer:
         actor_buffer[message] = message_counter + 1
         self._buffer[actor] = actor_buffer
 
-    def buffer_remove(self, actor : str, message : str):
+    def _buffer_remove(self, actor : str, message : str):
 
         actor_buffer = self._buffer.get(actor, {})
         message_counter = actor_buffer.get(message, 0)
@@ -49,51 +74,52 @@ class Enforcer:
         actor_buffer[message] = message_counter - 1
         self._buffer[actor] = actor_buffer
 
-    def buffer_dump(self):
-        print("BUFFER:")
-        for actor, actor_buffer in self._buffer.items():
-            for msg, counter in actor_buffer.items():
-                for i in range(counter):
-                    print(f"{actor}?{msg}")
+##    def buffer_dump(self):
+##        print("BUFFER:")
+##        for actor, actor_buffer in self._buffer.items():
+##            for msg, counter in actor_buffer.items():
+##                for i in range(counter):
+##                    print(f"{actor}?{msg}")
 
-    def buffer_has_message(self, actor=None, message=None):
-        if actor is not None:
-            if actor not in self._buffer:
-                return False
-            else:
-                return message is None or \
-                    (message in self._buffer[actor] and self._buffer[actor][message] > 0)
-
-        elif message is not None:
-            
-            for actor, actor_buffer in self._buffer.items():
-                if message in actor_buffer:
-                    return True
-            
-            return False
-
-        else:
-            raise Exception("Please, specify either an actor or a message as argument, or both")
+##    def buffer_has_message(self, actor=None, message=None):
+##        if actor is not None:
+##            if actor not in self._buffer:
+##                return False
+##            else:
+##                return message is None or \
+##                    (message in self._buffer[actor] and self._buffer[actor][message] > 0)
+##
+##        elif message is not None:
+##            
+##            for actor, actor_buffer in self._buffer.items():
+##                if message in actor_buffer:
+##                    return True
+##            
+##            return False
+##
+##        else:
+##            raise Exception("Please, specify either an actor or a message as argument, or both")
         
-    def buffer_empty(self) -> bool:
-        for actor, actor_buffer in self._buffer.items():
-            for msg, counter in actor_buffer.items():
-                if counter > 0:
-                    return False
-
-        return True
+##    def buffer_empty(self) -> bool:
+##        for actor, actor_buffer in self._buffer.items():
+##            for msg, counter in actor_buffer.items():
+##                if counter > 0:
+##                    return False
+##
+##        return True
 
     
-    def buffer_find_usable_message(self):
+    def _buffer_find_usable_message(self):
         found = None
 
-        e_closure = self._nfa.e_closure(self._curr_states)
+#        e_closure = self._nfa.e_closure(self._curr_states)
 
         for actor, actor_buffer in self._buffer.items():
             for message, counter in actor_buffer.items():
                 if counter > 0:
                     event = f"{actor}?{message}"
-                    for s in e_closure:
+#                    for s in e_closure:
+                    for s in self._curr_states:
                         if self._nfa.transitions_from(s, event):
                             found = (actor, message)
                             return found
@@ -103,54 +129,64 @@ class Enforcer:
         raise Exception("No usable message found")
 
     
-    # PROCESSORS
+##    # PROCESSORS
+##
+##    def process_input(self, event_stream : str):
+##        out = None
+##        num_states_pre = len(self._curr_states)
+##        iscan = nfa.InputScanner(event_stream)
+##
+##        while not iscan.eof:        
+##            event = iscan.scan_input()
+##            
+##            if "!" in event:
+##                # actor, message = event.split("!")
+##                out = self.rule_send(event)
+##
+##            elif "?" in event:
+##                actor, message = event.split("?")
+##
+##                if self.condition_rule_receive_now(event):
+##                    out = self.rule_receive_now(event)
+##                else:
+##                    # TODO add check that the message may actually be consumed afterwards;
+##                    # without this check, it does not make sense to implement the rule "Cannot receive" 
+##                    out = self.rule_receive_delayed(actor, message)
+##            
+##        nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
+##        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+##
+##        return out
+##
+##    def process_check(self):
+##
+##        out = ""
+##
+##        try:
+##            actor, message = self.buffer_find_usable_message()
+##            out = self.rule_receive_buffered(actor, message)
+##        except Exception:
+##            pass
+##
+##        return out
+##
 
-    def process_input(self, event_stream : str):
-        out = None
-        num_states_pre = len(self._curr_states)
-        iscan = nfa.InputScanner(event_stream)
+    # INTERFACE methods
 
-        while not iscan.eof:        
-            event = iscan.scan_input()
-            
-            if "!" in event:
-                # actor, message = event.split("!")
-                out = self.rule_send(event)
+    def ended(self):
+        return self._nfa.is_final(self._curr_states)
 
-            elif "?" in event:
-                actor, message = event.split("?")
-
-                if self.condition_rule_receive_now(event):
-                    out = self.rule_receive_now(event)
-                else:
-                    # TODO add check that the message may actually be consumed afterwards;
-                    # without this check, it does not make sense to implement the rule "Cannot receive" 
-                    out = self.rule_receive_delayed(actor, message)
-            
-        nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
-        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-
-        return out
-
-    def process_check(self):
-
-        out = ""
-
-        try:
-            actor, message = self.buffer_find_usable_message()
-            out = self.rule_receive_buffered(actor, message)
-        except Exception:
-            pass
-
-        return out
+    def get_num_states(self):
+        return len(self._nfa.curr_states)
 
     # CONDITIONS below
 
     def condition_rule_receive_now(self, event):
 
-        e_closure = self._nfa.e_closure(self._curr_states)
+#        e_closure = self._nfa.e_closure(self._curr_states)
 
-        for curr in e_closure:
+#        for curr in e_closure:
+        for curr in self._curr_states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
 
             if len(enabled_transitions) > 0:
@@ -180,7 +216,7 @@ class Enforcer:
         return event
 
     def rule_receive_delayed(self, actor, message):
-        self.buffer_add(actor, message)
+        self._buffer_add(actor, message)
         return ""
 
     def rule_receive_buffered(self, actor, message):
@@ -204,7 +240,7 @@ class Enforcer:
                 reached = reached.union(s_reached)
             # self._curr_state = new_state
         
-        self.buffer_remove(actor, message)
+        self._buffer_remove(actor, message)
         # self._buffer[actor][message] = counter - 1   
 
         nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
@@ -214,9 +250,78 @@ class Enforcer:
 
         return event
 
+
+class EngineOnChain(Engine):
+
+    pass
+
+
+class Enforcer:
+
+    def __init__(self, nfa : nfa.NFA):
+        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+#        self._nfa : nfa.NFA = nfa
+#        self._buffer = {}
+#        self._curr_states = set([ self._nfa.initial.id ])
+        self._debug : bool = True
+
+        self._engine = EngineOffChain(nfa)
+
+
+    # DEBUG LOG
+
+    def set_debug(self, debug: bool):
+        self._debug = debug
+
+
     def _debug_log(self, text):
         if self._debug:
             print(text)
+
+
+    # PROCESSORS
+
+    def process_input(self, event): #event_stream : str):
+        out = None
+        num_states_pre = self._engine.num_states #en(self._curr_states)
+#        iscan = nfa.InputScanner(event_stream)
+
+#        while not iscan.eof:        
+#            event = iscan.scan_input()
+
+        if "!" in event:
+            # actor, message = event.split("!")
+            out = self._engine.rule_send(event)
+
+        elif "?" in event:
+            actor, message = event.split("?")
+
+            if self._engine.condition_rule_receive_now(event):
+                out = self._engine.rule_receive_now(event)
+            else:
+                # TODO add check that the message may actually be consumed afterwards;
+                # without this check, it does not make sense to implement the rule "Cannot receive" 
+                out = self._engine.rule_receive_delayed(actor, message)
+        
+#        nd_factor = (len(self._curr_states) - num_states_pre) / num_states_pre
+        nd_factor = (self._engine.num_states - num_states_pre) / num_states_pre
+        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+
+        return out
+
+    def process_check(self):
+
+        out = ""
+
+        try:
+            actor, message = self._buffer_find_usable_message()
+            out = self.rule_receive_buffered(actor, message)
+        except Exception:
+            pass
+
+        return out
+
+
 
 
 from enforcer import *
@@ -242,6 +347,7 @@ class UI:
     PROMPT_ENFORCER = "+> "
     PROMPT_CLI = ">> "
 
+
     def __init__(self, *args, **kwargs):
         self._registry = {
             "init"  : self.cmd_init,
@@ -257,6 +363,7 @@ class UI:
         self._enforcer = None
         self._debug = True
 
+
     def prompt(self):
         userin = None
         if self._enforcer:
@@ -266,13 +373,15 @@ class UI:
 
         return userin
 
-    def process_input(self, userin):
-        if self._enforcer:
-            return self._process_input_enforcer(userin)
-        else:
-            return self._process_input_cli(userin)
 
-    def _process_input_cli(self, userin : str):
+    def consume(self, userin):
+        if self._enforcer or userin[0] == "/":
+            return self._consume_events(userin)
+        else:
+            return self._consume_command(userin)
+
+
+    def _consume_command(self, userin : str):
 
         userin_parts = userin.split(" ")
         cmd = userin_parts[0]
@@ -287,26 +396,33 @@ class UI:
             print(f"ERROR: Command not recognized: {cmd} {' ' .join(cmd_args)}")
 
 
-    def _process_input_enforcer(self, userin : str):
+    def _consume_events(self, userin : str):
 
         assert self._enforcer is not None
 
-        if userin[0] == "/":
-            return self._process_input_cli(userin[1:])
-        else:
-            out = self._enforcer.process_input(userin)
+#        if userin[0] == "/":
+#            return self._process_command(userin[1:])
+#        else:
+
+        iscan = nfa.InputScanner(event_stream)
+
+        while not iscan.eof:        
+            event = iscan.scan_input()
+            out = self._enforcer.process_input(event)
+        
             if out:
                 print(out)
-        
+            
             while True:
                 out1 = self._enforcer.process_check()
                 if out1:
                     print(out1)
                 else:
-                    break
+                    break                   
             
-            if self._enforcer.nfa.is_final(self._enforcer.curr_states):
-                self._enforcer = None
+#        if self._enforcer.nfa.is_final(self._enforcer.curr_states):
+        if self._enforcer.ended():
+            self._enforcer = None
 
 
     def cmd_init(self, *args, **kwargs):
@@ -357,6 +473,7 @@ class UI:
         if self._enforcer:
             self._enforcer.set_debug(self._debug)
 
+
     def cmd_load(self, name, *args, **kwargs):
         c : Choreography = Choreography.objects.get(name=name)
         self._model.add_object("choreography", c)
@@ -376,12 +493,15 @@ class UI:
 
         self._enforcer = Enforcer(nfa)
 
+
     def cmd_quit(self, *args, **kwargs):
         print(f"Good bye")
+
 
     def cmd_help(self, *args, **kwargs):
         print("Available commands: ")
         print(", ".join(self._registry.keys()))
+
 
     def cmd_dump(self, *args, **kwargs):
         if self._enforcer is None:
@@ -427,6 +547,7 @@ class UI:
     def __enter__(self):
         return self
 
+
     def __exit__(self, *args, **kwargs):
         self.cmd_quit()
 
@@ -438,7 +559,7 @@ def cli(*args, **kwargs):
         while True:
             try:
                 userin = ui.prompt()
-                ui.process_input(userin)
+                ui.consume(userin)
             except (EOFError, KeyboardInterrupt):
                 break
             except Exception as e:
