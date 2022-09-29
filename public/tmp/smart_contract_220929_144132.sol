@@ -1,7 +1,6 @@
-
 pragma solidity >= 0.7.6;
 pragma abicoder v2;
-import './public/contracts/DiagramGatewaysNFA.sol';
+
 
 library strings {
     struct slice {
@@ -691,22 +690,180 @@ library strings {
 
         return ret;
     }
-}      
+}
 
 
-contract EnforcerDiagramGatewaysNFA {
-using strings for *;
+contract NFA {
+	
 
-event outputEvent(string messageOut);
+	
 
-	DiagramGatewaysNFA nfa;
+	string[] states = ['xbijgbcn', 'ndvufacc', 'wbhhqhax', 'nomtaxoe', 'tsxiwukv', 'hztjreeh', 'xjaaxiof', 'qmieimcb', 'btvkphoq', 'quabuzrp', 'nmgxdtmi'];
+	string[] tmpStates;
+	string initialState = "xbijgbcn";
+	string[] finalStates = ['nmgxdtmi'];
+	string[] currentStates;
+	string[] message;
+	string epsilon;
+	bool start;
+	bool end;
+	mapping(string => mapping(string => string[])) transitions;
+
+	constructor() public {
+		transitions['ndvufacc']['Pizza_Place?order_receipt'] = ['wbhhqhax'];
+		transitions['xbijgbcn'][''] = ['ndvufacc'];
+		transitions['tsxiwukv']['Pizza_Place?Message_0rkgt7n'] = ['hztjreeh'];
+		transitions['nomtaxoe'][''] = ['xjaaxiof', 'tsxiwukv'];
+		transitions['xjaaxiof']['Delivery_Boy?Message_1mi4idx'] = ['qmieimcb'];
+		transitions['btvkphoq']['Customer?Message_0i2a31h'] = ['quabuzrp'];
+		transitions['qmieimcb'][''] = ['btvkphoq'];
+		transitions['wbhhqhax'][''] = ['nomtaxoe'];
+		transitions['quabuzrp'][''] = ['nmgxdtmi'];
+		transitions['hztjreeh'][''] = ['nmgxdtmi'];
+		
+		delete tmpStates;
+		tmpStates.push(initialState);
+		currentStates = e_closure(tmpStates);
+	}
+	
+	
+
+	function strCompare(string memory stringA, string memory stringB) private returns (bool){
+		return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));
+	}
+	
+	
+	function contains(string memory s, string[] memory states) private returns (bool){
+		for (uint i = 0; i < states.length; i++) {
+		    if (strCompare(s,states[i])) {
+		        return true;
+		    }
+		}
+		return false;
+	}
+	
+	
+	function checkInitialAndFinalStates(string[] memory states) private {
+		start = false;
+		end = false;
+		for (uint i = 0; i < states.length; i++) {
+		    if (strCompare(states[i],initialState)) {
+		            start = true;
+		        }
+		        for (uint k = 0; k < finalStates.length; k++) {
+		            if (strCompare(states[i],finalStates[k])) {
+		                end = true;
+		           }
+		        }
+		    }
+	}
+	
+	
+	function union(string[] memory arrayA, string[] memory arrayB) private returns (string[] memory){
+		delete tmpStates;
+		tmpStates = arrayA;
+		for (uint i = 0; i < arrayB.length; i++) {
+		    if(!contains(arrayB[i], tmpStates)) {
+		        tmpStates.push(arrayB[i]);
+		    }
+		}
+		return tmpStates;
+	}
+	
+	
+	function e_closure(string[] memory states) private returns (string[] memory){
+		delete tmpStates;
+		tmpStates = states;
+		bool found = (tmpStates.length > 0);
+		while (found) {
+		    found = false;
+		    for (uint i = 0; i < tmpStates.length; i++) {
+		        for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
+		            if (!contains(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
+		                tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
+		                found = true;
+		            }
+		        }
+		    }
+		}
+		checkInitialAndFinalStates(tmpStates);
+		return tmpStates;
+	}
+	
+	
+	function getStates() public view returns (string[] memory){
+		return states;
+	}
+	
+	
+	function getCurrentStates() public view returns (string[] memory){
+		return currentStates;
+	}
+	
+	
+	function getFinalStates() public view returns (string[] memory){
+		return finalStates;
+	}
+	
+	
+	function isFinal() public view returns (bool){
+		return end;
+	}
+	
+	
+	function isInitial() public view returns (bool){
+		return start;
+	}
+	
+	
+	function getMessage() public view returns (string[] memory){
+		return message;
+	}
+	
+	
+	function transitionFrom(string memory state, string memory label) public returns (string[] memory){
+		return transitions[state][label];
+	}
+	
+	
+	function transition(string memory label) public {
+		delete tmpStates;
+		for (uint i = 0; i < currentStates.length; i++) {
+		    string[] memory s = transitionFrom(currentStates[i],label);
+		    tmpStates = union(tmpStates, s);
+		}
+		require(tmpStates.length != 0);
+		message.push(label);
+		currentStates = e_closure(tmpStates);
+	}
+	
+	
+	function checkEnabledTransitions(string memory symbol) public returns (bool){
+		for (uint i = 0; i < currentStates.length; i++) {
+		    string[] memory s_reached = transitionFrom(currentStates[i], symbol);
+		    if (s_reached.length > 0) return true;
+		    //reached = union(reached, s_reached); 
+		}
+		return false;
+	}
+	
+	
+}  
+
+
+contract Enforcer {
+	using strings for *;
+
+	event outputEvent(string debug, string messageOut);
+
+	NFA nfa;
 	string[] actors;
 	string[] messages;
 	string[] tmpStates;
 	mapping(string => mapping(string => uint)) buffer;
 
 	constructor(address nfaAddress) public {
-		nfa = DiagramGatewaysNFA(nfaAddress);
+		nfa = NFA(nfaAddress);
 	}
 	
 	
@@ -800,7 +957,7 @@ event outputEvent(string messageOut);
 		        }
 		    }
 		}
-		revert("No usable message found");
+		return "None";
 	}
 	
 	
@@ -822,45 +979,71 @@ event outputEvent(string messageOut);
 	
 	
 	function receive_buffered(string memory actor, string memory message) private returns (string memory){
-		nfa.transition(message);
+		nfa.transition(string(abi.encodePacked(actor,"?",message)));
 		buffer_remove(actor, message);
 		return string(abi.encodePacked(actor,"?",message));
 	}
 	
 	
+	function getActors() public view returns (string[] memory){
+		return actors;
+	}
+	
+	
+	function getMessages() public view returns (string[] memory){
+		return messages;
+	}
+	
+	
+	function get_buffer_item(string memory actor, string memory message) public view returns (uint){
+		return buffer[actor][message];
+	}
+	
+	
 	function process_input(string memory event_input) public returns (string memory){
 		string memory out;
+		string memory debug;
 		//uint num_states_pre = nfa.getCurrentStates().length;
 		if (contains("!", event_input)) {
+		    debug = string(abi.encodePacked("(* Condition rule receive send: ", event_input, " *)"));
 		    out = send(event_input);
 		} else if (contains("?", event_input)) {
 		    string memory actor = split(event_input, "?")[0];
 		    string memory message = split(event_input, "?")[1];
-		    if(condition_receive_now(message)) {
-		        out = receive_now(message);
+		    if(condition_receive_now(event_input)) {
+		        debug = string(abi.encodePacked("(* Condition rule receive now: ", event_input, " *)"));
+		        out = receive_now(event_input);
 		    } else {
+		        debug = string(abi.encodePacked("(* Condition rule receive delayed: ", event_input, " *)"));
 		        out = receive_delayed(actor, message);
 		    }
+		} else {
+		    debug = "No matching condition";
+		    out = "None";
 		}
-		emit outputEvent(out);
+		emit outputEvent(debug, out);
 		return out;
 	}
 	
 	
 	function process_check() public returns (string memory){
 		string memory out = "";
+		string memory debug;
 		string memory message = condition_receive_buffered();
-		string memory actor = split(message, "?")[0];
-		string memory action = split(message, "?")[1];
-		out = receive_buffered(actor, action);
-		emit outputEvent(out);
+		if(!strCompare(message,"None")) {
+		    string memory actor = split(message, "?")[0];
+		    string memory action = split(message, "?")[1];
+		    debug = string(abi.encodePacked("(* Condition rule receive buffered: ", message, " *)"));
+		    out = receive_buffered(actor, action);            
+		} else {
+		            out = "None";
+		            debug = "(* No usable message found in buffer for current states. *)";
+		        }
+		emit outputEvent(debug, out);
 		return out;
 	}
 	
 	
-	function getCurrentStates() public view returns (string[] memory){
-		return nfa.getCurrentStates();
-	}
-	
-	
 }  
+
+

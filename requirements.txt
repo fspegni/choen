@@ -31,3 +31,5 @@ webencodings==0.5.1
 py-solc-x==1.1.1
 deprecation==2.1.0
 prompt-toolkit==3.0.29
+web3==5.31.0
+python-dotenv==0.21.0

@@ -30,14 +30,23 @@ class ContractGenerator:
             c.resource = os.path.join(settings.MEDIA_ROOT, filename)
             c.save()
             
+    def createContract(self, n : nfa.NFA):
+        assert n is not None, f"Expected not-null nfa to build a contract"
+        #nfa : NFA
+        
+        #if (choreographyName == None and n == None):
+        #    raise Exception("A choreography name or a NFA must be specified.")
+        #elif (choreographyName != None):
+        #    choreography:Choreography = Choreography.objects.get(name=choreographyName)
+        #    r, match = rei.ChoToRei(choreography)
+        #    self.nfa = NFA.ReiToNFA(r)
+        #else:
+        #    nfa = n
 
-    def createContract(self, choreographyName: str):
-        choreography:Choreography = Choreography.objects.get(name=choreographyName)
-        r, match = rei.ChoToRei(choreography)
-        n = nfa.ReiToNFA(r)
-
-        c : Contract = Contract(f"""{''.join(elem.capitalize() for elem in choreography.name.split("_"))}NFA""","0.7.6")
-
+        #c : Contract = Contract(f"""{''.join(elem.capitalize() for elem in n.__name__.split("_"))}NFA""","0.7.6")
+        #c : Contract = Contract(f"{n.name}","0.7.6")
+        c : Contract = Contract("NFA")
+        
         #Smart contract variables
         c.add_attribute(Variable("states","string[]","",list(map(lambda s: s.id, n.states))))
         c.add_attribute(Variable("tmpStates","string[]"))
@@ -148,6 +157,12 @@ return tmpStates;""",
                                 "return currentStates;",
                                 "public view",
                                 "string[] memory"))
+        
+        c.add_function(Function("getFinalStates",
+                                [],
+                                "return finalStates;",
+                                "public view",
+                                "string[] memory"))
 
         c.add_function(Function("isFinal",
                                 [],
@@ -198,7 +213,7 @@ return false;""",
         
         return c
     
-    def compileContract(self, contract: Contract):
-        return contract.compile()
+    """def compileContract(self, contract: Contract):
+        return contract.compile()"""
 
     

@@ -1,8 +1,16 @@
+from distutils.log import debug
+import json
 import nfa
 import traceback
 import sys
 import os
 import re
+from web3 import Web3
+from contract_generator import ContractGenerator
+from enforcer_generator import EnforcerGenerator
+from generator import SmartContractGenerator
+import contracts
+from dotenv import load_dotenv
 
 class Engine:
 
@@ -254,17 +262,339 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    pass
+    def __init__(self, nfa : nfa.NFA, blockchain_url, chain_id, address, private_key, debug : bool = False):
+        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+        self._nfa : nfa.NFA = nfa
+
+        self._w3 : Web3 = Web3(Web3.HTTPProvider(blockchain_url, request_kwargs={'timeout': 300}))
+        self._chain_id : int = chain_id
+        
+        self._address : str = address
+        self._private_key : str = private_key
+
+        """contractGenerator: ContractGenerator = ContractGenerator()
+        nfaContract = contractGenerator.createContract(nfa)
+        
+        enforcerGenerator: EnforcerGenerator = EnforcerGenerator()
+        enforcerContract = enforcerGenerator.createEnforcer(nfaContract)"""
+
+        smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
+        compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
+        
+        self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "NFA")
+        self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
+
+        self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
+        self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
+
+
+        #self._nfa_abi, self._nfa_bytecode, self._nfa_address = self.deployContractNFA(nfaContract)
+        #self._enforcer_abi, self._enforcer_bytecode, self._enforcer_address = self.deployContractEnforcer(enforcerContract, self._nfa_address) 
+
+    @property
+    def nfa(self):
+        return self._nfa
+
+    @property
+    def w3(self) -> Web3:
+        return self._w3
+    
+    @property
+    def chain_id(self) -> int:
+        return self._chain_id
+
+    @property
+    def address(self) -> str:
+        return self._address
+
+    @property
+    def private_key(self) -> str:
+        return self._private_key
+    
+    @property
+    def nfa_abi(self):
+        return self._nfa_abi
+    
+    @property
+    def nfa_bytecode(self) -> str:
+        return self._nfa_bytecode
+
+    @property 
+    def nfa_address(self) -> str:
+        return self._nfa_address
+
+    @property
+    def enforcer_abi(self):
+        return self._enforcer_abi
+    
+    @property
+    def enforcer_bytecode(self) -> str:
+        return self._enforcer_bytecode
+    
+    @property
+    def enforcer_address(self) -> str:
+        return self._enforcer_address
+
+    def __get_abi_and_bytecode(self, compiled_sol, contract : str):
+        #get bytecode
+        bytecode = compiled_sol["contracts"]["smart_contract.sol"][contract]["evm"]["bytecode"]["object"]
+        
+        #get abi
+        abi = json.loads(compiled_sol["contracts"]["smart_contract.sol"][contract]["metadata"])["output"]["abi"]
+
+        return abi, bytecode
+    
+    
+    def __sendTransaction(self, transaction):
+        # Sign the transaction
+        sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
+        
+        # Send the transaction
+        transaction_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
+        
+        # Wait for the transaction to be mined, and get the transaction receipt
+        transaction_receipt = self.w3.eth.wait_for_transaction_receipt(transaction_hash)
+
+        return transaction_receipt
+
+    def __deployContract(self, abi, bytecode, address = None):
+        #compiled_c = c.compile()
+
+        #get bytecode
+        #bytecode = compiled_c["contracts"][f"{c.name}.sol"][f"{c.name}"]["evm"]["bytecode"]["object"]
+        #get abi
+        #abi = json.loads(compiled_c["contracts"][f"{c.name}.sol"][f"{c.name}"]["metadata"])["output"]["abi"]
+
+        #create the contract
+        contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
+
+        nonce =  self.w3.eth.getTransactionCount(self.address)
+
+        # build transaction
+        if (address == None):
+            transaction = contract.constructor().buildTransaction(
+            {
+                "chainId": self.chain_id,
+                "gasPrice": self.w3.eth.gas_price,
+                "from": self.address,
+                "nonce": nonce,
+            }
+        )
+        else:
+            transaction = contract.constructor(address).buildTransaction(
+            {
+                "chainId": self.chain_id,
+                "gasPrice": self.w3.eth.gas_price,
+                "from": self.address,
+                "nonce": nonce,
+            }
+        )
+
+        print("Deploying contract ...")
+        transaction_receipt = self.__sendTransaction(transaction)
+        print(f"Done! Contract deployed to {transaction_receipt.contractAddress}")
+
+        return transaction_receipt.contractAddress
+
+
+    def deployContractNFA(self, abi, bytecode):
+        return self.__deployContract(abi, bytecode)
+    
+    def deployContractEnforcer(self, abi, bytecode, nfa_address : str):
+        return self.__deployContract(abi, bytecode, nfa_address)
+
+
+    # INTERFACE methods
+
+    def ended(self):
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.isFinal().call()
+
+    def get_all_states(self):
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.getStates().call()
+
+    def get_curr_states(self):
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.getCurrentStates().call()
+
+    def get_transitions(self):
+        return self._nfa.transitions
+
+    def is_state_final(self, s):
+        return self._nfa.is_final(s)
+
+    def is_state_initial(self, s):  
+        return self._nfa.is_initial(s)
+
+    def is_state_current(self, s):
+        if isinstance(s, nfa.State):
+            s = s.id
+
+        curr_states = self.get_curr_states()
+        return s in curr_states
+
+    def get_buffer_items(self):
+        enforcer = self.w3.eth.contract(
+                address = self.enforcer_address,
+                abi = self.enforcer_abi
+            )
+
+        actors = enforcer.functions.getActors().call()
+
+        messages = enforcer.functions.getMessages().call()
+
+        items = []
+
+        for actor in actors:
+            for message in messages:
+                counter = enforcer.functions.get_buffer_item(actor, message).call()
+                for i in range(counter):
+                    items.append((actor, message))
+        return items
+
+    # CONDITIONS below
+
+    def condition_rule_send(self, event):
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.condition_rule_send().call()
+
+    def condition_rule_receive_now(self, event):
+
+        m = re.match("^[^!?]+\?[^!?]+$", event) 
+        self._debug_log(f"(* Condition rule receive now 1st: {event} => {m} *)")
+        if m is None:
+            return False
+
+        for curr in self._curr_states:
+            enabled_transitions = self._nfa.transitions_from(curr, event)
+
+            if len(enabled_transitions) > 0:
+                return True
+
+        return False
+
+    def condition_rule_receive_delayed(self, event):    
+
+        m = re.match("^[^!?]+\?[^!?]+$", event) 
+        self._debug_log(f"(* Condition rule receive delayed: {event} => {m} *)")
+        return m is not None
+
+    # RULES below
+
+    def rule_send(self, event):
+        return event
+
+    def rule_receive_now(self, event):
+
+        reached = set()
+        for s in self._curr_states:
+
+            s_reached = self._nfa.read_symbol(event, s)
+
+            if len(s_reached) == 0:
+                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+            else:
+                reached = reached.union(s_reached)
+            
+
+        self._curr_states = reached
+        return event
+
+#    def rule_receive_delayed(self, actor, message):
+    def rule_receive_delayed(self, event):
+        actor, message = event.split("?")
+        self._buffer_add(actor, message)
+        return ""
+
+    def rule_receive_buffered(self, actor, message):
+        
+        assert actor in self._buffer and message in self._buffer[actor]
+        
+        counter = self._buffer[actor][message]
+
+        assert counter > 0
+
+        event = f"{actor}?{message}"
+
+        reached = set()
+        for s in self._curr_states:
+            s_reached = self._nfa.read_symbol(event, s)
+
+            if len(s_reached) == 0:
+                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+            else:
+                reached = reached.union(s_reached)
+        
+        self._buffer_remove(actor, message)
+
+        nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
+        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+        self._curr_states = reached
+
+
+        return event
+
+    #PROCESSORS
+    def process_input(self, event):
+        enforcer = self.w3.eth.contract(
+                address = self.enforcer_address,
+                abi = self.enforcer_abi
+            )
+        nonce = self.w3.eth.getTransactionCount(self.address)
+        transaction = enforcer.functions.process_input(event).buildTransaction({
+                        "chainId": self.chain_id,
+                        "from": self.address,
+                        "gasPrice": self.w3.eth.gas_price,
+                        "nonce": nonce
+                    })
+        #self._debug_log(enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.debug)
+        #return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.messageOut
+        return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))
+
+    def process_check(self):
+        enforcer = self.w3.eth.contract(
+                address = self.enforcer_address,
+                abi = self.enforcer_abi
+            )
+        nonce = self.w3.eth.getTransactionCount(self.address)
+        transaction = enforcer.functions.process_check().buildTransaction({
+                        "chainId": self.chain_id,
+                        "from": self.address,
+                        "gasPrice": self.w3.eth.gas_price,
+                        "nonce": nonce
+                    })
+        #self._debug_log(enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.debug)
+        #return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.messageOut
+        return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))
 
 
 class Enforcer:
 
-    def __init__(self, nfa : nfa.NFA):
+    def __init__(self, nfa : nfa.NFA, onChain : bool = True):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._debug : bool = True
+        self._onChain : bool = onChain
 
-        self._engine = EngineOffChain(nfa)
-
+        if onChain:
+            load_dotenv()
+            blockchain_url = "http://127.0.0.1:7545"
+            chain_id = 1337
+            #blockchain_url = "https://ropsten.infura.io/v3/f03b2f96d4b34a19aa9df619f4798114"
+            #chain_id = 3
+            address = os.getenv("ADDRESS")
+            private_key = os.getenv("PRIVATE_KEY")
+            self._engine = EngineOnChain(nfa, blockchain_url, chain_id, address, private_key, True)
+        else:
+            self._engine = EngineOffChain(nfa)
 
     @property
     def engine(self):
@@ -288,46 +618,65 @@ class Enforcer:
     # PROCESSORS
 
     def process_input(self, event): #event_stream : str):
-        out = None
-        num_states_pre = self._engine.get_num_states() #en(self._curr_states)
-
-#        if "!" in event:
-            # actor, message = event.split("!")
-        if self._engine.condition_rule_send(event):
-            out = self._engine.rule_send(event)
-
-#        elif "?" in event:
-#            actor, message = event.split("?")
-        elif self._engine.condition_rule_receive_now(event):
-                out = self._engine.rule_receive_now(event)
-
-        elif self._engine.condition_rule_receive_delayed(event):
-                # TODO add check that the message may actually be consumed afterwards;
-                # without this check, it does not make sense to implement the rule "Cannot receive" 
-            #out = self._engine.rule_receive_delayed(actor, message)
-            out = self._engine.rule_receive_delayed(event)
+        if (self._onChain):
+            tx_receipt = self._engine.process_input(event)
+            self._debug_log(tx_receipt[0].args.debug)
+            out = tx_receipt[0].args.messageOut
+            out = None if out == 'None' else out
+            return out
         else:
-            self._debug_log("(* No matching condition *)")        
+            out = None
+            num_states_pre = self._engine.get_num_states() #en(self._curr_states)
 
-        nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
-        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+    #       if "!" in event:
+                # actor, message = event.split("!")
+            if self._engine.condition_rule_send(event):
+                out = self._engine.rule_send(event)
 
-        return out
+    #        elif "?" in event:
+    #            actor, message = event.split("?")
+            elif self._engine.condition_rule_receive_now(event):
+                    out = self._engine.rule_receive_now(event)
+
+            elif self._engine.condition_rule_receive_delayed(event):
+                    # TODO add check that the message may actually be consumed afterwards;
+                    # without this check, it does not make sense to implement the rule "Cannot receive" 
+                #out = self._engine.rule_receive_delayed(actor, message)
+                out = self._engine.rule_receive_delayed(event)
+            else:
+                self._debug_log("(* No matching condition *)")        
+
+            nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
+            self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+
+            return out
+        
+        #return self._engine.process_input(event)
+         
 
 
     def process_check(self):
+        if (self._onChain):
+            tx_receipt = None
+            out = None
+            #try:
+            tx_receipt = self._engine.process_check()
+            self._debug_log(tx_receipt[0].args.debug)
+            out = tx_receipt[0].args.messageOut
+            out = None if out == "None" else out
+            #except Exception:
+            #    pass
+            return  out
+        else:
+            out = ""
 
-        out = ""
+            try:
+                actor, message = self._engine._buffer_find_usable_message()
+                out = self._engine.rule_receive_buffered(actor, message)
+            except Exception:
+                pass
 
-        try:
-            actor, message = self._buffer_find_usable_message()
-            out = self.rule_receive_buffered(actor, message)
-        except Exception:
-            pass
-
-        return out
-
-
+            return out
 
 
 from enforcer import *
@@ -424,18 +773,22 @@ class UI:
 
         while not iscan.eof:        
             event = iscan.scan_input()
+            self._debug_log(f"** Process input: {event} ... **")
             out = self._enforcer.process_input(event)
         
             if out:
-                print(out)
+                print(f"\nOutput message: {out}\n")
+            self._debug_log(f"** Process completed. **")
             
+            self._debug_log("** Checking for usable messages in buffer ...")
             while True:
                 out1 = self._enforcer.process_check()
                 if out1:
-                    print(out1)
+                    print(f"\nOutput message: {out1}\n")
                 else:
-                    break                   
-            
+                    break            
+            self._debug_log("** Checking completed. **")
+
         if self._enforcer.ended():
             self._debug_log("(* Ended *)")       
             self._enforcer = None
@@ -502,7 +855,6 @@ class UI:
             raise Exception("You must load a choreography or start a choreography")
 
         nfa : nfa.NFA = c.to_nfa()
-
         self._enforcer = Enforcer(nfa)
 
 

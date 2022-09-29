@@ -1,40 +1,6 @@
-/*
- * @title String & slice utility library for Solidity contracts.
- * @author Nick Johnson <arachnid@notdot.net>
- *
- * @dev Functionality in this library is largely implemented using an
- *      abstraction called a 'slice'. A slice represents a part of a string -
- *      anything from the entire string to a single character, or even no
- *      characters at all (a 0-length slice). Since a slice only has to specify
- *      an offset and a length, copying and manipulating slices is a lot less
- *      expensive than copying and manipulating the strings they reference.
- *
- *      To further reduce gas costs, most functions on slice that need to return
- *      a slice modify the original one instead of allocating a new one; for
- *      instance, `s.split(".")` will return the text up to the first '.',
- *      modifying s to only contain the remainder of the string after the '.'.
- *      In situations where you do not want to modify the original slice, you
- *      can make a copy first with `.copy()`, for example:
- *      `s.copy().split(".")`. Try and avoid using this idiom in loops; since
- *      Solidity has no memory management, it will result in allocating many
- *      short-lived slices that are later discarded.
- *
- *      Functions that return two slices come in two versions: a non-allocating
- *      version that takes the second slice as an argument, modifying it in
- *      place, and an allocating version that allocates and returns the second
- *      slice; see `nextRune` for example.
- *
- *      Functions that have to copy string data will return strings rather than
- *      slices; these can be cast back to slices for further processing if
- *      required.
- *
- *      For convenience, some functions are provided with non-modifying
- *      variants that create a new slice and return both; for instance,
- *      `s.splitNew('.')` leaves s unmodified, and returns two values
- *      corresponding to the left and right parts of the string.
- */
+pragma solidity >= 0.7.6;
+pragma abicoder v2;
 
-pragma solidity ^0.8.0;
 
 library strings {
     struct slice {
@@ -725,3 +691,359 @@ library strings {
         return ret;
     }
 }
+
+
+contract NFA {
+	
+
+	
+
+	string[] states = ['ficslltd', 'aydartay', 'myiccili', 'lidnedpc', 'ewivklxa', 'rhgyfbpm', 'kaujghbz', 'vjbkdvby', 'xnquelek', 'mrjaqddu', 'ypssmutw'];
+	string[] tmpStates;
+	string initialState = "ficslltd";
+	string[] finalStates = ['ypssmutw'];
+	string[] currentStates;
+	string[] message;
+	string epsilon;
+	bool start;
+	bool end;
+	mapping(string => mapping(string => string[])) transitions;
+
+	constructor() public {
+		transitions['aydartay']['Pizza_Place?order_receipt'] = ['myiccili'];
+		transitions['ficslltd'][''] = ['aydartay'];
+		transitions['ewivklxa']['Pizza_Place?Message_0rkgt7n'] = ['rhgyfbpm'];
+		transitions['lidnedpc'][''] = ['kaujghbz', 'ewivklxa'];
+		transitions['kaujghbz']['Delivery_Boy?Message_1mi4idx'] = ['vjbkdvby'];
+		transitions['xnquelek']['Customer?Message_0i2a31h'] = ['mrjaqddu'];
+		transitions['vjbkdvby'][''] = ['xnquelek'];
+		transitions['myiccili'][''] = ['lidnedpc'];
+		transitions['rhgyfbpm'][''] = ['ypssmutw'];
+		transitions['mrjaqddu'][''] = ['ypssmutw'];
+		
+		delete tmpStates;
+		tmpStates.push(initialState);
+		currentStates = e_closure(tmpStates);
+	}
+	
+	
+
+	function strCompare(string memory stringA, string memory stringB) private returns (bool){
+		return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));
+	}
+	
+	
+	function contains(string memory s, string[] memory states) private returns (bool){
+		for (uint i = 0; i < states.length; i++) {
+		    if (strCompare(s,states[i])) {
+		        return true;
+		    }
+		}
+		return false;
+	}
+	
+	
+	function checkInitialAndFinalStates(string[] memory states) private {
+		start = false;
+		end = false;
+		for (uint i = 0; i < states.length; i++) {
+		    if (strCompare(states[i],initialState)) {
+		            start = true;
+		        }
+		        for (uint k = 0; k < finalStates.length; k++) {
+		            if (strCompare(states[i],finalStates[k])) {
+		                end = true;
+		           }
+		        }
+		    }
+	}
+	
+	
+	function union(string[] memory arrayA, string[] memory arrayB) private returns (string[] memory){
+		delete tmpStates;
+		tmpStates = arrayA;
+		for (uint i = 0; i < arrayB.length; i++) {
+		    if(!contains(arrayB[i], tmpStates)) {
+		        tmpStates.push(arrayB[i]);
+		    }
+		}
+		return tmpStates;
+	}
+	
+	
+	function e_closure(string[] memory states) private returns (string[] memory){
+		delete tmpStates;
+		tmpStates = states;
+		bool found = (tmpStates.length > 0);
+		while (found) {
+		    found = false;
+		    for (uint i = 0; i < tmpStates.length; i++) {
+		        for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
+		            if (!contains(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
+		                tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
+		                found = true;
+		            }
+		        }
+		    }
+		}
+		checkInitialAndFinalStates(tmpStates);
+		return tmpStates;
+	}
+	
+	
+	function getStates() public view returns (string[] memory){
+		return states;
+	}
+	
+	
+	function getCurrentStates() public view returns (string[] memory){
+		return currentStates;
+	}
+	
+	
+	function getFinalStates() public view returns (string[] memory){
+		return finalStates;
+	}
+	
+	
+	function isFinal() public view returns (bool){
+		return end;
+	}
+	
+	
+	function isInitial() public view returns (bool){
+		return start;
+	}
+	
+	
+	function getMessage() public view returns (string[] memory){
+		return message;
+	}
+	
+	
+	function transitionFrom(string memory state, string memory label) public returns (string[] memory){
+		return transitions[state][label];
+	}
+	
+	
+	function transition(string memory label) public {
+		delete tmpStates;
+		for (uint i = 0; i < currentStates.length; i++) {
+		    string[] memory s = transitionFrom(currentStates[i],label);
+		    tmpStates = union(tmpStates, s);
+		}
+		require(tmpStates.length != 0);
+		message.push(label);
+		currentStates = e_closure(tmpStates);
+	}
+	
+	
+	function checkEnabledTransitions(string memory symbol) public returns (bool){
+		for (uint i = 0; i < currentStates.length; i++) {
+		    string[] memory s_reached = transitionFrom(currentStates[i], symbol);
+		    if (s_reached.length > 0) return true;
+		    //reached = union(reached, s_reached); 
+		}
+		return false;
+	}
+	
+	
+}  
+
+
+contract Enforcer {
+	using strings for *;
+
+	event outputEvent(string debug, string messageOut);
+
+	NFA nfa;
+	string[] actors;
+	string[] messages;
+	string[] tmpStates;
+	mapping(string => mapping(string => uint)) buffer;
+
+	constructor(address nfaAddress) public {
+		nfa = NFA(nfaAddress);
+	}
+	
+	
+
+	function strCompare(string memory stringA, string memory stringB) internal pure returns (bool){
+		return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));
+	}
+	
+	
+	function arrContains(string[] memory states, string memory s) internal pure returns (bool){
+		for (uint i = 0; i < states.length; i++) {
+		    if (strCompare(s,states[i])) {
+		        return true;
+		    }
+		}
+		return false;
+	}
+	
+	
+	function contains(string memory what, string memory where) internal pure returns (bool){
+		strings.slice memory where = where.toSlice();
+		strings.slice memory what = what.toSlice();
+		return where.contains(what);
+	}
+	
+	
+	function split(string memory sequence, string memory del) private returns (string[] memory){
+		strings.slice memory s = sequence.toSlice();
+		strings.slice memory delim = del.toSlice();
+		string[] memory parts = new string[](s.count(delim) + 1);
+		for(uint i = 0; i < parts.length; i++) {
+		    parts[i] = s.split(delim).toString();
+		}
+		return parts;
+	}
+	
+	
+	function union(string[] memory arrayA, string[] memory arrayB) private returns (string[] memory){
+		delete tmpStates;
+		for (uint i = 0; i < arrayB.length; i++) {
+		    tmpStates.push(arrayB[i]);
+		}
+		for (uint i = 0; i < arrayA.length; i++) {
+		    if(!arrContains(tmpStates, arrayA[i])) {
+		        tmpStates.push(arrayA[i]);
+		    }
+		}
+		return tmpStates;
+	}
+	
+	
+	function buffer_add(string memory actor, string memory message) private {
+		uint counter = buffer[actor][message];
+		counter += 1;
+		if (!arrContains(actors,actor)) {
+		    actors.push(actor);
+		}
+		if(!arrContains(messages,message)) {
+		    messages.push(message);
+		}
+		buffer[actor][message] = counter;
+	}
+	
+	
+	function buffer_remove(string memory actor, string memory message) private {
+		uint counter = buffer[actor][message];
+		require(counter > 0, string(abi.encodePacked("No message ", message, " to remove for actor ", actor)));
+		counter -= 1;
+		buffer[actor][message] = counter;
+	}
+	
+	
+	function condition_receive_now(string memory message) private returns (bool){
+		return nfa.checkEnabledTransitions(message);
+	}
+	
+	
+	function condition_receive_buffered() private returns (string memory){
+		delete tmpStates;
+		for (uint i = 0; i < actors.length; i++) {
+		    for (uint j = 0; j < messages.length; j++) {
+		        if (buffer[actors[i]][messages[j]] > 0) {
+		            string memory message = string(abi.encodePacked(actors[i],"?",messages[j]));
+		            string[] memory currentStates = nfa.getCurrentStates();
+		            for (uint s = 0; s < currentStates.length; s++) {
+		                tmpStates = nfa.transitionFrom(currentStates[s], message);
+		                if (tmpStates.length > 0) {
+		                    return message;
+		                }
+		            }
+		        }
+		    }
+		}
+		return "None";
+	}
+	
+	
+	function send(string memory message) private returns (string memory){
+		return message;
+	}
+	
+	
+	function receive_now(string memory message) private returns (string memory){
+		nfa.transition(message);
+		return message;
+	}
+	
+	
+	function receive_delayed(string memory actor, string memory message) private returns (string memory){
+		buffer_add(actor, message);
+		return "";
+	}
+	
+	
+	function receive_buffered(string memory actor, string memory message) private returns (string memory){
+		nfa.transition(string(abi.encodePacked(actor,"?",message)));
+		buffer_remove(actor, message);
+		return string(abi.encodePacked(actor,"?",message));
+	}
+	
+	
+	function getActors() public view returns (string[] memory){
+		return actors;
+	}
+	
+	
+	function getMessages() public view returns (string[] memory){
+		return messages;
+	}
+	
+	
+	function get_buffer_item(string memory actor, string memory message) public view returns (uint){
+		return buffer[actor][message];
+	}
+	
+	
+	function process_input(string memory event_input) public returns (string memory){
+		string memory out;
+		string memory debug;
+		//uint num_states_pre = nfa.getCurrentStates().length;
+		if (contains("!", event_input)) {
+		    debug = string(abi.encodePacked("(* Condition rule receive send: ", event_input, " *)"));
+		    out = send(event_input);
+		} else if (contains("?", event_input)) {
+		    string memory actor = split(event_input, "?")[0];
+		    string memory message = split(event_input, "?")[1];
+		    if(condition_receive_now(event_input)) {
+		        debug = string(abi.encodePacked("(* Condition rule receive now: ", event_input, " *)"));
+		        out = receive_now(event_input);
+		    } else {
+		        debug = string(abi.encodePacked("(* Condition rule receive delayed: ", event_input, " *)"));
+		        out = receive_delayed(actor, message);
+		    }
+		} else {
+		    debug = "No matching condition";
+		    out = "None";
+		}
+		emit outputEvent(debug, out);
+		return out;
+	}
+	
+	
+	function process_check() public returns (string memory){
+		string memory out = "";
+		string memory debug;
+		string memory message = condition_receive_buffered();
+		if(!strCompare(message,"None")) {
+		    string memory actor = split(message, "?")[0];
+		    string memory action = split(message, "?")[1];
+		    debug = string(abi.encodePacked("(* Condition rule receive buffered: ", message, " *)"));
+		    out = receive_buffered(actor, action);            
+		} else {
+		            out = "None";
+		            debug = "(* No usable message found in buffer for current states. *)";
+		        }
+		emit outputEvent(debug, out);
+		return out;
+	}
+	
+	
+}  
+
+

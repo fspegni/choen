@@ -8,12 +8,15 @@ from enforcer_deployer import EnforcerDeployer
 
 from bpmn_parser.models import Choreography, NS, ElementType
 from enforcer import Enforcer
+from nfa import NFA
 import rei
 import nfa
 import contracts
+from contracts import SmartContract
 from contract_generator import ContractGenerator
 import json
 from web3 import Web3
+import requests
 
 class TestChoreographyBasicCase(TestCase):
 
@@ -29,7 +32,6 @@ class TestChoreographyBasicCase(TestCase):
             c.name = name
             c.resource = os.path.join(settings.MEDIA_ROOT, filename)
             c.save()
-
 
 
     def test_compilation(self):
@@ -1446,153 +1448,6 @@ class TestContracts(TestCase):
         assert f.visibility in f_compiled
         assert f.body in f_compiled
 
-    # def test_contract(self):
-    #     c = contracts.Contract()
-
-    """def test_contractGeneration(self):
-        contractGenerator: ContractGenerator = ContractGenerator()
-        try:
-            contract = contractGenerator.createContract("diagram_gateways")
-            compiled_sol = contractGenerator.compileContract(contract)
-            #print(json.loads(compiled_sol["contracts"]["DiagramGatewaysNFA.sol"]["DiagramGatewaysNFA"]["metadata"])["output"]["abi"])
-            #print("Contract Address: ",enfocerDeployer.deployContract(contract.name, compiled_sol))
-            #print(compiled_sol["<stdin>:DiagramGatewaysNestedNFA"]["bin-runtime"])
-            #print(type(compiled_sol))
-        except Exception:
-            self.fail("The NFA contract is not created")"""
-
-    """def test_enforcerGeneration(self):
-        contractGenerator: ContractGenerator = ContractGenerator()
-        enforcerGenerator: EnforcerGenerator = EnforcerGenerator()
-        try:
-            contract = contractGenerator.createContract("diagram_gateways")
-            enforcer = enforcerGenerator.createEnforcer(contract)
-            compiled_enfocer = enforcerGenerator.compileContract(enforcer)
-            #compiled_sol = contractGenerator.compileContract(contract)
-            #print(compiled_sol["<stdin>:DiagramGatewaysNestedNFA"]["bin-runtime"])
-        except Exception as err:
-            self.fail("The enforcer contract is not created:", err)"""
-
-    def __test_deployContract(self):
-        address = "0x49571ac86ED47e096D3Dc0771b5c1914698FB963"
-        private_key = "0x0eb579c6ab0e30aa88830490d3e9c07a8e127e7f2671b551a2123cd87bd09f1c"
-
-        contractGenerator: ContractGenerator = ContractGenerator()
-        enforcerGenerator: EnforcerGenerator = EnforcerGenerator()
-        enforcerDeployer: EnforcerDeployer = EnforcerDeployer(address, private_key)
-        try:
-            contract = contractGenerator.createContract("diagram_gateways")
-            compiled_contract = contractGenerator.compileContract(contract)
-            
-            #get nfa bytecode
-            nfa_bytecode = compiled_contract["contracts"][f"{contract.name}.sol"][f"{contract.name}"]["evm"]["bytecode"]["object"]
-            #get nfa abi
-            nfa_abi = json.loads(compiled_contract["contracts"][f"{contract.name}.sol"][f"{contract.name}"]["metadata"])["output"]["abi"]
-
-            enforcer = enforcerGenerator.createEnforcer(contract)
-            compiled_enfocer = enforcerGenerator.compileContract(enforcer)
-
-            #get enforcer bytecode
-            enforcer_bytecode = compiled_enfocer["contracts"][f"{enforcer.name}.sol"][f"{enforcer.name}"]["evm"]["bytecode"]["object"]
-            #get enforcer abi
-            enforcer_abi = json.loads(compiled_enfocer["contracts"][f"{enforcer.name}.sol"][f"{enforcer.name}"]["metadata"])["output"]["abi"]
-            
-            enforcerDeployer.deployContractEnforcer(nfa_abi, nfa_bytecode, enforcer_abi, enforcer_bytecode)
-            print("---------------------------------------------")
-            #print("Enforcer ABI: ", enforcerDeployer.abi)
-            #print("Enforcer bytecode: ", enforcerDeployer.bytecode)
-            #print("Enforcer address: ", enforcerDeployer.enforcerAddress)
-
-            return enforcerDeployer.address, enforcerDeployer.private_key, enforcerDeployer.abi, enforcerDeployer.enforcerAddress
-
-            """currentStates = enforcerDeployer.getCurrentStates()
-            print(f"Current states: ", currentStates)
-
-
-            enforcerContract = enforcerDeployer.w3.eth.contract(
-                address = enforcer,
-                abi = enforcer_abi
-            )
-
-            nonce = enforcerDeployer.w3.eth.getTransactionCount(address)
-
-            #currentStates = enforcerContract.functions.getCurrentStates().call()
-            #print("Current States: ", currentStates)
-
-            try:
-                event = "prova!order pizza"
-                transaction = enforcerContract.functions.process_input(event).buildTransaction({
-                    "chainId": enforcerDeployer.chain_id,
-                    "from": address,
-                    "gasPrice": enforcerDeployer.w3.eth.gas_price,
-                    "nonce": nonce
-                })
-
-                sign_transaction = enforcerDeployer.w3.eth.account.sign_transaction(transaction, private_key=private_key)
-                print("Starting transaction...")
-                tx_hash = enforcerDeployer.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
-                print("... Waiting for transaction to finish...")
-                tx_receipt = enforcerDeployer.w3.eth.wait_for_transaction_receipt(tx_hash)
-                #output = tx_receipt.logs
-                logs = enforcerContract.events.outputEvent().processReceipt(tx_receipt)
-                print("Transaction completed.")
-                print(f"The output of the transaction with event {event} is {logs[0].args.messageOut}")
-            except Exception as err:
-                print("Error in transaction: ", err)
-            #currentStates = nfaContract.functions.getCurrentStates().call()
-            #print("New Current States: ", currentStates)
-
-            #print(compiled_sol["<stdin>:DiagramGatewaysNestedNFA"]["bin-runtime"])
-            #print(type(compiled_sol))"""
-        except Exception as err:
-            self.fail("ERROR: ", err)
-
-    def testSendRule(self):
-        abi = [{'inputs': [{'internalType': 'address', 'name': 'nfaAddress', 'type': 'address'}], 'stateMutability': 'nonpayable', 'type': 'constructor'}, {'anonymous': False, 'inputs': [{'indexed': False, 'internalType': 'string', 'name': 'messageOut', 'type': 'string'}], 'name': 'outputEvent', 'type': 'event'}, {'inputs': [], 'name': 'getCurrentStates', 'outputs': [{'internalType': 'string[]', 'name': '', 'type': 'string[]'}], 'stateMutability': 'view', 'type': 'function'}, {'inputs': [], 'name': 'process_check', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'stateMutability': 'nonpayable', 'type': 'function'}, {'inputs': [{'internalType': 'string', 'name': 'event_input', 'type': 'string'}], 'name': 'process_input', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'stateMutability': 'nonpayable', 'type': 'function'}]
-        enforcerAddress = "0x8959b75c623736C5D00945bEB384265f1fAb7fbC"
-
-        address = "0x49571ac86ED47e096D3Dc0771b5c1914698FB963"
-        private_key = "0x0eb579c6ab0e30aa88830490d3e9c07a8e127e7f2671b551a2123cd87bd09f1c"
-
-        enforcerDeployer: EnforcerDeployer = EnforcerDeployer(address, private_key, abi, "", enforcerAddress)
-
-        msg = "prova!prova"
-        result = enforcerDeployer.process_input(msg)
-        assert msg == result[0].args.messageOut, f"Expected: {msg}, Received: {result[0].args.messageOut}"
-
-        
-    def testCurrentStates(self):
-        abi = [{'inputs': [{'internalType': 'address', 'name': 'nfaAddress', 'type': 'address'}], 'stateMutability': 'nonpayable', 'type': 'constructor'}, {'anonymous': False, 'inputs': [{'indexed': False, 'internalType': 'string', 'name': 'messageOut', 'type': 'string'}], 'name': 'outputEvent', 'type': 'event'}, {'inputs': [], 'name': 'getCurrentStates', 'outputs': [{'internalType': 'string[]', 'name': '', 'type': 'string[]'}], 'stateMutability': 'view', 'type': 'function'}, {'inputs': [], 'name': 'process_check', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'stateMutability': 'nonpayable', 'type': 'function'}, {'inputs': [{'internalType': 'string', 'name': 'event_input', 'type': 'string'}], 'name': 'process_input', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'stateMutability': 'nonpayable', 'type': 'function'}]
-        enforcerAddress = "0x8959b75c623736C5D00945bEB384265f1fAb7fbC"
-
-        address = "0x49571ac86ED47e096D3Dc0771b5c1914698FB963"
-        private_key = "0x0eb579c6ab0e30aa88830490d3e9c07a8e127e7f2671b551a2123cd87bd09f1c"
-
-        enforcerDeployer: EnforcerDeployer = EnforcerDeployer(address, private_key, abi, "", enforcerAddress)
-        
-        currentStates = enforcerDeployer.getCurrentStates()
-        assert currentStates == ["pewyrmlg", "enudxeag"], f"Expected: {['pewyrmlg', 'enudxeag']}, Received: {currentStates}"
-        
-
-    def testReceiveNowRule(self):
-        abi = [{'inputs': [{'internalType': 'address', 'name': 'nfaAddress', 'type': 'address'}], 'stateMutability': 'nonpayable', 'type': 'constructor'}, {'anonymous': False, 'inputs': [{'indexed': False, 'internalType': 'string', 'name': 'messageOut', 'type': 'string'}], 'name': 'outputEvent', 'type': 'event'}, {'inputs': [], 'name': 'getCurrentStates', 'outputs': [{'internalType': 'string[]', 'name': '', 'type': 'string[]'}], 'stateMutability': 'view', 'type': 'function'}, {'inputs': [], 'name': 'process_check', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'stateMutability': 'nonpayable', 'type': 'function'}, {'inputs': [{'internalType': 'string', 'name': 'event_input', 'type': 'string'}], 'name': 'process_input', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'stateMutability': 'nonpayable', 'type': 'function'}]
-        enforcerAddress = "0x8959b75c623736C5D00945bEB384265f1fAb7fbC"
-
-        address = "0x49571ac86ED47e096D3Dc0771b5c1914698FB963"
-        private_key = "0x0eb579c6ab0e30aa88830490d3e9c07a8e127e7f2671b551a2123cd87bd09f1c"
-
-        enforcerDeployer: EnforcerDeployer = EnforcerDeployer(address, private_key, abi, "", enforcerAddress)
-
-        currentStates = enforcerDeployer.getCurrentStates()
-        assert currentStates == ["pewyrmlg", "enudxeag"], f"Expected: {['pewyrmlg', 'enudxeag']}, Received: {currentStates}"
-
-        actor = 'enudxeag'
-        msg = 'order pizza'
-        result = enforcerDeployer.process_input(f"{actor}?{msg}")
-        assert msg == result[0].args.messageOut, f"Expected: {msg}, Received: {result[0].args.messageOut}"
-
-        currentStates = enforcerDeployer.getCurrentStates()
-        assert set(currentStates) == set(['gfuwnisl', 'edtbcqoa', 'bkucnlof', 'dwjulywl']), f"Expected: {['pewyrmlg', 'enudxeag']}, Received: {currentStates}"
     
 
         

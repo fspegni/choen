@@ -1,11 +1,14 @@
 from asyncio import events
 from codeop import Compile
 from msilib.schema import Directory
+from re import S
 import solcx
 from django.conf import settings
 import os
 import json
 import shutil
+import datetime
+import requests
 
 
 class Compileable(object):
@@ -73,7 +76,6 @@ class Event(Compileable):
     def compile(self):
         variables_text = ", ".join(map(lambda v: v.compile(), self.variables))
         return f"event {self.name}({variables_text})"
-        
 
 class Function(Compileable):
 
@@ -130,27 +132,26 @@ class Constructor(Function):
 }}
 """
 
-
 class Contract(Compileable):
 
-    def __init__(self, name, version):
+    def __init__(self, name):#, version):
         self._name = name
-        self._version = version
         self._functions : dict = {}
         self._attributes : dict = {}
         self._constructor : dict = {}
-        self._imports = []
-        self._libraries = []
         self._directives = []
         self._events : dict = {}
+        #self._version = version
+        #self._imports = []
+        #self._libraries = []
 
     @property
     def name(self):
         return self._name
 
-    @property
+    """@property
     def version(self):
-        return self._version
+        return self._version"""
 
     @property
     def attributes(self) -> list:
@@ -164,13 +165,13 @@ class Contract(Compileable):
     def constructor(self) -> list:
         return self._constructor.items()
     
-    @property
+    """@property
     def imports(self):
-        return self._imports
+        return self._imports"""
     
-    @property
+    """@property
     def libraries(self):
-        return self._libraries
+        return self._libraries"""
     
     @property
     def directives(self):
@@ -198,11 +199,11 @@ class Contract(Compileable):
         
         self._constructor["constructor"] = c
 
-    def add_import(self, i : str):
+    """def add_import(self, i : str):
         self._imports.append(i)
 
     def add_library(self, l : str):
-        self._libraries.append(l)
+        self._libraries.append(l)"""
     
     def add_directive(self, d : str):
         self._directives.append(d)
@@ -210,11 +211,11 @@ class Contract(Compileable):
     def add_event(self, e : Event):
         if e.name in self._events:
             raise Exception(f"An event with name {e.name} already exists")
-        self._events[e.name] = e
+        self._events[e.name] = e        
 
     def compile(self):
-        imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
-        libraries_text = "\n".join(map(lambda l: f"{l}", self._libraries))
+        #imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
+        #libraries_text = "\n".join(map(lambda l: f"{l}", self._libraries))
         directives_text = "\n".join(map(lambda d: f"{d};", self._directives))
         
         attributes_text = "\n".join(map(lambda a: a.compile()+";", self._attributes.values()))
@@ -222,18 +223,13 @@ class Contract(Compileable):
         functions_text = "\n".join(map(lambda f: f.compile()+"\n", self._functions.values()))
         constructor_text = "\n".join(map(lambda c: c.compile()+"\n", self._constructor.values()))
 
+        directives_text = self.formatText(directives_text)
         attributes_text = self.formatText(attributes_text)
+        events_text = self.formatText(events_text)
         functions_text = self.formatText(functions_text)
         constructor_text = self.formatText(constructor_text)
 
-        contract_text = f"""
-pragma solidity >= {self._version};
-pragma abicoder v2;
-{imports_text}
-
-{libraries_text}
-
-contract {self._name} {{
+        contract_text = f"""contract {self._name} {{
 {directives_text}
 
 {events_text}
@@ -250,7 +246,7 @@ contract {self._name} {{
                              solc_version = "0.8.0",
                              output_dir = f"{settings.BASE_DIR}\..\public\contracts",
                              overwrite=True
-        )"""
+        )
         compiled_sol = solcx.compile_standard(
             {
                 "language": "Solidity",
@@ -272,7 +268,6 @@ contract {self._name} {{
             allow_paths = ["."]
             
         )
-
         with open("compiled_sol.json", "w") as file:
             json.dump(compiled_sol, file)
 
@@ -295,4 +290,111 @@ contract {self._name} {{
         except:
             print("Something went wrong when opening the file")
         
+        return compiled_sol"""
+        return contract_text
+
+class SmartContract(Compileable):
+    
+    def __init__(self, version: str):
+        self._version = version
+        self._imports = []
+        self._libraries : dict = {}
+        self._contracts : dict = {}
+
+    @property
+    def version(self):
+        return self._version
+
+    @property
+    def imports(self):
+        return self._imports
+    
+    @property
+    def libraries(self):
+        return self._libraries
+
+    @property
+    def contracts(self):
+        return self._contracts
+
+    def add_import(self, i : str):
+        self._imports.append(i)
+
+    def add_library(self, name: str, url : str):
+        if name in self.libraries:
+            raise Exception(f"A library with name {name} already exists")
+        self._libraries[name] = '\n'.join(str(line) for line in requests.get(url).text.splitlines()[38::])
+
+    def add_contract(self, c : Contract):
+        if c.name in self._contracts:
+            raise Exception(f"A contract with name {c.name} already exists")
+        self._contracts[c.name] = c
+
+    def compile(self, debug : bool):
+        imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
+        libraries_text = "\n".join(map(lambda l: l+"\n", self.libraries.values()))
+        contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
+        
+        smart_contract_text = f"""pragma solidity >= {self._version};
+pragma abicoder v2;
+{imports_text}
+
+{libraries_text}
+
+{contracts_text}
+"""
+        compiled_sol = solcx.compile_standard(
+            {
+                "language": "Solidity",
+                "sources": 
+                    {
+                        f"smart_contract.sol": 
+                            {
+                                "content": smart_contract_text
+                            }
+                    },
+                "settings": {
+                    "outputSelection": {
+                        "*": {"*": ["abi", "metadata", "evm.bytecode", "evm.sourceMap"]}
+                    },
+                    #"libraries": {"strings.sol"}
+                },
+            },
+            solc_version = "0.8.0",
+            allow_paths = ["."]
+        )
+        if (debug):
+            file_name = "_".join(["smart_contract",datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
+            tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
+            with open(tmp_path,"w") as file:
+                file.write(smart_contract_text)
+                print("Smart contract saved at: ",tmp_path)
+        """with open("compiled_sol.json", "w") as file:
+            json.dump(compiled_sol, file)
+
+        os.rename("compiled_sol.json",f"smart_contract_compiled_sol.json")
+        
+        try:
+            smartContract_file = open(f"{settings.BASE_DIR}\..\public\contracts\smart_contract.sol","w")
+            try: 
+                smartContract_file.write(smart_contract_text)
+                if (os.path.exists(f"{settings.BASE_DIR}\..\public\contracts\smart_contract_compiled_sol.json")):
+                    os.remove(f"{settings.BASE_DIR}\..\public\contracts\smart_contract_compiled_sol.json")
+                    #os.rename(f"{settings.BASE_DIR}\..\public\contracts\combined.json",f"{settings.BASE_DIR}\..\public\contracts\{self.name}_combined.json")
+                #else:
+                #    os.rename(f"{settings.BASE_DIR}\..\public\contracts\combined.json",f"{settings.BASE_DIR}\..\public\contracts\{self.name}_combined.json")
+                shutil.move(f"smart_contract_compiled_sol.json",f"{settings.BASE_DIR}\..\public\contracts\smart_contract_compiled_sol.json")
+            except Exception as err:
+                print("Something went wrong when writing to the file: ", err)
+            finally:
+                smartContract_file.close()
+        except:
+            print("Something went wrong when opening the file")"""
         return compiled_sol
+
+
+
+
+        
+
+        

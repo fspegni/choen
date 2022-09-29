@@ -3,14 +3,12 @@ from web3 import Web3
 
 class EnforcerDeployer:
 
-    def __init__(self, address : str, private_key : str, abi = "", bytecode : str = "", enforcerAddress : str = ""):
-        self._w3 : Web3 = Web3(Web3.HTTPProvider("http://127.0.0.1:7545"))
+    def __init__(self):
+        self._w3 : Web3 = Web3(Web3.HTTPProvider("http://127.0.0.1:7545", request_kwargs={'timeout': 300}))
         self._chain_id : int = 1337
-        self._address : str = address
-        self._private_key : str = private_key
-        self._abi = abi
-        self._bytecode : str = bytecode
-        self._enforcerAddress : str = enforcerAddress
+        
+        self._address : str = "0x49571ac86ED47e096D3Dc0771b5c1914698FB963"
+        self._private_key : str = "0x0eb579c6ab0e30aa88830490d3e9c07a8e127e7f2671b551a2123cd87bd09f1c"
 
     @property
     def w3(self) -> Web3:
@@ -28,31 +26,9 @@ class EnforcerDeployer:
     def private_key(self) -> str:
         return self._private_key
     
-    @property
-    def abi(self):
-        return self._abi
+     
 
-    @abi.setter
-    def abi(self, abi):
-        self._abi = abi
-    
-    @property
-    def bytecode(self) -> str:
-        return self._bytecode
-
-    @bytecode.setter
-    def bytecode(self, bytecode):
-        self._bytecode = bytecode
-
-    @property
-    def enforcerAddress(self) -> str:
-        return self._enforcerAddress
-    
-    @enforcerAddress.setter
-    def enforcerAddress(self, enforcerAddress):
-        self._enforcerAddress = enforcerAddress 
-
-    def sendTransaction(self, transaction):
+    def __sendTransaction(self, transaction):
         # Sign the transaction
         sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
         
@@ -64,7 +40,8 @@ class EnforcerDeployer:
 
         return transaction_receipt
 
-    def deployContractNFA(self, abi: str, bytecode: str):
+    def __deployContract(self, abi, bytecode, address = None):
+        #compiled_c = c.compile()
 
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
@@ -72,7 +49,17 @@ class EnforcerDeployer:
         nonce =  self.w3.eth.getTransactionCount(self.address)
 
         # build transaction
-        transaction = contract.constructor().buildTransaction(
+        if (address == None):
+            transaction = contract.constructor().buildTransaction(
+            {
+                "chainId": self.chain_id,
+                "gasPrice": self.w3.eth.gas_price,
+                "from": self.address,
+                "nonce": nonce,
+            }
+        )
+        else:
+            transaction = contract.constructor(address).buildTransaction(
             {
                 "chainId": self.chain_id,
                 "gasPrice": self.w3.eth.gas_price,
@@ -81,47 +68,20 @@ class EnforcerDeployer:
             }
         )
 
-        print("Deploying contract associated with the NFA...")
-        transaction_receipt = self.sendTransaction(transaction)
+        print("Deploying contract ...")
+        transaction_receipt = self.__sendTransaction(transaction)
         print(f"Done! Contract deployed to {transaction_receipt.contractAddress}")
-        
+
         return transaction_receipt.contractAddress
 
-    def deployContractEnforcer(self, nfa_abi : str, nfa_bytecode : str, enforcer_abi : str, enforcer_bytecode):
 
-        self.abi = enforcer_abi
-        self.bytecode = enforcer_bytecode
+    def deployContractNFA(self, abi, bytecode):
+        return self.__deployContract(abi, bytecode)
+    
+    def deployContractEnforcer(self, abi, bytecode, nfa_address : str):
+        return self.__deployContract(abi, bytecode, nfa_address)
 
-        nfaAddress = self.deployContractNFA(nfa_abi, nfa_bytecode)
-
-        #create the contract
-        contract = self.w3.eth.contract(abi = enforcer_abi, bytecode = enforcer_bytecode)
-
-        nonce = self.w3.eth.getTransactionCount(self.address)
-
-        # build transaction
-        transaction = contract.constructor(nfaAddress).buildTransaction(
-            {
-                "chainId": self.chain_id,
-                "gasPrice": self.w3.eth.gas_price,
-                "from": self.address,
-                "nonce": nonce,
-            }
-        )
-        print("Deploying Enfocer...")
-        transaction_receipt = self.sendTransaction(transaction)
-        print(f"Done! Enforcer deployed to {transaction_receipt.contractAddress}")
-
-        self.enforcerAddress = transaction_receipt.contractAddress
-
-    def getContract(self):
-        contract = self.w3.eth.contract(
-                address = self.enforcerAddress,
-                abi = self.abi
-            )
-        return contract
-
-    def process_input(self, msg : str):
+    """def process_input(self, msg : str):
         contract = self.getContract()
         nonce = self.w3.eth.getTransactionCount(self.address)
         transaction = contract.functions.process_input(msg).buildTransaction({
@@ -135,4 +95,4 @@ class EnforcerDeployer:
     def getCurrentStates(self):
         contract = self.getContract()
         result = contract.functions.getCurrentStates().call()
-        return result
+        return result"""
