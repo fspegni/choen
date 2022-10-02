@@ -1,5 +1,6 @@
 from distutils.log import debug
 import json
+from tracemalloc import start
 import nfa
 import traceback
 import sys
@@ -11,6 +12,8 @@ from enforcer_generator import EnforcerGenerator
 from generator import SmartContractGenerator
 import contracts
 from dotenv import load_dotenv
+import time
+from tabulate import tabulate
 
 class Engine:
 
@@ -262,15 +265,18 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    def __init__(self, nfa : nfa.NFA, blockchain_url, chain_id, address, private_key, debug : bool = False):
+    def __init__(self, nfa : nfa.NFA, blockchain_url, chain_id, address, private_key, debug_compile : bool = False):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._nfa : nfa.NFA = nfa
+        self._debug : bool = True
 
         self._w3 : Web3 = Web3(Web3.HTTPProvider(blockchain_url, request_kwargs={'timeout': 300}))
         self._chain_id : int = chain_id
         
         self._address : str = address
         self._private_key : str = private_key
+
+        self._stats = []
 
         """contractGenerator: ContractGenerator = ContractGenerator()
         nfaContract = contractGenerator.createContract(nfa)
@@ -279,7 +285,7 @@ class EngineOnChain(Engine):
         enforcerContract = enforcerGenerator.createEnforcer(nfaContract)"""
 
         smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
-        compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
+        compiled_sol = smartContractGenerator.createSmartContract().compile(debug_compile)
         
         self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "NFA")
         self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
@@ -311,6 +317,10 @@ class EngineOnChain(Engine):
     def private_key(self) -> str:
         return self._private_key
     
+    @property
+    def stats(self) -> str:
+        return self._stats
+
     @property
     def nfa_abi(self):
         return self._nfa_abi
@@ -344,32 +354,32 @@ class EngineOnChain(Engine):
 
         return abi, bytecode
     
+    def __add_statistics(self, contractAddress, gasUsed, cost, executionTime, type = None):
+        self._stats.append([type, contractAddress, gasUsed, cost, executionTime])
     
     def __sendTransaction(self, transaction):
+        #start_time = time.time()
         # Sign the transaction
         sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
         
         # Send the transaction
-        transaction_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
         
         # Wait for the transaction to be mined, and get the transaction receipt
-        transaction_receipt = self.w3.eth.wait_for_transaction_receipt(transaction_hash)
+        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        
+        #execution_time = time.time() - start_time
+        #self._stats.append([self.address, tx_receipt.to, tx_receipt.contractAddress ,tx_receipt.gasUsed, round(tx_receipt.gasUsed * 0.001714,2), round(execution_time,3)])
 
-        return transaction_receipt
+        return tx_receipt
 
-    def __deployContract(self, abi, bytecode, address = None):
-        #compiled_c = c.compile()
-
-        #get bytecode
-        #bytecode = compiled_c["contracts"][f"{c.name}.sol"][f"{c.name}"]["evm"]["bytecode"]["object"]
-        #get abi
-        #abi = json.loads(compiled_c["contracts"][f"{c.name}.sol"][f"{c.name}"]["metadata"])["output"]["abi"]
-
+    def __deployContract(self, contract_name : str, abi, bytecode, address = None):
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
         nonce =  self.w3.eth.getTransactionCount(self.address)
 
+        start_time = time.time()
         # build transaction
         if (address == None):
             transaction = contract.constructor().buildTransaction(
@@ -390,18 +400,19 @@ class EngineOnChain(Engine):
             }
         )
 
-        print("Deploying contract ...")
-        transaction_receipt = self.__sendTransaction(transaction)
-        print(f"Done! Contract deployed to {transaction_receipt.contractAddress}")
-
-        return transaction_receipt.contractAddress
+        self._debug_log(f"\nDeploying contract {contract_name} ...")
+        tx_receipt = self.__sendTransaction(transaction)
+        execution_time = time.time() - start_time
+        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Contract Creation")
+        self._debug_log(f"Done! Contract deployed to {tx_receipt.contractAddress}\n")
+        return tx_receipt.contractAddress
 
 
     def deployContractNFA(self, abi, bytecode):
-        return self.__deployContract(abi, bytecode)
+        return self.__deployContract("NFA", abi, bytecode)
     
     def deployContractEnforcer(self, abi, bytecode, nfa_address : str):
-        return self.__deployContract(abi, bytecode, nfa_address)
+        return self.__deployContract("Enfocer", abi, bytecode, nfa_address)
 
 
     # INTERFACE methods
@@ -550,15 +561,17 @@ class EngineOnChain(Engine):
                 abi = self.enforcer_abi
             )
         nonce = self.w3.eth.getTransactionCount(self.address)
+        start_time = time.time()
         transaction = enforcer.functions.process_input(event).buildTransaction({
                         "chainId": self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
                         "nonce": nonce
                     })
-        #self._debug_log(enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.debug)
-        #return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.messageOut
-        return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))
+        execution_time = time.time() - start_time
+        tx_receipt = self.__sendTransaction(transaction)
+        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
+        return enforcer.events.outputEvent().processReceipt(tx_receipt)
 
     def process_check(self):
         enforcer = self.w3.eth.contract(
@@ -566,15 +579,17 @@ class EngineOnChain(Engine):
                 abi = self.enforcer_abi
             )
         nonce = self.w3.eth.getTransactionCount(self.address)
+        start_time = time.time()
         transaction = enforcer.functions.process_check().buildTransaction({
                         "chainId": self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
                         "nonce": nonce
                     })
-        #self._debug_log(enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.debug)
-        #return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))[0].args.messageOut
-        return enforcer.events.outputEvent().processReceipt(self.__sendTransaction(transaction))
+        execution_time = time.time() - start_time
+        tx_receipt = self.__sendTransaction(transaction)
+        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
+        return enforcer.events.outputEvent().processReceipt(tx_receipt)
 
 
 class Enforcer:
@@ -583,6 +598,8 @@ class Enforcer:
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._debug : bool = True
         self._onChain : bool = onChain
+        
+        self._history = []
 
         if onChain:
             load_dotenv()
@@ -592,13 +609,19 @@ class Enforcer:
             #chain_id = 3
             address = os.getenv("ADDRESS")
             private_key = os.getenv("PRIVATE_KEY")
-            self._engine = EngineOnChain(nfa, blockchain_url, chain_id, address, private_key, True)
+            self._engine = EngineOnChain(nfa, blockchain_url, chain_id, address, private_key, False)
         else:
             self._engine = EngineOffChain(nfa)
+
+        self._append_history("",self._engine.get_curr_states(), self._engine.get_buffer_items())   
 
     @property
     def engine(self):
         return self._engine
+    
+    @property
+    def history(self):
+        return self._history
 
     # DEBUG LOG
 
@@ -610,6 +633,12 @@ class Enforcer:
         if self._debug:
             print(text)
 
+    def _append_history(self, event : str, curr_states : list, buffer : list):
+        self.history.append({
+            "event" : event, 
+            "curr_states" : curr_states, 
+            "buffer" : buffer}
+        )
 
     def ended(self):
         return self._engine.ended()
@@ -618,14 +647,14 @@ class Enforcer:
     # PROCESSORS
 
     def process_input(self, event): #event_stream : str):
+        out = None
         if (self._onChain):
-            tx_receipt = self._engine.process_input(event)
-            self._debug_log(tx_receipt[0].args.debug)
-            out = tx_receipt[0].args.messageOut
-            out = None if out == 'None' else out
-            return out
+            logs = self._engine.process_input(event)
+            self._debug_log(logs[0].args.debug)
+            out = logs[0].args.messageOut
+            out = None if out == "None" else out
         else:
-            out = None
+            #out = None
             num_states_pre = self._engine.get_num_states() #en(self._curr_states)
 
     #       if "!" in event:
@@ -649,34 +678,36 @@ class Enforcer:
             nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
             self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
 
-            return out
+        self._append_history(event, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
+        return out
         
-        #return self._engine.process_input(event)
          
 
 
     def process_check(self):
+        out = None
         if (self._onChain):
-            tx_receipt = None
-            out = None
+            logs = None
             #try:
-            tx_receipt = self._engine.process_check()
-            self._debug_log(tx_receipt[0].args.debug)
-            out = tx_receipt[0].args.messageOut
+            logs = self._engine.process_check()
+            self._debug_log(logs[0].args.debug)
+            out = logs[0].args.messageOut
             out = None if out == "None" else out
             #except Exception:
             #    pass
-            return  out
+            #return  out
         else:
-            out = ""
+            #out = ""
 
             try:
                 actor, message = self._engine._buffer_find_usable_message()
                 out = self._engine.rule_receive_buffered(actor, message)
             except Exception:
                 pass
-
-            return out
+        
+        if out:
+            self._append_history(out, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
+        return out
 
 
 from enforcer import *
@@ -712,11 +743,14 @@ class UI:
             "help"  : self.cmd_help,
             "dump"  : self.cmd_dump,
             "exit"  : self.cmd_quit,
-            "quit"  : self.cmd_quit
+            "quit"  : self.cmd_quit,
+            "stats" : self.cmd_stats,
+            "history" : self.cmd_history
         }
         self._model = Model()
         self._enforcer = None
         self._debug = True
+        self._stats = []
 
     def set_debug(self, debug: bool):
         self._debug = debug
@@ -726,7 +760,8 @@ class UI:
         if self._debug:
             print(text)
 
-
+    def __print_stats(self):
+        print(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)"],tablefmt="fancy_grid"))
 
     def prompt(self):
         userin = None
@@ -773,25 +808,28 @@ class UI:
 
         while not iscan.eof:        
             event = iscan.scan_input()
-            self._debug_log(f"** Process input: {event} ... **")
+            self._debug_log(f"\n** Process input: {event} ... **")
             out = self._enforcer.process_input(event)
+            self._stats = self._enforcer._engine.stats
         
             if out:
-                print(f"\nOutput message: {out}\n")
-            self._debug_log(f"** Process completed. **")
+                self._debug_log(f"\nOutput message: {out}\n")
+            self._debug_log(f"** Process completed. **\n")
             
-            self._debug_log("** Checking for usable messages in buffer ...")
+            self._debug_log("\n** Checking for usable messages in buffer ...")
             while True:
                 out1 = self._enforcer.process_check()
                 if out1:
-                    print(f"\nOutput message: {out1}\n")
+                    self._debug_log(f"\nOutput message: {out1}\n")
                 else:
                     break            
-            self._debug_log("** Checking completed. **")
+            self._debug_log("** Checking completed. **\n")
 
         if self._enforcer.ended():
-            self._debug_log("(* Ended *)")       
-            self._enforcer = None
+            self._debug_log("(* Ended *)")
+            #print("\n")
+            #self.__print_stats()       
+            #self._enforcer = None
 
 
     def cmd_init(self, *args, **kwargs):
@@ -807,8 +845,15 @@ class UI:
             ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
             ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
             ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
-
+            
+            ("diagram_construction_industry", "diagram_construction_industry.bpmn"),
+            ("diagram_patient_doctor","diagram_patient_doctor.bpmn"),
+            ("diagram_incident_management", "diagram_incident_management.bpmn")
+            
         ]
+
+        if len(args) != 0 and args[0] == "-clean":
+            Choreography.objects.all().delete()
 
         for name, filename in choreographies:
             attribs = {
@@ -822,6 +867,24 @@ class UI:
             else:
                 print(f"Choreography {name} already exists ...")
 
+    def cmd_stats(self, *args, **kwargs):
+        if self._enforcer is None:
+            print("You must start the enforcer, before getting statistics")
+            return
+        if not self._enforcer._onChain:
+            print("Statistics for off-chain Engine are not available.")
+            return
+        self.__print_stats()
+
+    def cmd_history(self, *args, **kwargs):
+        if self._enforcer is None:
+            print("You must start the enforcer, before getting statistics")
+            return
+        for h in self._enforcer.history:
+            for key, value in h.items():
+                print(f"{key} : {value}")
+            print("\n")
+        
 
     def cmd_debug(self, *args, **kwargs):
 
@@ -856,6 +919,10 @@ class UI:
 
         nfa : nfa.NFA = c.to_nfa()
         self._enforcer = Enforcer(nfa)
+        self._stats = self._enforcer._engine.stats
+
+        if self._enforcer._onChain:
+            self._debug_log(f"\nGas price:  {self._enforcer._engine.w3.eth.gas_price} Wei")
 
 
         if self._enforcer.ended():
@@ -865,6 +932,7 @@ class UI:
 
 
     def cmd_quit(self, *args, **kwargs):
+        self._enforcer = None
         print(f"Good bye")
 
 

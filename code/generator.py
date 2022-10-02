@@ -295,13 +295,25 @@ buffer[actor][message] = counter;""",
                                 "private"))
 
     def __create_conditions(self, contract : Contract):
-        contract.add_function(Function("condition_receive_now",
+        contract.add_function(Function("condition_rule_send",
                                 [Variable("message","string","memory")],
-                                """return nfa.checkEnabledTransitions(message);""",
+                                """return contains("!", message);""",
+                                "private",
+                                "bool"))
+                
+        contract.add_function(Function("condition_rule_receive_now",
+                                [Variable("message","string","memory")],
+                                """return contains("?", message) && nfa.checkEnabledTransitions(message);""",
                                 "private",
                                 "bool"))
 
-        contract.add_function(Function("condition_receive_buffered",
+        contract.add_function(Function("condition_rule_receive_delayed",
+                                [Variable("message","string","memory")],
+                                """return contains("?", message);""",
+                                "private",
+                                "bool"))
+
+        contract.add_function(Function("condition_rule_receive_buffered",
                                 [],
                                 """delete tmpStates;
 for (uint i = 0; i < actors.length; i++) {
@@ -323,27 +335,27 @@ return "None";""",
                                 "string memory"))
 
     def __create_rules(self, contract : Contract):
-        contract.add_function(Function("send",
+        contract.add_function(Function("rule_send",
                                 [Variable("message","string","memory")],
                                 "return message;",
                                 "private",
                                 "string memory"))
         
-        contract.add_function(Function("receive_now",
+        contract.add_function(Function("rule_receive_now",
                                 [Variable("message","string","memory")],
                                 """nfa.transition(message);
 return message;""",
                                 "private",
                                 "string memory"))
 
-        contract.add_function(Function("receive_delayed",
+        contract.add_function(Function("rule_receive_delayed",
                                 [Variable("actor","string","memory"),Variable("message","string","memory")],
                                 """buffer_add(actor, message);
 return "";""",
                                 "private",
                                 "string memory"))
 
-        contract.add_function(Function("receive_buffered",
+        contract.add_function(Function("rule_receive_buffered",
                                 [Variable("actor","string","memory"),Variable("message","string","memory")],
                                 """nfa.transition(string(abi.encodePacked(actor,"?",message)));
 buffer_remove(actor, message);
@@ -375,24 +387,23 @@ return string(abi.encodePacked(actor,"?",message));""",
                                 [Variable("event_input","string","memory")],
                                 """string memory out;
 string memory debug;
-//uint num_states_pre = nfa.getCurrentStates().length;
-if (contains("!", event_input)) {
+if (condition_rule_send(event_input)) {
     debug = string(abi.encodePacked("(* Condition rule receive send: ", event_input, " *)"));
-    out = send(event_input);
-} else if (contains("?", event_input)) {
+    out = rule_send(event_input);
+} else if (condition_rule_receive_now(event_input)) {
     string memory actor = split(event_input, "?")[0];
     string memory message = split(event_input, "?")[1];
-    if(condition_receive_now(event_input)) {
-        debug = string(abi.encodePacked("(* Condition rule receive now: ", event_input, " *)"));
-        out = receive_now(event_input);
-    } else {
+    debug = string(abi.encodePacked("(* Condition rule receive now: ", event_input, " *)"));
+    out = rule_receive_now(event_input);
+    } else if (condition_rule_receive_delayed(event_input)) {
+        string memory actor = split(event_input, "?")[0];
+        string memory message = split(event_input, "?")[1];
         debug = string(abi.encodePacked("(* Condition rule receive delayed: ", event_input, " *)"));
-        out = receive_delayed(actor, message);
+        out = rule_receive_delayed(actor, message);
+    } else {
+        debug = "No matching condition";
+        out = "None";
     }
-} else {
-    debug = "No matching condition";
-    out = "None";
-}
 emit outputEvent(debug, out);
 return out;""",
                                 "public",
@@ -402,12 +413,12 @@ return out;""",
                                 [],
                                 """string memory out = "";
 string memory debug;
-string memory message = condition_receive_buffered();
+string memory message = condition_rule_receive_buffered();
 if(!strCompare(message,"None")) {
     string memory actor = split(message, "?")[0];
     string memory action = split(message, "?")[1];
     debug = string(abi.encodePacked("(* Condition rule receive buffered: ", message, " *)"));
-    out = receive_buffered(actor, action);            
+    out = rule_receive_buffered(actor, action);            
 } else {
             out = "None";
             debug = "(* No usable message found in buffer for current states. *)";

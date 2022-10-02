@@ -368,7 +368,7 @@ pragma abicoder v2;
             tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
             with open(tmp_path,"w") as file:
                 file.write(smart_contract_text)
-                print("Smart contract saved at: ",tmp_path)
+                print("\nSmart contract saved at: ",tmp_path,"\n")
         """with open("compiled_sol.json", "w") as file:
             json.dump(compiled_sol, file)
 
