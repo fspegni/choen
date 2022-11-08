@@ -378,5 +378,5 @@ class Choreography(models.Model):
     def to_nfa(self):
         from nfa import ReiToNFA
         rei = self.to_rei()
-
-        return ReiToNFA(rei)
+        automaton = ReiToNFA(rei)
+        return automaton

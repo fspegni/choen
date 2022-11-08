@@ -87,11 +87,8 @@ and automatically a folder "contracts" is created. It contains the smart contrac
 
 Now you can manually test the smart contract functionalities using RemixIDE (https://remix.ethereum.org/). Once you've opened the IDE you have to load the contract within your workspace. In this case, you can choose either to use the default workspace or to create a new one (this is recommended). From the menu on the left click on "Deploy & run transactions" and you can choose an environment, for example, Remix VM (Berlin). Finally, click on "Deploy" and the deployed smart contract appears in the bottom section, where you can test the different functionalities of the contract. -->
 
-# 
+# Drawing choreographies
 
+At the moment the choreography diagrams are generated using the following online tool:
 
-
-
-
-
-
+https://bpt-lab.org/chor-js-demo/
