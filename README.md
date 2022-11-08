@@ -38,4 +38,8 @@ $ workon <your_virtual_env>
 $ ./test.sh
 ```
 
+# Drawing choreographies
 
+At the moment the choreography diagrams are generated using the following online tool:
+
+https://bpt-lab.org/chor-js-demo/

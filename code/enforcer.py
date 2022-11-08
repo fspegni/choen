@@ -357,6 +357,8 @@ class UI:
     def __init__(self, *args, **kwargs):
         self._registry = {
             "init"  : self.cmd_init,
+            "list"  : self.cmd_list,
+            "rm"    : self.cmd_remove,
             "load"  : self.cmd_load,
             "start" : self.cmd_start,
             "debug" : self.cmd_debug,
@@ -379,12 +381,15 @@ class UI:
 
 
 
-    def prompt(self):
+    def prompt(self, line=None):
         userin = None
-        if self._enforcer:
-            userin = prompt(self.PROMPT_ENFORCER)
+        if line:
+            userin = prompt(line)
         else:
-            userin = prompt(self.PROMPT_CLI)
+            if self._enforcer:
+                userin = prompt(self.PROMPT_ENFORCER)
+            else:
+                userin = prompt(self.PROMPT_CLI)
 
         return userin
 
@@ -487,8 +492,41 @@ class UI:
 
 
     def cmd_load(self, name, *args, **kwargs):
-        c : Choreography = Choreography.objects.get(name=name)
-        self._model.add_object("choreography", c)
+        try:
+            c : Choreography = Choreography.objects.get(name=name)
+            self._model.add_object("choreography", c)
+            print(f"Choreography '{name}' loaded ...")
+        except Choreography.DoesNotExist as e:
+            if os.path.exists(name):
+                cho_name = os.path.basename(name)
+                attribs = {
+                    "name": cho_name,
+                    "resource": name,
+                }
+                c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
+                self._model.add_object("choreography", c)
+                if created:
+                    print(f"Choreography {cho_name} imported and loaded ...")
+                else:
+                    print(f"Choreography {cho_name} already exists and has been loaded ...")
+            else:
+                print(f"Cannot find choreography {name}")
+                
+    def cmd_list(self, *args, **kwargs):
+        print("Available choreographies:")
+        items = Choreography.objects.all()
+
+        if len(items) == 0:
+            print(f"(* none *)")
+        else:
+            longest = 0
+            for c in items:
+                if len(c.name) > longest:
+                    longest = len(c.name)
+
+            for c in items:
+                cho_name = c.name.ljust(longest+3,".")
+                print(f"* {cho_name} - {c.resource}")
 
 
     def cmd_start(self, *args, **kwargs):
@@ -510,6 +548,17 @@ class UI:
             self._debug_log("(* Ended *)")
             self._enforcer = None
 
+    def cmd_remove(self, name, *args, **kwargs):
+
+        c = Choreography.objects.filter(name=name).first()
+        if c is None:
+            print(f"Choreogrpahy '{name} does not exist")
+        else:
+            confirm = self.prompt(f"Do you want to remove choreography {c.name} ({c.resource}) from the enforcer database? [y/N]")
+            if confirm.lower() == "y":
+                c.delete()
+            else:
+                print(f"Operation interrupted by the user")
 
 
     def cmd_quit(self, *args, **kwargs):
