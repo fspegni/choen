@@ -4,6 +4,9 @@ import sys
 import os
 import re
 from django.core.files import File
+from pathlib import Path
+import prompt_toolkit
+from prompt_toolkit.history import FileHistory
 
 class Engine:
 
@@ -335,7 +338,7 @@ from enforcer import *
 from bpmn_parser.models import *
 
 
-from prompt_toolkit import prompt
+#from prompt_toolkit import prompt
 
 class Model:
 
@@ -353,6 +356,8 @@ class UI:
 
     PROMPT_ENFORCER = "+> "
     PROMPT_CLI = ">> "
+    PROMPT_HISTORY_CLI = os.path.join(Path.home(), ".choen_cli")
+    PROMPT_HISTORY_ENFORCER = os.path.join(Path.home(), ".choen_enforcer")
 
 
     def __init__(self, *args, **kwargs):
@@ -362,17 +367,27 @@ class UI:
             "rm"    : self.cmd_remove,
             "load"  : self.cmd_load,
             "start" : self.cmd_start,
+            "stop" : self.cmd_stop,
             "debug" : self.cmd_debug,
             "help"  : self.cmd_help,
             "dump"  : self.cmd_dump,
-            "dump_rei"  : self.cmd_dump_rei,
             "exit"  : self.cmd_quit,
             "quit"  : self.cmd_quit
         }
         self._model = Model()
         self._enforcer = None
+        self._running = False
         self._rei = None
         self._debug = True
+
+        if not os.path.exists(self.PROMPT_HISTORY_ENFORCER):
+            Path(self.PROMPT_HISTORY_ENFORCER).touch(mode=0o666, exist_ok=True)
+
+        if not os.path.exists(self.PROMPT_HISTORY_CLI):
+            Path(self.PROMPT_HISTORY_CLI).touch(mode=0o666, exist_ok=True)
+
+        self._session_enforcer = prompt_toolkit.PromptSession(self.PROMPT_ENFORCER, history=FileHistory(self.PROMPT_HISTORY_ENFORCER))
+        self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI))
 
     def set_debug(self, debug: bool):
         self._debug = debug
@@ -387,19 +402,20 @@ class UI:
     def prompt(self, line=None):
         userin = None
         if line:
-            userin = prompt(line)
+            userin = prompt_toolkit.prompt(line)
         else:
-            if self._enforcer:
-                userin = prompt(self.PROMPT_ENFORCER)
+            if self._running: #enforcer:
+                userin = self._session_enforcer.prompt()
             else:
-                userin = prompt(self.PROMPT_CLI)
+                userin = self._session_cli.prompt()
 
         return userin
 
 
     def consume(self, userin):
         #self._debug_log(f"(* Consume user input: '{userin}' *)")
-        if not self._enforcer or userin[0] == "/":
+#        if not self._enforcer or userin[0] == "/":
+        if not self._running or userin[0] == "/":
             if userin[0] == "/":
                 userin = userin[1:]
 
@@ -426,7 +442,7 @@ class UI:
     def _consume_events(self, event_stream : str): #userin : str):
 
         assert self._enforcer is not None
-
+        assert self._running is not None
 
         iscan = nfa.InputScanner(event_stream)
 
@@ -446,8 +462,9 @@ class UI:
             
         if self._enforcer.ended():
             self._debug_log("(* Ended *)")       
-            self._enforcer = None
-            self._rei = None
+#            self._enforcer = None
+#            self._rei = None
+            self._running = False
 
 
     def cmd_init(self, *args, **kwargs):
@@ -550,11 +567,17 @@ class UI:
 
         self._enforcer = Enforcer(automaton)
         self._rei = regex
+        self._running = True
 
         if self._enforcer.ended():
+            self._running = False
             self._debug_log("(* Ended *)")
-            self._enforcer = None
-            self._rei = None
+#            self._enforcer = None
+#            self._rei = None
+
+    def cmd_stop(self, *args, **kwargs):
+
+        self._running = False
 
 
     def cmd_remove(self, name, *args, **kwargs):
@@ -585,7 +608,7 @@ class UI:
             return
 
         if len(args) == 0:
-            print("Please specify an argument: dump <curr_states|states|transitions|buffer>")
+            print("Please specify an argument: dump <curr_states|states|transitions|buffer|rei>")
         else:
             if args[0] == "curr_states":    
                 print("\nCurrent states: \n")
@@ -635,14 +658,12 @@ class UI:
                     msg = f"{actor}?{message}"
 
                     print(msg)
+            
+            elif args[0] == "rei":
+                print("\nREI: \n")
+                print(self._rei)
 
 
-    def cmd_dump_rei(self, *args, **kwargs):
-        if self._enforcer is None or self._rei is None:
-            print("You must start the enforcer, before dumping the REI")
-            return
-
-        print(self._rei)
 
 
     def __enter__(self):
