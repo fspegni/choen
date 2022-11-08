@@ -359,16 +359,43 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 def render_receive (cho:Choreography, node:ElementType):
     print(f"Choreography: {cho}")
     print(f"Node: {node} : {node.attrib['id']} : {node.attrib.get('name')}")
-    messages = cho.messages(node)
+    m_request = None
+    m_response = None
 
-    symbol = node.attrib["id"]
-    if len(messages) > 0:
-        initiator = cho.initiator(node)
-        recipients = cho.recipients(node)
+    messages = cho.messages(node) # TODO apparently in the BPMN file format, messageflows are represented in reverse order (first the initiating message, next the response message)
+    print(f"Messages: {messages}")
 
-        assert len(recipients) == 1
-        target = recipients[0].attrib["name"].replace(" ", "_")
-        msg = messages[0].replace(" ","_")
-        symbol = f"{target}?{msg}"
+#    symbol = node.attrib["id"] 
+    res = None
+    initiator = cho.initiator(node).attrib["name"].replace(" ","_")
+    recipients = cho.recipients(node)
+    assert len(recipients) == 1, "At the moment we allow only one recipient per task" # TODO this limitation can be easily overcome: one can introduce the interleaving among all the recipients
+    target = recipients[0].attrib["name"].replace(" ", "_")
 
-    return Symbol(symbol)
+    n_messages = len(messages)
+    if n_messages == 2:
+        m_request = messages[1].replace(" ","_")
+        m_response = messages[0].replace(" ","_")
+        res = Conc(Symbol(f"{target}?{m_request}"), Symbol(f"{initiator}?{m_response}"))
+    elif n_messages == 1:
+        m_request = messages[0].replace(" ","_")
+        res = Symbol(f"{target}?{m_request}")
+    elif n_messages == 0:
+        res = Symbol(node.attrib["id"])
+    else:
+        raise Exception(f"Condition not accepted: at most 2 messages per tasks are supported. Received: {n_messages}")
+    
+    return res
+
+##    symbol = node.attrib["id"]
+##    if len(messages) > 0:
+##        initiator = cho.initiator(node)
+##        recipients = cho.recipients(node)
+##
+##        assert len(recipients) == 1
+##        target = recipients[0].attrib["name"].replace(" ", "_")
+##        msg = messages[0].replace(" ","_")
+##        symbol = f"{target}?{msg}"
+##
+##    return Symbol(symbol)
+        

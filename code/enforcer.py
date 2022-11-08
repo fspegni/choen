@@ -3,6 +3,7 @@ import traceback
 import sys
 import os
 import re
+from django.core.files import File
 
 class Engine:
 
@@ -364,11 +365,13 @@ class UI:
             "debug" : self.cmd_debug,
             "help"  : self.cmd_help,
             "dump"  : self.cmd_dump,
+            "dump_rei"  : self.cmd_dump_rei,
             "exit"  : self.cmd_quit,
             "quit"  : self.cmd_quit
         }
         self._model = Model()
         self._enforcer = None
+        self._rei = None
         self._debug = True
 
     def set_debug(self, debug: bool):
@@ -444,6 +447,7 @@ class UI:
         if self._enforcer.ended():
             self._debug_log("(* Ended *)")       
             self._enforcer = None
+            self._rei = None
 
 
     def cmd_init(self, *args, **kwargs):
@@ -498,10 +502,10 @@ class UI:
             print(f"Choreography '{name}' loaded ...")
         except Choreography.DoesNotExist as e:
             if os.path.exists(name):
-                cho_name = os.path.basename(name)
+                cho_name = os.path.basename(name).rsplit(".",1)[0]
                 attribs = {
                     "name": cho_name,
-                    "resource": name,
+                    "resource": File(open(name)),
                 }
                 c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
                 self._model.add_object("choreography", c)
@@ -511,7 +515,8 @@ class UI:
                     print(f"Choreography {cho_name} already exists and has been loaded ...")
             else:
                 print(f"Cannot find choreography {name}")
-                
+ 
+               
     def cmd_list(self, *args, **kwargs):
         print("Available choreographies:")
         items = Choreography.objects.all()
@@ -539,14 +544,18 @@ class UI:
         if not c:
             raise Exception("You must load a choreography or start a choreography")
 
-        nfa : nfa.NFA = c.to_nfa()
+        regex : rei.REI = c.to_rei()
+#        nfa : nfa.NFA = c.to_nfa()
+        automaton : nfa.NFA = nfa.ReiToNFA(regex)
 
-        self._enforcer = Enforcer(nfa)
-
+        self._enforcer = Enforcer(automaton)
+        self._rei = regex
 
         if self._enforcer.ended():
             self._debug_log("(* Ended *)")
             self._enforcer = None
+            self._rei = None
+
 
     def cmd_remove(self, name, *args, **kwargs):
 
@@ -626,6 +635,15 @@ class UI:
                     msg = f"{actor}?{message}"
 
                     print(msg)
+
+
+    def cmd_dump_rei(self, *args, **kwargs):
+        if self._enforcer is None or self._rei is None:
+            print("You must start the enforcer, before dumping the REI")
+            return
+
+        print(self._rei)
+
 
     def __enter__(self):
         return self
