@@ -691,6 +691,7 @@ class UI:
         print("Avg (Execution time): ", round(statistics.mean(execution_time), 5), " s")
         print("SD (Execution time): ", round(statistics.stdev(execution_time), 5), " s")"""
 
+
     def prompt(self, line=None):
         userin = None
         if line:
