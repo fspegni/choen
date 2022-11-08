@@ -357,13 +357,13 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             raise Exception(f"Node type not handle {node_type}. Node: {node}. Node tag: {node.tag}.  Node name: {node.attrib.get('name')}. Node id: {node.attrib.get('id')}.")
 
 def render_receive (cho:Choreography, node:ElementType):
-    print(f"Choreography: {cho}")
-    print(f"Node: {node} : {node.attrib['id']} : {node.attrib.get('name')}")
+#    print(f"Choreography: {cho}")
+#    print(f"Node: {node} : {node.attrib['id']} : {node.attrib.get('name')}")
     m_request = None
     m_response = None
 
     messages = cho.messages(node) # TODO apparently in the BPMN file format, messageflows are represented in reverse order (first the initiating message, next the response message)
-    print(f"Messages: {messages}")
+#    print(f"Messages: {messages}")
 
 #    symbol = node.attrib["id"] 
     res = None

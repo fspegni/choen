@@ -120,9 +120,13 @@ class EngineOffChain(Engine):
     
     def _buffer_find_usable_message(self):
         found = None
+#        print("in _buffer_find_usable_message...")
 
+#        print(f"Buffer: {self._buffer}")
         for actor, actor_buffer in self._buffer.items():
+#            print(f"Actor: {actor} - Actor buffer: {actor_buffer}")
             for message, counter in actor_buffer.items():
+#                print(f"Message: {message} - Counter: {counter}")
                 if counter > 0:
                     event = f"{actor}?{message}"
                     for s in self._curr_states:
@@ -130,7 +134,7 @@ class EngineOffChain(Engine):
                             found = (actor, message)
                             return found
         
-        raise Exception("No usable message found")
+        raise Enforcer.NoMessageFound("No usable message found")
 
     
     # INTERFACE methods
@@ -293,22 +297,17 @@ class Enforcer:
 
     def process_input(self, event): #event_stream : str):
         out = None
-        num_states_pre = self._engine.get_num_states() #en(self._curr_states)
+        num_states_pre = self._engine.get_num_states() 
 
-#        if "!" in event:
-            # actor, message = event.split("!")
         if self._engine.condition_rule_send(event):
             out = self._engine.rule_send(event)
 
-#        elif "?" in event:
-#            actor, message = event.split("?")
         elif self._engine.condition_rule_receive_now(event):
                 out = self._engine.rule_receive_now(event)
 
         elif self._engine.condition_rule_receive_delayed(event):
-                # TODO add check that the message may actually be consumed afterwards;
+                # TODO add check that the message may actually be consumed some time in the future;
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
-            #out = self._engine.rule_receive_delayed(actor, message)
             out = self._engine.rule_receive_delayed(event)
         else:
             self._debug_log("(* No matching condition *)")        
@@ -322,15 +321,18 @@ class Enforcer:
     def process_check(self):
 
         out = ""
+#        print("in process_check ...")
 
         try:
-            actor, message = self._buffer_find_usable_message()
-            out = self.rule_receive_buffered(actor, message)
-        except Exception:
+            actor, message = self._engine._buffer_find_usable_message()
+            out = self._engine.rule_receive_buffered(actor, message)
+        except Enforcer.NoMessageFound:
             pass
 
         return out
 
+    class NoMessageFound(Exception):
+        pass
 
 
 
@@ -453,6 +455,7 @@ class UI:
             if out:
                 print(out)
             
+#            print("in consume events, before process_check ...")
             while True:
                 out1 = self._enforcer.process_check()
                 if out1:
