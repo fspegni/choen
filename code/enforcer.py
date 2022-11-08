@@ -15,6 +15,9 @@ import statistics
 from datetime import datetime
 import uuid
 from django.core.files import File
+from pathlib import Path
+import prompt_toolkit
+from prompt_toolkit.history import FileHistory
 
 class Engine:
 
@@ -128,9 +131,13 @@ class EngineOffChain(Engine):
     
     def _buffer_find_usable_message(self):
         found = None
+#        print("in _buffer_find_usable_message...")
 
+#        print(f"Buffer: {self._buffer}")
         for actor, actor_buffer in self._buffer.items():
+#            print(f"Actor: {actor} - Actor buffer: {actor_buffer}")
             for message, counter in actor_buffer.items():
+#                print(f"Message: {message} - Counter: {counter}")
                 if counter > 0:
                     event = f"{actor}?{message}"
                     for s in self._curr_states:
@@ -138,7 +145,7 @@ class EngineOffChain(Engine):
                             found = (actor, message)
                             return found
         
-        raise Exception("No usable message found")
+        raise Enforcer.NoMessageFound("No usable message found")
 
     
     # INTERFACE methods
@@ -564,23 +571,17 @@ class Enforcer:
             out = logs[0].args.messageOut
             out = None if out == "None" else out
         else:
-            #out = None
             num_states_pre = self._engine.get_num_states() #en(self._curr_states)
 
-    #       if "!" in event:
-                # actor, message = event.split("!")
             if self._engine.condition_rule_send(event):
                 out = self._engine.rule_send(event)
 
-    #        elif "?" in event:
-    #            actor, message = event.split("?")
             elif self._engine.condition_rule_receive_now(event):
                     out = self._engine.rule_receive_now(event)
 
             elif self._engine.condition_rule_receive_delayed(event):
                     # TODO add check that the message may actually be consumed afterwards;
                     # without this check, it does not make sense to implement the rule "Cannot receive" 
-                #out = self._engine.rule_receive_delayed(actor, message)
                 out = self._engine.rule_receive_delayed(event)
             else:
                 self._debug_log("(* No matching condition *)")        
@@ -598,16 +599,11 @@ class Enforcer:
         out = None
         if (self._onChain):
             logs = None
-            #try:
             logs = self._engine.process_check()
             self._debug_log(logs[0].args.debug)
             out = logs[0].args.messageOut
             out = None if out == "None" else out
-            #except Exception:
-            #    pass
-            #return  out
         else:
-            #out = ""
 
             try:
                 actor, message = self._engine._buffer_find_usable_message()
@@ -617,14 +613,15 @@ class Enforcer:
         
         if out:
             self._append_history(out, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
+
         return out
 
+    class NoMessageFound(Exception):
+        pass
 
 from enforcer import *
 from bpmn_parser.models import *
 
-
-from prompt_toolkit import prompt
 
 class Model:
 
@@ -642,6 +639,8 @@ class UI:
 
     PROMPT_ENFORCER = "+> "
     PROMPT_CLI = ">> "
+    PROMPT_HISTORY_CLI = os.path.join(Path.home(), ".choen_cli")
+    PROMPT_HISTORY_ENFORCER = os.path.join(Path.home(), ".choen_enforcer")
 
 
     def __init__(self, *args, **kwargs):
@@ -651,10 +650,10 @@ class UI:
             "rm"    : self.cmd_remove,
             "load"  : self.cmd_load,
             "start" : self.cmd_start,
+            "stop" : self.cmd_stop,
             "debug" : self.cmd_debug,
             "help"  : self.cmd_help,
             "dump"  : self.cmd_dump,
-            "dump_rei"  : self.cmd_dump_rei,
             "exit"  : self.cmd_quit,
             "quit"  : self.cmd_quit,
             "stats" : self.cmd_stats,
@@ -662,9 +661,19 @@ class UI:
         }
         self._model = Model()
         self._enforcer = None
+        self._running = False
         self._rei = None
         self._debug = True
         self._stats = []
+
+        if not os.path.exists(self.PROMPT_HISTORY_ENFORCER):
+            Path(self.PROMPT_HISTORY_ENFORCER).touch(mode=0o666, exist_ok=True)
+
+        if not os.path.exists(self.PROMPT_HISTORY_CLI):
+            Path(self.PROMPT_HISTORY_CLI).touch(mode=0o666, exist_ok=True)
+
+        self._session_enforcer = prompt_toolkit.PromptSession(self.PROMPT_ENFORCER, history=FileHistory(self.PROMPT_HISTORY_ENFORCER))
+        self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI))
 
     def set_debug(self, debug: bool):
         self._debug = debug
@@ -695,19 +704,20 @@ class UI:
     def prompt(self, line=None):
         userin = None
         if line:
-            userin = prompt(line)
+            userin = prompt_toolkit.prompt(line)
         else:
-            if self._enforcer:
-                userin = prompt(self.PROMPT_ENFORCER)
+            if self._running: #enforcer:
+                userin = self._session_enforcer.prompt()
             else:
-                userin = prompt(self.PROMPT_CLI)
+                userin = self._session_cli.prompt()
 
         return userin
 
 
     def consume(self, userin):
         #self._debug_log(f"(* Consume user input: '{userin}' *)")
-        if not self._enforcer or userin[0] == "/":
+#        if not self._enforcer or userin[0] == "/":
+        if not self._running or userin[0] == "/":
             if userin[0] == "/":
                 userin = userin[1:]
 
@@ -734,7 +744,7 @@ class UI:
     def _consume_events(self, event_stream : str): #userin : str):
 
         assert self._enforcer is not None
-
+        assert self._running is not None
 
         iscan = nfa.InputScanner(event_stream)
 
@@ -762,7 +772,8 @@ class UI:
             #print("\n")
             #self.__print_stats()       
             #self._enforcer = None
-            self._rei = None
+            #self._rei = None
+            self._running = False
 
 
     def cmd_init(self, *args, **kwargs):
@@ -905,11 +916,17 @@ class UI:
 
         self._enforcer = Enforcer(automaton)
         self._rei = regex
+        self._running = True
 
         if self._enforcer.ended():
+            self._running = False
             self._debug_log("(* Ended *)")
-            self._enforcer = None
-            self._rei = None
+#            self._enforcer = None
+#            self._rei = None
+
+    def cmd_stop(self, *args, **kwargs):
+
+        self._running = False
 
 
     def cmd_remove(self, name, *args, **kwargs):
@@ -941,7 +958,7 @@ class UI:
             return
 
         if len(args) == 0:
-            print("Please specify an argument: dump <curr_states|states|transitions|buffer>")
+            print("Please specify an argument: dump <curr_states|states|transitions|buffer|rei>")
         else:
             if args[0] == "curr_states":    
                 print("\nCurrent states: \n")
@@ -991,14 +1008,12 @@ class UI:
                     msg = f"{actor}?{message}"
 
                     print(msg)
+            
+            elif args[0] == "rei":
+                print("\nREI: \n")
+                print(self._rei)
 
 
-    def cmd_dump_rei(self, *args, **kwargs):
-        if self._enforcer is None or self._rei is None:
-            print("You must start the enforcer, before dumping the REI")
-            return
-
-        print(self._rei)
 
 
     def __enter__(self):

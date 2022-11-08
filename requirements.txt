@@ -34,3 +34,4 @@ prompt-toolkit==3.0.29
 web3==5.31.0
 python-dotenv==0.21.0
 tabulate==0.8.10
+pathlib==1.0.1
