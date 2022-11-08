@@ -7,19 +7,18 @@ import sys
 import os
 import re
 from web3 import Web3
-from contract_generator import ContractGenerator
-from enforcer_generator import EnforcerGenerator
 from generator import SmartContractGenerator
-import contracts
-from dotenv import load_dotenv
 import time
 from tabulate import tabulate
+from django.conf import settings
+import statistics
+from datetime import datetime
+import uuid
 
 class Engine:
 
     def __init__(self):
         self._debug : bool = True
-
 
     def set_debug(self, debug: bool):
         self._debug = debug
@@ -89,6 +88,7 @@ class EngineOffChain(Engine):
         self._buffer = {}
         self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))
         self._debug : bool = True
+        
 
 
     @property
@@ -265,24 +265,21 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    def __init__(self, nfa : nfa.NFA, blockchain_url, chain_id, address, private_key, debug_compile : bool = False):
+    def __init__(self, nfa : nfa.NFA, debug_compile : bool = False):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._nfa : nfa.NFA = nfa
         self._debug : bool = True
+        self._runID = uuid.uuid4()
 
-        self._w3 : Web3 = Web3(Web3.HTTPProvider(blockchain_url, request_kwargs={'timeout': 300}))
-        self._chain_id : int = chain_id
+        self._debug_log(f"\nConnecting to {settings.BLOCKCHAIN_URL} ...")
+        self._w3 : Web3 = Web3(Web3.HTTPProvider(settings.BLOCKCHAIN_URL, request_kwargs={'timeout': 300}))
+        self._chain_id : int = settings.CHAIN_ID
+        self._debug_log("Connected.")
         
-        self._address : str = address
-        self._private_key : str = private_key
+        self._address : str = settings.ADDRESS
+        self._private_key : str = settings.PRIVATE_KEY
 
         self._stats = []
-
-        """contractGenerator: ContractGenerator = ContractGenerator()
-        nfaContract = contractGenerator.createContract(nfa)
-        
-        enforcerGenerator: EnforcerGenerator = EnforcerGenerator()
-        enforcerContract = enforcerGenerator.createEnforcer(nfaContract)"""
 
         smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
         compiled_sol = smartContractGenerator.createSmartContract().compile(debug_compile)
@@ -292,10 +289,6 @@ class EngineOnChain(Engine):
 
         self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
         self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
-
-
-        #self._nfa_abi, self._nfa_bytecode, self._nfa_address = self.deployContractNFA(nfaContract)
-        #self._enforcer_abi, self._enforcer_bytecode, self._enforcer_address = self.deployContractEnforcer(enforcerContract, self._nfa_address) 
 
     @property
     def nfa(self):
@@ -353,12 +346,17 @@ class EngineOnChain(Engine):
         abi = json.loads(compiled_sol["contracts"]["smart_contract.sol"][contract]["metadata"])["output"]["abi"]
 
         return abi, bytecode
+
+    def __log(self, contractAddress, gasUsed, cost, executionTime, type = None):
+        with open(f'log.txt', 'a', encoding="utf-8") as f:
+                f.write(f"{self._runID};{settings.BLOCKCHAIN_URL};{datetime.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
+                #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
+                #f.write("\n")
     
     def __add_statistics(self, contractAddress, gasUsed, cost, executionTime, type = None):
         self._stats.append([type, contractAddress, gasUsed, cost, executionTime])
     
     def __sendTransaction(self, transaction):
-        #start_time = time.time()
         # Sign the transaction
         sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
         
@@ -367,9 +365,6 @@ class EngineOnChain(Engine):
         
         # Wait for the transaction to be mined, and get the transaction receipt
         tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
-        
-        #execution_time = time.time() - start_time
-        #self._stats.append([self.address, tx_receipt.to, tx_receipt.contractAddress ,tx_receipt.gasUsed, round(tx_receipt.gasUsed * 0.001714,2), round(execution_time,3)])
 
         return tx_receipt
 
@@ -399,11 +394,12 @@ class EngineOnChain(Engine):
                 "nonce": nonce,
             }
         )
-
+        build_time = time.time() - start_time
         self._debug_log(f"\nDeploying contract {contract_name} ...")
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Contract Creation")
+        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
         self._debug_log(f"Done! Contract deployed to {tx_receipt.contractAddress}\n")
         return tx_receipt.contractAddress
 
@@ -470,90 +466,6 @@ class EngineOnChain(Engine):
                     items.append((actor, message))
         return items
 
-    # CONDITIONS below
-
-    def condition_rule_send(self, event):
-        return self.w3.eth.contract(
-                address = self.nfa_address,
-                abi = self.nfa_abi
-            ).functions.condition_rule_send().call()
-
-    def condition_rule_receive_now(self, event):
-
-        m = re.match("^[^!?]+\?[^!?]+$", event) 
-        self._debug_log(f"(* Condition rule receive now 1st: {event} => {m} *)")
-        if m is None:
-            return False
-
-        for curr in self._curr_states:
-            enabled_transitions = self._nfa.transitions_from(curr, event)
-
-            if len(enabled_transitions) > 0:
-                return True
-
-        return False
-
-    def condition_rule_receive_delayed(self, event):    
-
-        m = re.match("^[^!?]+\?[^!?]+$", event) 
-        self._debug_log(f"(* Condition rule receive delayed: {event} => {m} *)")
-        return m is not None
-
-    # RULES below
-
-    def rule_send(self, event):
-        return event
-
-    def rule_receive_now(self, event):
-
-        reached = set()
-        for s in self._curr_states:
-
-            s_reached = self._nfa.read_symbol(event, s)
-
-            if len(s_reached) == 0:
-                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
-            else:
-                reached = reached.union(s_reached)
-            
-
-        self._curr_states = reached
-        return event
-
-#    def rule_receive_delayed(self, actor, message):
-    def rule_receive_delayed(self, event):
-        actor, message = event.split("?")
-        self._buffer_add(actor, message)
-        return ""
-
-    def rule_receive_buffered(self, actor, message):
-        
-        assert actor in self._buffer and message in self._buffer[actor]
-        
-        counter = self._buffer[actor][message]
-
-        assert counter > 0
-
-        event = f"{actor}?{message}"
-
-        reached = set()
-        for s in self._curr_states:
-            s_reached = self._nfa.read_symbol(event, s)
-
-            if len(s_reached) == 0:
-                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
-            else:
-                reached = reached.union(s_reached)
-        
-        self._buffer_remove(actor, message)
-
-        nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
-        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-        self._curr_states = reached
-
-
-        return event
-
     #PROCESSORS
     def process_input(self, event):
         enforcer = self.w3.eth.contract(
@@ -568,9 +480,11 @@ class EngineOnChain(Engine):
                         "gasPrice": self.w3.eth.gas_price,
                         "nonce": nonce
                     })
-        execution_time = time.time() - start_time
+        build_time = time.time() - start_time
         tx_receipt = self.__sendTransaction(transaction)
+        execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
+        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
         return enforcer.events.outputEvent().processReceipt(tx_receipt)
 
     def process_check(self):
@@ -586,9 +500,11 @@ class EngineOnChain(Engine):
                         "gasPrice": self.w3.eth.gas_price,
                         "nonce": nonce
                     })
-        execution_time = time.time() - start_time
+        build_time = time.time() - start_time
         tx_receipt = self.__sendTransaction(transaction)
+        execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
+        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
         return enforcer.events.outputEvent().processReceipt(tx_receipt)
 
 
@@ -602,14 +518,7 @@ class Enforcer:
         self._history = []
 
         if onChain:
-            load_dotenv()
-            blockchain_url = "http://127.0.0.1:7545"
-            chain_id = 1337
-            #blockchain_url = "https://ropsten.infura.io/v3/f03b2f96d4b34a19aa9df619f4798114"
-            #chain_id = 3
-            address = os.getenv("ADDRESS")
-            private_key = os.getenv("PRIVATE_KEY")
-            self._engine = EngineOnChain(nfa, blockchain_url, chain_id, address, private_key, False)
+            self._engine = EngineOnChain(nfa, False)
         else:
             self._engine = EngineOffChain(nfa)
 
@@ -761,7 +670,21 @@ class UI:
             print(text)
 
     def __print_stats(self):
-        print(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)"],tablefmt="fancy_grid"))
+        print(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="fancy_grid"))
+        print("\n")
+        """gas_used = []
+        cost = []
+        execution_time = []
+        for row in self._stats:
+            gas_used.append(row[2])
+            cost.append(row[3])
+            execution_time.append(row[4])
+        print("Avg (Gas Used): ", round(statistics.mean(gas_used), 5))
+        print("SD (Gas Used): ", round(statistics.stdev(gas_used), 5))
+        print("Avg (Cost): ", statistics.mean(cost), " Eth")
+        print("SD (Cost): ", statistics.stdev(cost), " Eth")
+        print("Avg (Execution time): ", round(statistics.mean(execution_time), 5), " s")
+        print("SD (Execution time): ", round(statistics.stdev(execution_time), 5), " s")"""
 
     def prompt(self):
         userin = None
@@ -875,6 +798,10 @@ class UI:
             print("Statistics for off-chain Engine are not available.")
             return
         self.__print_stats()
+        """if (args[0] == "-save"):
+            with open(f'test_ganache.csv', 'a', encoding="utf-8") as f:
+                f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
+                f.write("\n")"""
 
     def cmd_history(self, *args, **kwargs):
         if self._enforcer is None:
@@ -917,6 +844,10 @@ class UI:
         if not c:
             raise Exception("You must load a choreography or start a choreography")
 
+        if not os.path.exists("log.txt"):
+            with open(f'log.txt', 'w', encoding="utf-8") as f:
+                f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
+
         nfa : nfa.NFA = c.to_nfa()
         self._enforcer = Enforcer(nfa)
         self._stats = self._enforcer._engine.stats
@@ -928,8 +859,7 @@ class UI:
         if self._enforcer.ended():
             self._debug_log("(* Ended *)")
             self._enforcer = None
-
-
+        
 
     def cmd_quit(self, *args, **kwargs):
         self._enforcer = None

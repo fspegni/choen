@@ -1,0 +1,28 @@
+Transaction                                            	Contract Address                          	  Gas Used	  Cost (Eth)	  Execution Time (s)
+Contract Creation                                      	0x1de5b4b532098f134c8286dB5536Fd19E7bb2583	   4113974	  0.08      	              13.616
+Contract Creation                                      	0xd0F502e38f155F8717673E719688904A2B6E145C	   2477373	  0.05      	               0.8
+Process input: Works_Manager?Concrete_casting_programme	                                          	    448843	  0.01      	              25.863
+Process check                                          	                                          	     29489	  0.00058978	               0.514
+Process input: Batching_Plant?Concrete_order           	                                          	    388437	  0.01      	              22.822
+Process check                                          	                                          	     29489	  0.00058978	               0.601
+Process input: Building_Constructor?FPC_Certificate    	                                          	    310879	  0.01      	               4.109
+Process check                                          	                                          	     29489	  0.00058978	               0.725
+Process input: Building_Constructor?Truck_mixer        	                                          	    223494	  0         	               1.299
+Process check                                          	                                          	     61040	  0.0012208 	               0.833
+Process input: Works_Manager?FPC_Certificate           	                                          	    715969	  0.01      	               5.52
+Process check                                          	                                          	    803450	  0.016069  	               7.783
+Process check                                          	                                          	     23827	  0.00047654	               0.753
+Transaction                                            	Contract Address                          	  Gas Used	  Cost (Eth)	  Execution Time (s)
+Contract Creation                                      	0x97C9B6c24615A6571AFC602aA00e884947eD63a1	   4113974	  0.08      	              13.616
+Contract Creation                                      	0x2f7A752869DdABADFfDd20AbE02B0069669b90df	   2477373	  0.05      	               0.724
+Process input: Works_Manager?Concrete_casting_programme	                                          	    448843	  0.01      	              24.696
+Process check                                          	                                          	     29489	  0.00058978	               0.599
+Process input: Batching_Plant?Concrete_order           	                                          	    388437	  0.01      	              23.541
+Process check                                          	                                          	     29489	  0.00058978	               0.616
+Process input: Building_Constructor?FPC_Certificate    	                                          	    310879	  0.01      	               3.646
+Process check                                          	                                          	     29489	  0.00058978	               0.641
+Process input: Building_Constructor?Truck_mixer        	                                          	    223494	  0         	               1.547
+Process check                                          	                                          	     61040	  0.0012208 	               0.619
+Process input: Works_Manager?FPC_Certificate           	                                          	    715969	  0.01      	               5.534
+Process check                                          	                                          	    800984	  0.0160197 	               6.963
+Process check                                          	                                          	     23827	  0.00047654	               0.682

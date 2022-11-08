@@ -372,6 +372,7 @@ class Choreography(models.Model):
     def to_rei(self):
         from rei import ChoToRei, render_receive
         exp, closure = ChoToRei(self, render_receive)
+        print("REI:", exp)
         return exp
 
     def to_nfa(self):
