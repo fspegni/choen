@@ -230,3 +230,46 @@ Output message: Buyer?lot_ID,_quality,_ghg,_lot_price
 (* No usable message found in buffer for current states. *)
 ** Checking completed. **
 ```
+
+## Enforcement test
+The third test aims to buffer one event sent by the user, but it will not be used because of the evolution of the choreography. 
+For example, imagine that we send the following stream of event:
+```
+SDS?lot_ID,_quality,_ghg,_price Seller?ack Buyer?lot_ID,_quality,_ghg,_lot_price EMS?energy_cost_query Buyer?energy_cost CMS?coolstore_cost_query Buyer?coolstore_cost BDSS?lot_price,_energy_cost,_coolstore_cost
+```
+With this set of events the choreography change its state going to the task called "check cost function". At this point the user send the event `Seller?decline`, but it is added to the enforcer buffer, because it is not usable in the current states of the automaton.
+```
+** Process input: Seller?decline ... **
+(* Condition rule receive delayed: Seller?decline *)
+** Process completed. **
+
+
+** Checking for usable messages in buffer ...
+(* No usable message found in buffer for current states. *)
+** Checking completed. **
+```
+However, in this case the user does not send the event `SDS?decline` and so using the event added into the buffer. In fact the user can decide to follow the other branch and so it send to the CLI the events `SDS?acceptance`,`Seller?acceptance`. As we can see 
+with the command `/history` the previous event remains in the buffer of the enforcer.
+```
+...
+
+event : BDSS?lot_price,_energy_cost,_coolstore_cost
+curr_states : ['pxqjhase', 'fpndpsly', 'bhcvemvr', 'rximwfhf']
+buffer : []
+
+
+event : Seller?decline
+curr_states : ['pxqjhase', 'fpndpsly', 'bhcvemvr', 'rximwfhf']
+buffer : ['Seller?decline']
+
+
+event : SDS?acceptance
+curr_states : ['dfujdivz', 'hnymfogm']
+buffer : ['Seller?decline']
+
+
+event : Seller?acceptance
+curr_states : ['fhfqoovt', 'rrggtafi']
+buffer : ['Seller?decline']
+```
+
