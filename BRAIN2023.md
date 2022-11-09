@@ -5,7 +5,7 @@ In this tutorial you can reproduce all the test used to write the paper for BRAI
 For each test has been used the Ganache blockchain, but you are free to use another blockchain editing the specific parameters in the setting.py file.
 Once you have activated the environment, you have to move in the bpmn2solidity folder and you can launch the CLI with the command `django-admin cli`. The following steps you have to run are the following:
 1. Execute the command `init` for inizialing the application
-2. Execute the command `load coreografia_semplice` to load the choreography used for all the test
+2. Execute the command `load <path/brain2023_running_example.bpmn>` the first time (then `load brain2023_running_example>`) to load the choreography used for all the test
 3. Execute the command `start` for starting the enforcer and for generating and deploying the smart contract in the blockchain.
 
 The choreography used is the following.
@@ -192,4 +192,41 @@ Output message: Seller?acceptance
 (* Ended *)
 ```
 As said in the beginning none event is added to the enforcer buffer, but the rule receive_now is triggered every time and so the choreography moves for each event in its next state.
+
 ## Correct execution with event buffered
+The second test aims to check the other rules, i.e. rule receive delayed and rule receive buffered.
+Imagine that in the initial state you send the event `SDS?lot_ID,_quality,_ghg,_price`. It triggers the rule receive now and a transitions is generated in the automaton associated with the choreography. The possibile transitions in the new state are the following:
+```
+ * State(ywdwzqdf) -[Seller?ack]-> State(hdgwceud)
+ * State(crprzznl) -[]-> State(ywdwzqdf)
+```
+In this case imagine that we want to force the system to move forward without waiting the acknowledge message. For example, we try to send the event `Buyer?lot_ID,_quality,_ghg,_lot_price`. In this case in the terminal we can see the following output:
+```
+** Process input: Buyer?lot_ID,_quality,_ghg,_lot_price ... **
+(* Condition rule receive delayed: Buyer?lot_ID,_quality,_ghg,_lot_price *)
+** Process completed. **
+
+
+** Checking for usable messages in buffer ...
+(* No usable message found in buffer for current states. *)
+** Checking completed. **
+```
+The rule receive delayed is triggered and the event is added to the buffer of the enforcer. You can check it using the command `/history`.
+Therefore, to move forward in the choreography the only event allowed is `Seller?ack`. However, in this particular case, sending this event to the enforcer, the rule receive buffered is triggered because in the new states reached by the event `Seller?ack`, the previuos event added in the buffer can be used. In fact, the output that is showed sending the event `Seller?ack` is the following:
+```
+** Process input: Seller?ack ... **
+(* Condition rule receive now: Seller?ack *)
+
+Output message: Seller?ack
+
+** Process completed. **
+
+
+** Checking for usable messages in buffer ...
+(* Condition rule receive buffered: Buyer?lot_ID,_quality,_ghg,_lot_price *)
+
+Output message: Buyer?lot_ID,_quality,_ghg,_lot_price
+
+(* No usable message found in buffer for current states. *)
+** Checking completed. **
+```
