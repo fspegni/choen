@@ -7,6 +7,7 @@ from django.core.files import File
 from pathlib import Path
 import prompt_toolkit
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.completion import NestedCompleter
 
 class Engine:
 
@@ -353,6 +354,268 @@ class Model:
     def get_object(self, name):
         return self._store.get(name, None)
 
+class UICommand:
+
+    def __init__(self, ui):
+        assert isinstance(ui, UI)
+        self._ui = ui
+
+    @property
+    def ui(self):
+        return self._ui
+
+    def get_completions(self):
+        return None
+
+    def execute(self, *args, **kwargs):
+        raise Exception("You must implement this")
+
+
+class CmdInit(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        choreographies = [
+            ("diagram", "diagram.bpmn", ),
+            ("diagram_minimal", "diagram_minimal.bpmn"),
+            ("diagram_basic", "diagram_basic.bpmn"),
+            ("diagram_gateways", "diagram_gateways.bpmn", ),
+            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
+            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+
+        ]
+
+        for name, filename in choreographies:
+            attribs = {
+                "name": name,
+                "resource": os.path.join(settings.MEDIA_ROOT, filename),
+            }
+            
+            c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
+            if created:
+                print(f"Choreography {name} imported ...")
+            else:
+                print(f"Choreography {name} already exists ...")
+
+
+class CmdDebug(UICommand):
+
+    def get_completions(self):
+
+        return { "on" : None, "off": None }
+
+    def execute(self, *args, **kwargs):
+
+        status = "on"
+        if len(args) > 0:
+            status = args[0]
+
+        if status not in [ "on", "off" ]:
+            raise Exception(f"Status not recognized: {status}")
+
+        print(f"Set debug mode : {status}")
+
+        self.ui._debug = (status == "on")
+        if self.ui._enforcer:
+            self.ui._enforcer.set_debug(self.ui._debug)
+
+
+
+class CmdQuit(UICommand):
+
+    def execute(self, *args, **kwargs):
+        raise KeyboardInterrupt()
+
+
+class CmdHelp(UICommand):
+    def execute(self, *args, **kwargs):
+        print("Available commands: ")
+        print(", ".join(self.ui._registry.keys()))
+
+
+class CmdList(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        print("Available choreographies:")
+        items = Choreography.objects.all()
+
+        if len(items) == 0:
+            print(f"(* none *)")
+        else:
+            longest = 0
+            for c in items:
+                if len(c.name) > longest:
+                    longest = len(c.name)
+
+            for c in items:
+                cho_name = c.name.ljust(longest+3,".")
+                print(f"* {cho_name} - {c.resource}")
+
+
+class CmdStop(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        self.ui.set_running(False)
+
+
+class CmdRemove(UICommand):
+    
+    def get_completions(self):
+
+        d = {}
+        for c in Choreography.objects.all():
+            d[c.name] = None
+        return d
+
+    def execute(self, name, *args, **kwargs):
+
+        c = Choreography.objects.filter(name=name).first()
+        if c is None:
+            print(f"Choreogrpahy '{name} does not exist")
+        else:
+            confirm = self.ui.prompt(f"Do you want to remove choreography {c.name} ({c.resource}) from the enforcer database? [y/N]")
+            if confirm.lower() == "y":
+                c.delete()
+            else:
+                print(f"Operation interrupted by the user")
+
+class CmdLoad(UICommand):
+
+    def get_completions(self):
+ 
+        d = {}
+        for c in Choreography.objects.all():
+            d[c.name] = None
+        return d
+   
+    def execute(self, name, *args, **kwargs):
+        try:
+            c : Choreography = Choreography.objects.get(name=name)
+            self.ui._model.add_object("choreography", c)
+            print(f"Choreography '{name}' loaded ...")
+        except Choreography.DoesNotExist as e:
+            if os.path.exists(name):
+                cho_name = os.path.basename(name).rsplit(".",1)[0]
+                attribs = {
+                    "name": cho_name,
+                    "resource": File(open(name)),
+                }
+                c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
+                self.ui._model.add_object("choreography", c)
+                if created:
+                    print(f"Choreography {cho_name} imported and loaded ...")
+                else:
+                    print(f"Choreography {cho_name} already exists and has been loaded ...")
+            else:
+                print(f"Cannot find choreography {name}")
+ 
+               
+class CmdStart(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        c : Choreography = self.ui._model.get_object("choreography")
+
+        if len(args) > 0:
+            c = Choreography.objects.get(name=args[0])
+
+        if not c:
+            raise Exception("You must load a choreography or start a choreography")
+
+        regex : rei.REI = c.to_rei()
+        automaton : nfa.NFA = nfa.ReiToNFA(regex)
+
+        self.ui._enforcer = Enforcer(automaton)
+        self.ui._rei = regex
+        self.ui._running = True
+
+        if self.ui._enforcer.ended():
+            self.ui._running = False
+            self.ui._debug_log("(* Ended *)")
+
+
+class CmdDump(UICommand):
+
+    def get_completions(self):
+        d = {
+            "curr_states": None,
+            "transitions": None,
+            "states": None,
+            "rei": None,
+            "buffer": None,
+        }
+
+        return d
+
+    def execute(self, *args, **kwargs):
+        if self.ui._enforcer is None:
+            print("You must start the enforcer, before dumping the state")
+            return
+
+        if len(args) == 0:
+            print("Please specify an argument: dump <curr_states|states|transitions|buffer|rei>")
+        else:
+            if args[0] == "curr_states":    
+                print("\nCurrent states: \n")
+                for s in self.ui._enforcer.engine.get_curr_states():
+                    label = str(s)
+                    if self.ui._enforcer.engine.is_state_initial(s):
+                        label = f"{label} : i"
+                    if self.ui._enforcer.engine.is_state_final(s):
+                        label = f"{label} : f"
+                    print(label)
+                
+
+            elif args[0] == "transitions":
+                print("\nTransitions (*=enabled): \n")
+                for t in self.ui._enforcer.engine.get_transitions():
+
+                    t_repr = str(t)
+                    if self.ui._enforcer.engine.is_state_current(t.source):
+                        t_repr = f" * {t_repr}"
+                    else:
+                        t_repr = f"   {t_repr}"
+
+                    print(t_repr)
+
+            elif args[0] == "states":
+                print("\nStates (*=current, i=initial, f=final) : \n")
+                for s in self.ui._enforcer.engine.get_all_states():
+                    label = str(s)
+
+                    if self.ui._enforcer.engine.is_state_initial(s):
+                        label = f"{label} : i"
+
+                    if self.ui._enforcer.engine.is_state_final(s):
+                        label = f"{label} : f"
+
+                    if self.ui._enforcer.engine.is_state_current(s):
+                        label = f" * {label}"
+                    else:
+                        label = f"   {label}"
+
+                    print(label)
+
+
+            elif args[0] == "buffer":
+                print("\nBuffer: \n")
+                for actor,message in self.ui._enforcer.engine.get_buffer_items():
+                    msg = f"{actor}?{message}"
+
+                    print(msg)
+            
+            elif args[0] == "rei":
+                print("\nREI: \n")
+                print(self.ui._rei)
+
+
+
 
 class UI:
 
@@ -364,17 +627,17 @@ class UI:
 
     def __init__(self, *args, **kwargs):
         self._registry = {
-            "init"  : self.cmd_init,
-            "list"  : self.cmd_list,
-            "rm"    : self.cmd_remove,
-            "load"  : self.cmd_load,
-            "start" : self.cmd_start,
-            "stop" : self.cmd_stop,
-            "debug" : self.cmd_debug,
-            "help"  : self.cmd_help,
-            "dump"  : self.cmd_dump,
-            "exit"  : self.cmd_quit,
-            "quit"  : self.cmd_quit
+            "init"  : CmdInit(self), #self.cmd_init,
+            "list"  : CmdList(self), #self.cmd_list,
+            "rm"    : CmdRemove(self), #self.cmd_remove,
+            "load"  : CmdLoad(self), #self.cmd_load,
+            "start" : CmdStart(self), # self.cmd_start,
+            "stop"  : CmdStop(self), #self.cmd_stop,
+            "debug" : CmdDebug(self), #self.cmd_debug,
+            "help"  : CmdHelp(self), #self.cmd_help,
+            "dump"  : CmdDump(self), #self.cmd_dump,
+            "exit"  : CmdQuit(self), #self.cmd_quit,
+            "quit"  : CmdQuit(self), #self.cmd_quit
         }
         self._model = Model()
         self._enforcer = None
@@ -388,9 +651,33 @@ class UI:
         if not os.path.exists(self.PROMPT_HISTORY_CLI):
             Path(self.PROMPT_HISTORY_CLI).touch(mode=0o666, exist_ok=True)
 
-        self._session_enforcer = prompt_toolkit.PromptSession(self.PROMPT_ENFORCER, history=FileHistory(self.PROMPT_HISTORY_ENFORCER))
-        self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI))
+        cli_completer = self._get_cli_completer()
+        enforcer_completer = self._get_enforcer_completer()
 
+        self._session_enforcer = prompt_toolkit.PromptSession(self.PROMPT_ENFORCER, history=FileHistory(self.PROMPT_HISTORY_ENFORCER), completer=enforcer_completer)
+        self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI), completer=cli_completer)
+
+    def set_running(self, v : bool):
+        self._running = v
+
+
+    def _get_enforcer_completer(self):
+        d = {}
+        for n,cmd in self._registry.items():
+            d[f"/{n}"] = cmd.get_completions()
+
+        return NestedCompleter.from_nested_dict(d)
+
+    def _get_cli_completer(self):
+        d = {}
+    
+        for n,cmd in self._registry.items():
+            d[n] = cmd.get_completions()
+
+#        print("CLI completer")
+#        print(d)
+        return NestedCompleter.from_nested_dict(d)
+    
     def set_debug(self, debug: bool):
         self._debug = debug
 
@@ -436,7 +723,7 @@ class UI:
         handler = self._registry.get(cmd, None)
 
         if handler:
-            handler(*cmd_args)
+            handler.execute(*cmd_args)
         else:
             print(f"ERROR: Command not recognized: {cmd} {' ' .join(cmd_args)}")
 
@@ -470,211 +757,13 @@ class UI:
             self._running = False
 
 
-    def cmd_init(self, *args, **kwargs):
-
-        choreographies = [
-            ("diagram", "diagram.bpmn", ),
-            ("diagram_minimal", "diagram_minimal.bpmn"),
-            ("diagram_basic", "diagram_basic.bpmn"),
-            ("diagram_gateways", "diagram_gateways.bpmn", ),
-            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
-            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
-            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
-            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
-            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
-            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
-
-        ]
-
-        for name, filename in choreographies:
-            attribs = {
-                "name": name,
-                "resource": os.path.join(settings.MEDIA_ROOT, filename),
-            }
-            
-            c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
-            if created:
-                print(f"Choreography {name} imported ...")
-            else:
-                print(f"Choreography {name} already exists ...")
-
-
-    def cmd_debug(self, *args, **kwargs):
-
-        status = "on"
-        if len(args) > 0:
-            status = args[0]
-
-        if status not in [ "on", "off" ]:
-            raise Exception(f"Status not recognized: {status}")
-
-        print(f"Set debug mode : {status}")
-
-        self._debug = (status == "on")
-        if self._enforcer:
-            self._enforcer.set_debug(self._debug)
-
-
-    def cmd_load(self, name, *args, **kwargs):
-        try:
-            c : Choreography = Choreography.objects.get(name=name)
-            self._model.add_object("choreography", c)
-            print(f"Choreography '{name}' loaded ...")
-        except Choreography.DoesNotExist as e:
-            if os.path.exists(name):
-                cho_name = os.path.basename(name).rsplit(".",1)[0]
-                attribs = {
-                    "name": cho_name,
-                    "resource": File(open(name)),
-                }
-                c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
-                self._model.add_object("choreography", c)
-                if created:
-                    print(f"Choreography {cho_name} imported and loaded ...")
-                else:
-                    print(f"Choreography {cho_name} already exists and has been loaded ...")
-            else:
-                print(f"Cannot find choreography {name}")
- 
-               
-    def cmd_list(self, *args, **kwargs):
-        print("Available choreographies:")
-        items = Choreography.objects.all()
-
-        if len(items) == 0:
-            print(f"(* none *)")
-        else:
-            longest = 0
-            for c in items:
-                if len(c.name) > longest:
-                    longest = len(c.name)
-
-            for c in items:
-                cho_name = c.name.ljust(longest+3,".")
-                print(f"* {cho_name} - {c.resource}")
-
-
-    def cmd_start(self, *args, **kwargs):
-
-        c : Choreography = self._model.get_object("choreography")
-
-        if len(args) > 0:
-            c = Choreography.objects.get(name=args[0])
-
-        if not c:
-            raise Exception("You must load a choreography or start a choreography")
-
-        regex : rei.REI = c.to_rei()
-#        nfa : nfa.NFA = c.to_nfa()
-        automaton : nfa.NFA = nfa.ReiToNFA(regex)
-
-        self._enforcer = Enforcer(automaton)
-        self._rei = regex
-        self._running = True
-
-        if self._enforcer.ended():
-            self._running = False
-            self._debug_log("(* Ended *)")
-#            self._enforcer = None
-#            self._rei = None
-
-    def cmd_stop(self, *args, **kwargs):
-
-        self._running = False
-
-
-    def cmd_remove(self, name, *args, **kwargs):
-
-        c = Choreography.objects.filter(name=name).first()
-        if c is None:
-            print(f"Choreogrpahy '{name} does not exist")
-        else:
-            confirm = self.prompt(f"Do you want to remove choreography {c.name} ({c.resource}) from the enforcer database? [y/N]")
-            if confirm.lower() == "y":
-                c.delete()
-            else:
-                print(f"Operation interrupted by the user")
-
-
-    def cmd_quit(self, *args, **kwargs):
-        print(f"Good bye")
-
-
-    def cmd_help(self, *args, **kwargs):
-        print("Available commands: ")
-        print(", ".join(self._registry.keys()))
-
-
-    def cmd_dump(self, *args, **kwargs):
-        if self._enforcer is None:
-            print("You must start the enforcer, before dumping the state")
-            return
-
-        if len(args) == 0:
-            print("Please specify an argument: dump <curr_states|states|transitions|buffer|rei>")
-        else:
-            if args[0] == "curr_states":    
-                print("\nCurrent states: \n")
-                for s in self._enforcer.engine.get_curr_states():
-                    label = str(s)
-                    if self._enforcer.engine.is_state_initial(s):
-                        label = f"{label} : i"
-                    if self._enforcer.engine.is_state_final(s):
-                        label = f"{label} : f"
-                    print(label)
-                
-
-            elif args[0] == "transitions":
-                print("\nTransitions (*=enabled): \n")
-                for t in self._enforcer.engine.get_transitions():
-
-                    t_repr = str(t)
-                    if self._enforcer.engine.is_state_current(t.source):
-                        t_repr = f" * {t_repr}"
-                    else:
-                        t_repr = f"   {t_repr}"
-
-                    print(t_repr)
-
-            elif args[0] == "states":
-                print("\nStates (*=current, i=initial, f=final) : \n")
-                for s in self._enforcer.engine.get_all_states():
-                    label = str(s)
-
-                    if self._enforcer.engine.is_state_initial(s):
-                        label = f"{label} : i"
-
-                    if self._enforcer.engine.is_state_final(s):
-                        label = f"{label} : f"
-
-                    if self._enforcer.engine.is_state_current(s):
-                        label = f" * {label}"
-                    else:
-                        label = f"   {label}"
-
-                    print(label)
-
-
-            elif args[0] == "buffer":
-                print("\nBuffer: \n")
-                for actor,message in self._enforcer.engine.get_buffer_items():
-                    msg = f"{actor}?{message}"
-
-                    print(msg)
-            
-            elif args[0] == "rei":
-                print("\nREI: \n")
-                print(self._rei)
-
-
-
-
     def __enter__(self):
         return self
 
 
     def __exit__(self, *args, **kwargs):
-        self.cmd_quit()
+        print(f"Good bye :-)")
+        pass
 
 
 def cli(*args, **kwargs):
