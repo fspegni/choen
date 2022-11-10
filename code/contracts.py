@@ -1,6 +1,5 @@
 from asyncio import events
 from codeop import Compile
-from msilib.schema import Directory
 from re import S
 import solcx
 from django.conf import settings

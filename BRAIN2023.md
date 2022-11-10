@@ -5,7 +5,7 @@ In this tutorial you can reproduce all the test used to write the paper for BRAI
 For each test has been used the Ganache blockchain, but you are free to use another blockchain editing the specific parameters in the setting.py file.
 Once you have activated the environment, you have to move in the bpmn2solidity folder and you can launch the CLI with the command `django-admin cli`. The following steps you have to run are the following:
 1. Execute the command `init` for inizialing the application
-2. Execute the command `load coreografia_semplice` to load the choreography used for all the test
+2. Execute the command `load <path/brain2023_running_example.bpmn>` the first time (then `load brain2023_running_example>`) to load the choreography used for all the test
 3. Execute the command `start` for starting the enforcer and for generating and deploying the smart contract in the blockchain.
 
 The choreography used is the following.
@@ -192,4 +192,84 @@ Output message: Seller?acceptance
 (* Ended *)
 ```
 As said in the beginning none event is added to the enforcer buffer, but the rule receive_now is triggered every time and so the choreography moves for each event in its next state.
+
 ## Correct execution with event buffered
+The second test aims to check the other rules, i.e. rule receive delayed and rule receive buffered.
+Imagine that in the initial state you send the event `SDS?lot_ID,_quality,_ghg,_price`. It triggers the rule receive now and a transitions is generated in the automaton associated with the choreography. The possibile transitions in the new state are the following:
+```
+ * State(ywdwzqdf) -[Seller?ack]-> State(hdgwceud)
+ * State(crprzznl) -[]-> State(ywdwzqdf)
+```
+In this case imagine that we want to force the system to move forward without waiting the acknowledge message. For example, we try to send the event `Buyer?lot_ID,_quality,_ghg,_lot_price`. In this case in the terminal we can see the following output:
+```
+** Process input: Buyer?lot_ID,_quality,_ghg,_lot_price ... **
+(* Condition rule receive delayed: Buyer?lot_ID,_quality,_ghg,_lot_price *)
+** Process completed. **
+
+
+** Checking for usable messages in buffer ...
+(* No usable message found in buffer for current states. *)
+** Checking completed. **
+```
+The rule receive delayed is triggered and the event is added to the buffer of the enforcer. You can check it using the command `/history`.
+Therefore, to move forward in the choreography the only event allowed is `Seller?ack`. However, in this particular case, sending this event to the enforcer, the rule receive buffered is triggered because in the new states reached by the event `Seller?ack`, the previuos event added in the buffer can be used. In fact, the output that is showed sending the event `Seller?ack` is the following:
+```
+** Process input: Seller?ack ... **
+(* Condition rule receive now: Seller?ack *)
+
+Output message: Seller?ack
+
+** Process completed. **
+
+
+** Checking for usable messages in buffer ...
+(* Condition rule receive buffered: Buyer?lot_ID,_quality,_ghg,_lot_price *)
+
+Output message: Buyer?lot_ID,_quality,_ghg,_lot_price
+
+(* No usable message found in buffer for current states. *)
+** Checking completed. **
+```
+
+## Enforcement test
+The third test aims to buffer one event sent by the user, but it will not be used because of the evolution of the choreography. 
+For example, imagine that we send the following stream of event:
+```
+SDS?lot_ID,_quality,_ghg,_price Seller?ack Buyer?lot_ID,_quality,_ghg,_lot_price EMS?energy_cost_query Buyer?energy_cost CMS?coolstore_cost_query Buyer?coolstore_cost BDSS?lot_price,_energy_cost,_coolstore_cost
+```
+With this set of events the choreography change its state going to the task called "check cost function". At this point the user send the event `Seller?decline`, but it is added to the enforcer buffer, because it is not usable in the current states of the automaton.
+```
+** Process input: Seller?decline ... **
+(* Condition rule receive delayed: Seller?decline *)
+** Process completed. **
+
+
+** Checking for usable messages in buffer ...
+(* No usable message found in buffer for current states. *)
+** Checking completed. **
+```
+However, in this case the user does not send the event `SDS?decline` and so using the event added into the buffer. In fact the user can decide to follow the other branch and so it send to the CLI the events `SDS?acceptance`,`Seller?acceptance`. As we can see 
+with the command `/history` the previous event remains in the buffer of the enforcer.
+```
+...
+
+event : BDSS?lot_price,_energy_cost,_coolstore_cost
+curr_states : ['pxqjhase', 'fpndpsly', 'bhcvemvr', 'rximwfhf']
+buffer : []
+
+
+event : Seller?decline
+curr_states : ['pxqjhase', 'fpndpsly', 'bhcvemvr', 'rximwfhf']
+buffer : ['Seller?decline']
+
+
+event : SDS?acceptance
+curr_states : ['dfujdivz', 'hnymfogm']
+buffer : ['Seller?decline']
+
+
+event : Seller?acceptance
+curr_states : ['fhfqoovt', 'rrggtafi']
+buffer : ['Seller?decline']
+```
+
