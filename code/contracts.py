@@ -242,7 +242,7 @@ class Contract(Compileable):
 """
         """compiled_sol = solcx.compile_source(contract_text,
                              #output_values = ["abi","bin-runtime","metadata"],
-                             solc_version = "0.8.0",
+                             solc_version = "{settings.SOLC_VERSION}",
                              output_dir = f"{settings.BASE_DIR}\..\public\contracts",
                              overwrite=True
         )
@@ -263,7 +263,7 @@ class Contract(Compileable):
                     #"libraries": {"strings.sol"}
                 },
             },
-            solc_version = "0.8.0",
+            solc_version = "{settings.SOLC_VERSION}",
             allow_paths = ["."]
             
         )
@@ -330,6 +330,16 @@ class SmartContract(Compileable):
         self._contracts[c.name] = c
 
     def compile(self, debug : bool):
+
+        try:
+            solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
+        except solcx.exceptions.SolcNotInstalled:
+            print(f"Installing solc v{settings.SOLC_VERSION} ...")
+            solcx.install_solc(settings.SOLC_VERSION) #"0.8.0")
+            solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
+
+        print(f"Using solc v{settings.SOLC_VERSION} ...")
+
         imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
         libraries_text = "\n".join(map(lambda l: l+"\n", self.libraries.values()))
         contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
@@ -359,7 +369,8 @@ pragma abicoder v2;
                     #"libraries": {"strings.sol"}
                 },
             },
-            solc_version = "0.8.0",
+            # TODO add a setting parameter for solc version
+            solc_version = settings.SOLC_VERSION, #"0.8.0",
             allow_paths = ["."]
         )
         if (debug):

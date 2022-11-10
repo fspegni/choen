@@ -129,20 +129,12 @@ STATIC_URL = '/static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-SOLIDITY_VERSION = "^0.7.6"
+SOLC_VERSION = "0.8.0"
 TEMPLATE_NAME = "template.sol.jinja2"
 
-#ADDRESS = "0x6b5b5e0a77468dD336017D628aA723DF21497a2C"
-#PRIVATE_KEY = "0x26e6f2393cd9ed1192fcb842e051b1e5d27d491b327296aa22a79bafbb418c5f"
-#BLOCKCHAIN_URL = "http://127.0.0.1:7545"
-#CHAIN_ID = 1337
+ONCHAIN_ENABLED = True
 
-# queste sono di Lorenzo
-#ADDRESS = "0x0798F1E3A701Ae637fa21D9a0B174E907c35F96E"
-#PRIVATE_KEY = "0x81d65e458af2ee0f1db2e9143d8de98f49c9fa6bf2847d2ef89a8949a9b3279a"
-#BLOCKCHAIN_URL = "https://sepolia.infura.io/v3/f03b2f96d4b34a19aa9df619f4798114"
-
-ADDRESS = "0x0xCF10EFBBe80BDBB5B60573313112cD3b99476812"
-PRIVATE_KEY = "0x885dce2e2f4384889df4be76a53b634699331414bf557c8eb4a21dfcdf5f67aa"
-BLOCKCHAIN_URL = "https://sepolia.infura.io/v3/5d8ab00cfcc744768f1f3726a23a230d"
-CHAIN_ID = 11155111 # this is specific for Sepolia worldwide
+ONCHAIN_ADDRESS = os.getenv("CHOEN_ONCHAIN_ADDRESS", None) #"<better_keep_this_secret>"
+ONCHAIN_PRIVATE_KEY = os.getenv("CHOEN_ONCHAIN_PRIVATE_KEY", None) #"<better_keep_this_secret>"
+ONCHAIN_BLOCKCHAIN_URL = os.getenv("CHOEN_ONCHAIN_BLOCKCHAIN_URL", "https://sepolia.infura.io/v3/5d8ab00cfcc744768f1f3726a23a230d")
+ONCHAIN_CHAIN_ID = int(os.getenv("CHOEN_ONCHAIN_CHAIN_ID", "11155111")) # the default value is specific for the Sepolia test blockchain worldwide

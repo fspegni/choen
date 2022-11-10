@@ -95,6 +95,24 @@ class EngineOffChain(Engine):
         self._debug : bool = True
         
 
+    def process_input(self, event):
+
+        out = None
+        if self._engine.condition_rule_send(event):
+            out = self._engine.rule_send(event)
+
+        elif self._engine.condition_rule_receive_now(event):
+                out = self._engine.rule_receive_now(event)
+
+        elif self._engine.condition_rule_receive_delayed(event):
+                # TODO add check that the message may actually be consumed afterwards;
+                # without this check, it does not make sense to implement the rule "Cannot receive" 
+            out = self._engine.rule_receive_delayed(event)
+        else:
+            self._debug_log("(* No matching condition *)")        
+
+        return out
+
 
     @property
     def buffer(self) -> dict:
@@ -276,17 +294,23 @@ class EngineOnChain(Engine):
 
     def __init__(self, nfa : nfa.NFA, debug_compile : bool = False):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+
+        assert settings.ONCHAIN_ADDRESS is not None, "You must configure your wallet address before continuing"
+        assert settings.ONCHAIN_PRIVATE_KEY is not None, "You must configure your wallet private key before continuing"
+        assert settings.ONCHAIN_BLOCKCHAIN_URL is not None, "You must configure your blockchain URL before continuing"
+        assert settings.ONCHAIN_CHAIN_ID is not None, "You must configure your blockchain chain ID before continuing"
+    
         self._nfa : nfa.NFA = nfa
         self._debug : bool = True
         self._runID = uuid.uuid4()
 
-        self._debug_log(f"\nConnecting to {settings.BLOCKCHAIN_URL} ...")
-        self._w3 : Web3 = Web3(Web3.HTTPProvider(settings.BLOCKCHAIN_URL, request_kwargs={'timeout': 300}))
-        self._chain_id : int = settings.CHAIN_ID
+        self._debug_log(f"\nConnecting to {settings.ONCHAIN_BLOCKCHAIN_URL} ...")
+        self._w3 : Web3 = Web3(Web3.HTTPProvider(settings.ONCHAIN_BLOCKCHAIN_URL, request_kwargs={'timeout': 300}))
+#        self._chain_id : int = settings.CHAIN_ID
         self._debug_log("Connected.")
         
-        self._address : str = settings.ADDRESS
-        self._private_key : str = settings.PRIVATE_KEY
+#        self._address : str = settings.ADDRESS
+#        self._private_key : str = settings.PRIVATE_KEY
 
         self._stats = []
 
@@ -309,15 +333,18 @@ class EngineOnChain(Engine):
     
     @property
     def chain_id(self) -> int:
-        return self._chain_id
+#        return self._chain_id
+        return settings.ONCHAIN_CHAIN_ID
 
     @property
     def address(self) -> str:
-        return self._address
+#        return self._address
+        return settings.ONCHAIN_ADDRESS
 
     @property
     def private_key(self) -> str:
-        return self._private_key
+#        return self._private_key   
+        return settings.ONCHAIN_PRIVATE_KEY
     
     @property
     def stats(self) -> str:
@@ -358,7 +385,7 @@ class EngineOnChain(Engine):
 
     def __log(self, contractAddress, gasUsed, cost, executionTime, type = None):
         with open(f'log.txt', 'a', encoding="utf-8") as f:
-                f.write(f"{self._runID};{settings.BLOCKCHAIN_URL};{datetime.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
+                f.write(f"{self._runID};{settings.ONCHAIN_BLOCKCHAIN_URL};{datetime.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
                 #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
                 #f.write("\n")
     
@@ -494,7 +521,14 @@ class EngineOnChain(Engine):
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
         self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
-        return enforcer.events.outputEvent().processReceipt(tx_receipt)
+#        return enforcer.events.outputEvent().processReceipt(tx_receipt)
+        logs = enforcer.events.outputEvent().processReceipt(tx_receipt)
+
+        self._debug_log(logs[0].args.debug)
+        out = logs[0].args.messageOut
+        out = None if out == "None" else out
+        return out
+ 
 
     def process_check(self):
         enforcer = self.w3.eth.contract(
@@ -563,33 +597,39 @@ class Enforcer:
 
 
     # PROCESSORS
-
     def process_input(self, event): #event_stream : str):
-        out = None
-        if (self._onChain):
-            logs = self._engine.process_input(event)
-            self._debug_log(logs[0].args.debug)
-            out = logs[0].args.messageOut
-            out = None if out == "None" else out
-        else:
-            num_states_pre = self._engine.get_num_states() #en(self._curr_states)
+##        out = None
+##        if (self._onChain):
+##            logs = self._engine.process_input(event)
+##            self._debug_log(logs[0].args.debug)
+##            out = logs[0].args.messageOut
+##            out = None if out == "None" else out
+##        else:
+##            num_states_pre = self._engine.get_num_states() #en(self._curr_states)
+##
+##            if self._engine.condition_rule_send(event):
+##                out = self._engine.rule_send(event)
+##
+##            elif self._engine.condition_rule_receive_now(event):
+##                    out = self._engine.rule_receive_now(event)
+##
+##            elif self._engine.condition_rule_receive_delayed(event):
+##                    # TODO add check that the message may actually be consumed afterwards;
+##                    # without this check, it does not make sense to implement the rule "Cannot receive" 
+##                out = self._engine.rule_receive_delayed(event)
+##            else:
+##                self._debug_log("(* No matching condition *)")        
+##
+##            nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
+##            self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+##
 
-            if self._engine.condition_rule_send(event):
-                out = self._engine.rule_send(event)
-
-            elif self._engine.condition_rule_receive_now(event):
-                    out = self._engine.rule_receive_now(event)
-
-            elif self._engine.condition_rule_receive_delayed(event):
-                    # TODO add check that the message may actually be consumed afterwards;
-                    # without this check, it does not make sense to implement the rule "Cannot receive" 
-                out = self._engine.rule_receive_delayed(event)
-            else:
-                self._debug_log("(* No matching condition *)")        
-
-            nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
-            self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-
+        num_states_pre = self._engine.get_num_states() #en(self._curr_states)
+        out = self._engine.process_input(event)
+        nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
+        
+        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+        
         self._append_history(event, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
         return out
         
@@ -816,16 +856,18 @@ class CmdStart(UICommand):
             with open(f'log.txt', 'w', encoding="utf-8") as f:
                 f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
 
-        if self._enforcer._onChain:
-            self._debug_log(f"\nGas price:  {self._enforcer._engine.w3.eth.gas_price} Wei")
-
 
         regex : rei.REI = c.to_rei()
         automaton : nfa.NFA = nfa.ReiToNFA(regex)
 
+        # TODO pass both the automaton and the rei to the Enforcer constructor
         self.ui._enforcer = Enforcer(automaton)
         self.ui._rei = regex
         self.ui._running = True
+
+        if self.ui._enforcer._onChain:
+            self.ui._debug_log(f"\nGas price:  {self.ui._enforcer._engine.w3.eth.gas_price} Wei")
+
 
         if self.ui._enforcer.ended():
             self.ui._running = False
