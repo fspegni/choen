@@ -11,8 +11,16 @@ from prompt_toolkit.completion import NestedCompleter
 
 class Engine:
 
-    def __init__(self):
+    def __init__(self, nfa : nfa.NFA):
+
+        assert nfa is not None, f"Expected not-null nfa to build an enforcer engine"
+
         self._debug : bool = True
+        self._nfa = nfa
+
+    @property
+    def nfa(self):
+        return self._nfa
 
 
     def set_debug(self, debug: bool):
@@ -78,8 +86,8 @@ class Engine:
 class EngineOffChain(Engine):
 
     def __init__(self, nfa : nfa.NFA):
-        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
-        self._nfa : nfa.NFA = nfa
+        super().__init__(nfa)
+#        self._nfa : nfa.NFA = nfa
         self._buffer = {}
         self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))
         self._debug : bool = True
@@ -92,10 +100,6 @@ class EngineOffChain(Engine):
     @property
     def curr_states(self) -> str:
         return self._curr_states
-
-    @property
-    def nfa(self):
-        return self._nfa
 
     # UTILS
 
@@ -263,16 +267,24 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    pass
+    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : str, contract_address : str, private_key : str):
+
+        super().__init__(nfa)
+        self._chain_url = chain_url 
+        self._chain_id = chain_id
+        self._contract_address = contract_address
+        self._private_key = private_key
 
 
 class Enforcer:
 
-    def __init__(self, nfa : nfa.NFA):
+#    def __init__(self, nfa : nfa.NFA):
+    def __init__(self, engine : Engine):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._debug : bool = True
 
-        self._engine = EngineOffChain(nfa)
+#        self._engine = EngineOffChain(nfa)
+        self._engine = engine
 
 
     @property
@@ -565,7 +577,18 @@ class CmdStart(UICommand):
         regex : rei.REI = c.to_rei()
         automaton : nfa.NFA = nfa.ReiToNFA(regex)
 
-        self.ui._enforcer = Enforcer(automaton)
+#        self.ui._enforcer = Enforcer(automaton)
+        onchain_url = self.ui.get_env("ONCHAIN_URL")
+        onchain_id = self.ui.get_env("ONCHAIN_ID")
+        onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
+        onchain_key = self.ui.get_env("ONCHAIN_KEY")
+
+        if onchain_url and onchain_id and onchain_address and onchain_key:
+            e = EngineOnChain(automaton, onchain_url, onchain_id, onchain_address, onchain_key)
+        else:
+            e = EngineOffChain(automaton)
+
+        self.ui._enforcer = Enforcer(e)
         self.ui._rei = regex
         self.ui._nfa = automaton
         self.ui._running = True
@@ -695,7 +718,9 @@ class CmdSave(UICommand):
             print("Arguments not recognized")
 
 
-class CmdEnableOnchain(UICommand):
+class CmdOnChain(UICommand):
+
+    name = "onchain"
 
     def get_completions(self):
         return {
@@ -710,17 +735,22 @@ class CmdEnableOnchain(UICommand):
         n_args = len(args)
         
         if n_args == 0:
-            print(f"Please, specify an argument: {self.get_completions().keys()}")
+#            print(f"Please, specify an argument: {self.get_completions().keys()}")
+            for k,v in self.ui.env:
+                if k.startswith("ONCHAIN_"):
+                    print(f"{k} = {v}")
 
         # TODO finish below
         elif args[0] == "url":
-            pass
+            self.ui.set_env("ONCHAIN_URL", args[1])
         elif args[0] == "chain_id":
-            pass
+            self.ui.set_env("ONCHAIN_ID", args[1])
         elif args[0] == "address":
-            pass
+            self.ui.set_env("ONCHAIN_ADDRESS", args[1])
         elif args[0] == "private_key":
-            pass
+            self.ui.set_env("ONCHAIN_KEY", args[1])
+        else:
+            print(f"Attribute not recognized ({args[0]}). Available attributes: {', '.join(self.get_completions().keys())}")
 
 
 class UI:
@@ -746,6 +776,7 @@ class UI:
             "exit"  : CmdQuit(self), #self.cmd_quit,
             "quit"  : CmdQuit(self), #self.cmd_quit
             "save"  : CmdSave(self),
+            "onchain": CmdOnChain(self),
         }
         self._model = Model()
         self._enforcer = None
@@ -753,6 +784,12 @@ class UI:
         self._rei = None
         self._nfa = None
         self._debug = True
+        self._env = {
+            "ONCHAIN_URL": "",
+            "ONCHAIN_ID": "",
+            "ONCHAIN_ADDRESS": "",
+            "ONCHAIN_KEY": "",
+        }
 
         if not os.path.exists(self.PROMPT_HISTORY_ENFORCER):
             Path(self.PROMPT_HISTORY_ENFORCER).touch(mode=0o666, exist_ok=True)
@@ -765,6 +802,19 @@ class UI:
 
         self._session_enforcer = prompt_toolkit.PromptSession(self.PROMPT_ENFORCER, history=FileHistory(self.PROMPT_HISTORY_ENFORCER), completer=enforcer_completer)
         self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI), completer=cli_completer)
+
+    @property
+    def env(self):
+        return self._env.items()
+
+    def get_env(self, key):
+        return self._env[key]
+
+    def set_env(self, key, value):
+        self._env[key] = value
+
+    def has_env(self, key):
+        return key in self._env
 
     def set_running(self, v : bool):
         self._running = v
