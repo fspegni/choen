@@ -4,6 +4,7 @@ import random
 import string
 import itertools
 from deprecation import deprecated
+from graphviz import Digraph
 
 EPSILON = ""
 
@@ -173,9 +174,35 @@ class NFA:
         self._initial:str = None
         self._final = set([])
         self._iscan : InputScanner = None
+        self._event_dictionary = {}
+        self._event_dictionary_lookup = {}
 
     def __str__(self):
         return f"{len(self.states)} states, {len(self.transitions)} transitions, initial: {self._initial}, {len(self.final)} final states"
+
+
+    def to_dot(self):
+        g = Digraph(name='curr_graph', filename='curr_graph.gv')
+        g.graph_attr["rankdir"] = "LR"
+        #g.graph_attr["beautify"] = "true"
+        g.attr("node", shape="point") #, width="0.1")
+        for k,s in self._states.items():
+#            print(f"Add node: {s.id} ...")
+            g.node(s.id, label="")
+
+        g.attr("edge", arrowsize="0.5")
+        for source,tr_dict in self._transitions.items():
+            for label, tr_set in tr_dict.items():
+                for tr in tr_set:
+#                    print(f"Add transition: {tr.source} -> {tr.target} ...")
+                    label = self._event_dictionary[tr.label] if tr.label else "<&#949;>"
+                    #label = tr.label if tr.label else "<&#949;>"
+                    g.edge(tr.source.id, tr.target.id, label=label)
+
+#        g.render(format="png")
+#        print(g)
+        return g
+        
 
     @property
     def iscan(self) -> InputScanner:
@@ -207,6 +234,7 @@ class NFA:
         for source, transitions_set in self._transitions.items():
             for symbol, targets in transitions_set.items():
                 res.extend(targets)
+
 
         return res
 
@@ -305,6 +333,15 @@ class NFA:
 
         transition_set[label] = labeled_transition_set
         self._transitions[source] = transition_set
+
+        if label not in self._event_dictionary:
+            new_code = self._generate_label_code()
+            self._event_dictionary[label] = new_code
+            self._event_dictionary_lookup[new_code] = label
+
+    def _generate_label_code(self):
+        # TODO note that this works only for limited sets of symbols
+        return chr(ord('A') + len(self._event_dictionary.items())) 
 
     """
     Return the states that are actually final states

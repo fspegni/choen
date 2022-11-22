@@ -132,9 +132,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SOLC_VERSION = "0.8.0"
 TEMPLATE_NAME = "template.sol.jinja2"
 
-ONCHAIN_ENABLED = True
-
+#ONCHAIN_ENABLED = True
 ONCHAIN_ADDRESS = os.getenv("CHOEN_ONCHAIN_ADDRESS", None) #"<better_keep_this_secret>"
 ONCHAIN_PRIVATE_KEY = os.getenv("CHOEN_ONCHAIN_PRIVATE_KEY", None) #"<better_keep_this_secret>"
-ONCHAIN_BLOCKCHAIN_URL = os.getenv("CHOEN_ONCHAIN_BLOCKCHAIN_URL", "https://sepolia.infura.io/v3/5d8ab00cfcc744768f1f3726a23a230d")
+ONCHAIN_URL = os.getenv("CHOEN_ONCHAIN_URL", "https://sepolia.infura.io/v3/5d8ab00cfcc744768f1f3726a23a230d")
 ONCHAIN_CHAIN_ID = int(os.getenv("CHOEN_ONCHAIN_CHAIN_ID", "11155111")) # the default value is specific for the Sepolia test blockchain worldwide

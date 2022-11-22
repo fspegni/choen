@@ -2,17 +2,26 @@
 In this tutorial you can reproduce all the test used to write the paper for BRAIN 2023 workshop.
 
 ## Preliminaries
-For each test has been used the Ganache blockchain, but you are free to use another blockchain editing the specific parameters in the setting.py file.
-Once you have activated the environment, you have to move in the bpmn2solidity folder and you can launch the CLI with the command `django-admin cli`. The following steps you have to run are the following:
-1. Execute the command `init` for inizialing the application
-2. Execute the command `load <path/brain2023_running_example.bpmn>` the first time (then `load brain2023_running_example>`) to load the choreography used for all the test
-3. Execute the command `start` for starting the enforcer and for generating and deploying the smart contract in the blockchain.
+In the following we suggest a sequence of commands to test how the on-chain enforcer works. The following commands have been tested using Ganache and Sepolia ![Sepolia](http://sepolia.infura.io).
 
-The choreography used is the following.
+Once you have activated the environment, you have to move in the bpmn2solidity folder and you can launch the CLI with the command `django-admin cli`. The following steps you have to run are the following:
+1. Execute the command `init` for inizialing the application (only the first time)
+1. If this is the first time, execute the command `load <path/brain2023_running_example.bpmn>`. Otherwise execute the command `load brain2023_running_example`. Both commands load the choreography used for all the test
+1. Execute the command `env ONCHAIN_URL = <your_ganache_url>` to set the URL of your test blockchain
+1. Execute the command `env ONCHAIN_ID = <your_ganache_id>` to set the chain ID of your test blockchain
+1. Execute the command `env ONCHAIN_ADDRESS = <your_wallet_address>` to set the address of your wallet
+1. Execute the command `env ONCHAIN_PRIVATE_KEY = <your_private_key>` to set the private key associated with your adderss
+1. Execute the command `start` for starting the enforcer and for generating and deploying the smart contract in the blockchain.
+
+Note that after the `start` command the prompt changes to the following value: `+>`. This means that the enforcer is running and ready to process events provided by the user.
+
+Note also that the tool *does store* your private key and address in the `${HOME}/.choen_cli` file, which is a history file. You can safely remove the file when you finish the experiments.
+
+The choreography used for this example is the following.
 ![choreography.jpg](./BRAIN2023/choreography.jpg)
 
 ## Correct execution without event buffered
-The first test aims to verify a correct execution of the choreography without buffering any events, so the idea is to trigger only the receive now rules. To check what are the allowed transitions you can execute the command `/dump transitions` once the enforcer is initiated. In this case you have to obtain a the following result (except for the id of the state that are causal and change each execution):
+The first test aims to verify a correct execution of the choreography without buffering any events, so the idea is to trigger only the receive now rules. To check what are the allowed transitions you can execute the command `/dump transitions` once the enforcer has been started. In this case you have to obtain a the following result (except for the id of the state that are causal and change at every execution):
 ```
  * State(epscrmlx) -[SDS?lot_ID,_quality,_ghg,_price]-> State(huhaaktq)
  * State(bzexvtlu) -[]-> State(epscrmlx)
@@ -191,10 +200,10 @@ Output message: Seller?acceptance
 
 (* Ended *)
 ```
-As said in the beginning none event is added to the enforcer buffer, but the rule receive_now is triggered every time and so the choreography moves for each event in its next state.
+As said in the beginning no event is added to the enforcer buffer, but every event triggers the rule `receive_now` and so the choreography moves starightforward at the next available state.
 
-## Correct execution with event buffered
-The second test aims to check the other rules, i.e. rule receive delayed and rule receive buffered.
+## Correct execution with buffered event
+The second test aims to check the other rules, i.e. `receive_delayed` and `receive_buffered`.
 Imagine that in the initial state you send the event `SDS?lot_ID,_quality,_ghg,_price`. It triggers the rule receive now and a transitions is generated in the automaton associated with the choreography. The possibile transitions in the new state are the following:
 ```
  * State(ywdwzqdf) -[Seller?ack]-> State(hdgwceud)

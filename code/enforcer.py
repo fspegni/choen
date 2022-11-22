@@ -22,8 +22,16 @@ from prompt_toolkit.completion import NestedCompleter
 
 class Engine:
 
-    def __init__(self):
+    def __init__(self, nfa : nfa.NFA):
+
+        assert nfa is not None, f"Expected not-null nfa to build an enforcer engine"
+
         self._debug : bool = True
+        self._nfa = nfa
+
+    @property
+    def nfa(self):
+        return self._nfa
 
     def set_debug(self, debug: bool):
         self._debug = debug
@@ -88,8 +96,8 @@ class Engine:
 class EngineOffChain(Engine):
 
     def __init__(self, nfa : nfa.NFA):
-        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
-        self._nfa : nfa.NFA = nfa
+        super().__init__(nfa)
+#        self._nfa : nfa.NFA = nfa
         self._buffer = {}
         self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))
         self._debug : bool = True
@@ -114,6 +122,17 @@ class EngineOffChain(Engine):
         return out
 
 
+    def process_check(self):
+        out = None
+        try:
+            actor, message = self._engine._buffer_find_usable_message()
+            out = self._engine.rule_receive_buffered(actor, message)
+        except Exception:
+            pass
+
+        return out
+
+
     @property
     def buffer(self) -> dict:
         return self._buffer
@@ -121,10 +140,6 @@ class EngineOffChain(Engine):
     @property
     def curr_states(self) -> str:
         return self._curr_states
-
-    @property
-    def nfa(self):
-        return self._nfa
 
     # UTILS
 
@@ -292,20 +307,38 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    def __init__(self, nfa : nfa.NFA, debug_compile : bool = False):
-        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+##<<<<<<< HEAD
 
-        assert settings.ONCHAIN_ADDRESS is not None, "You must configure your wallet address before continuing"
-        assert settings.ONCHAIN_PRIVATE_KEY is not None, "You must configure your wallet private key before continuing"
-        assert settings.ONCHAIN_BLOCKCHAIN_URL is not None, "You must configure your blockchain URL before continuing"
-        assert settings.ONCHAIN_CHAIN_ID is not None, "You must configure your blockchain chain ID before continuing"
-    
-        self._nfa : nfa.NFA = nfa
+    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : str, wallet_address : str, private_key : str, debug_compile : bool = False):
+
+        super().__init__(nfa)
+
+        assert wallet_address is not None, "You must configure your wallet address before continuing"
+        assert private_key is not None, "You must configure your wallet private key before continuing"
+        assert chain_url is not None, "You must configure your blockchain URL before continuing"
+        assert chain_id is not None, "You must configure your blockchain chain ID before continuing"
+
+        self._chain_url = chain_url 
+        self._chain_id = chain_id
+        self._wallet_address = wallet_address
+        self._private_key = private_key
+
+
+##    def __init__(self, nfa : nfa.NFA, debug_compile : bool = False):
+##        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+
+##        assert settings.ONCHAIN_ADDRESS is not None, "You must configure your wallet address before continuing"
+##        assert settings.ONCHAIN_PRIVATE_KEY is not None, "You must configure your wallet private key before continuing"
+##        assert settings.ONCHAIN_BLOCKCHAIN_URL is not None, "You must configure your blockchain URL before continuing"
+##        assert settings.ONCHAIN_CHAIN_ID is not None, "You must configure your blockchain chain ID before continuing"
+##    
+##        self._nfa : nfa.NFA = nfa
         self._debug : bool = True
         self._runID = uuid.uuid4()
 
-        self._debug_log(f"\nConnecting to {settings.ONCHAIN_BLOCKCHAIN_URL} ...")
-        self._w3 : Web3 = Web3(Web3.HTTPProvider(settings.ONCHAIN_BLOCKCHAIN_URL, request_kwargs={'timeout': 300}))
+        self._debug_log(f"\nConnecting to {self._chain_url} ...")
+##        self._w3 : Web3 = Web3(Web3.HTTPProvider(settings.ONCHAIN_BLOCKCHAIN_URL, request_kwargs={'timeout': 300}))
+        self._w3 : Web3 = Web3(Web3.HTTPProvider(self._chain_url, request_kwargs={'timeout': 300}))
 #        self._chain_id : int = settings.CHAIN_ID
         self._debug_log("Connected.")
         
@@ -334,17 +367,20 @@ class EngineOnChain(Engine):
     @property
     def chain_id(self) -> int:
 #        return self._chain_id
-        return settings.ONCHAIN_CHAIN_ID
+#        return settings.ONCHAIN_CHAIN_ID
+        return self._chain_id
 
     @property
     def address(self) -> str:
 #        return self._address
-        return settings.ONCHAIN_ADDRESS
+#        return settings.ONCHAIN_ADDRESS
+        return self._wallet_address
 
     @property
     def private_key(self) -> str:
 #        return self._private_key   
-        return settings.ONCHAIN_PRIVATE_KEY
+#        return settings.ONCHAIN_PRIVATE_KEY
+        return self._private_key
     
     @property
     def stats(self) -> str:
@@ -385,7 +421,7 @@ class EngineOnChain(Engine):
 
     def __log(self, contractAddress, gasUsed, cost, executionTime, type = None):
         with open(f'log.txt', 'a', encoding="utf-8") as f:
-                f.write(f"{self._runID};{settings.ONCHAIN_BLOCKCHAIN_URL};{datetime.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
+                f.write(f"{self._runID};{self._chain_id};{datetime.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
                 #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
                 #f.write("\n")
     
@@ -548,22 +584,23 @@ class EngineOnChain(Engine):
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
         self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-        return enforcer.events.outputEvent().processReceipt(tx_receipt)
+        receipt = enforcer.events.outputEvent().processReceipt(tx_receipt)
 
+        self._debug_log(logs[0].args.debug)
+        out = logs[0].args.messageOut
+        out = None if out == "None" else out
+
+        return out
 
 class Enforcer:
 
-    def __init__(self, nfa : nfa.NFA, onChain : bool = True):
+    def __init__(self, engine : Engine):
         assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._debug : bool = True
-        self._onChain : bool = onChain
+        self._onChain : bool = isinstance(engine, EngineOnChain)
         
-        self._history = []
-
-        if onChain:
-            self._engine = EngineOnChain(nfa, False)
-        else:
-            self._engine = EngineOffChain(nfa)
+        self._history = []  
+        self._engine = engine
 
         self._append_history("",self._engine.get_curr_states(), self._engine.get_buffer_items())   
 
@@ -638,22 +675,26 @@ class Enforcer:
 
     def process_check(self):
         out = None
-        if (self._onChain):
-            logs = None
-            logs = self._engine.process_check()
-            self._debug_log(logs[0].args.debug)
-            out = logs[0].args.messageOut
-            out = None if out == "None" else out
-        else:
+##        if (self._onChain):
+##            logs = None
+##            logs = self._engine.process_check()
+##            self._debug_log(logs[0].args.debug)
+##            out = logs[0].args.messageOut
+##            out = None if out == "None" else out
+##        else:
+##
+##            try:
+##                actor, message = self._engine._buffer_find_usable_message()
+##                out = self._engine.rule_receive_buffered(actor, message)
+##            except Exception:
+##                pass
+##        
+        try:
+            out = self._engine.process_check()
 
-            try:
-                actor, message = self._engine._buffer_find_usable_message()
-                out = self._engine.rule_receive_buffered(actor, message)
-            except Exception:
-                pass
-        
-        if out:
             self._append_history(out, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
+        except Exception:
+            pass
 
         return out
 
@@ -758,8 +799,14 @@ class CmdQuit(UICommand):
 class CmdHelp(UICommand):
     def execute(self, *args, **kwargs):
         print("Available commands: ")
-        print(", ".join(self.ui._registry.keys()))
+        print(", ".join(sorted(self.ui._registry.keys())))
 
+
+class CmdEnv(UICommand):
+
+    def execute(self, *args, **kwargs):
+        for k,v in self.ui.env:
+            print(f"{k} = {v}")
 
 class CmdList(UICommand):
 
@@ -779,6 +826,40 @@ class CmdList(UICommand):
             for c in items:
                 cho_name = c.name.ljust(longest+3,".")
                 print(f"* {cho_name} - {c.resource}")
+
+
+class CmdClear(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        num_cho = Choreography.objects.all().count()
+        while True:
+            confirm = self.ui.prompt(f"Do you want to remove {num_cho} choreography/ies? [(y)es/(N)o/(l)ist]")
+            if confirm.lower() == "y":
+
+                Choreography.objects.all().delete()
+                break
+            elif confirm.lower() == "l":
+                print("Available choreographies:")
+                items = Choreography.objects.all()
+        
+                if len(items) == 0:
+                    print(f"(* none *)")
+                else:
+                    longest = 0
+                    for c in items:
+                        if len(c.name) > longest:
+                            longest = len(c.name)
+        
+                    for c in items:
+                        cho_name = c.name.ljust(longest+3,".")
+                        print(f"* {cho_name} - {c.resource}")
+
+            else:
+                print(f"Operation interrupted by the user")
+                break
+
+
 
 
 class CmdStop(UICommand):
@@ -860,9 +941,25 @@ class CmdStart(UICommand):
         regex : rei.REI = c.to_rei()
         automaton : nfa.NFA = nfa.ReiToNFA(regex)
 
-        # TODO pass both the automaton and the rei to the Enforcer constructor
-        self.ui._enforcer = Enforcer(automaton)
+##<<<<<<< HEAD
+##        # TODO pass both the automaton and the rei to the Enforcer constructor
+##        self.ui._enforcer = Enforcer(automaton)
+##=======
+#        self.ui._enforcer = Enforcer(automaton)
+        onchain_url = self.ui.get_env("ONCHAIN_URL")
+        onchain_chain_id = self.ui.get_env("ONCHAIN_CHAIN_ID")
+        onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
+        onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
+
+        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
+            e = EngineOnChain(automaton, onchain_url, onchain_chain_id, onchain_address, onchain_private_key)
+        else:
+            e = EngineOffChain(automaton)
+
+        self.ui._enforcer = Enforcer(e)
+##>>>>>>> main
         self.ui._rei = regex
+        self.ui._nfa = automaton
         self.ui._running = True
 
         if self.ui._enforcer._onChain:
@@ -882,6 +979,7 @@ class CmdDump(UICommand):
             "transitions": None,
             "states": None,
             "rei": None,
+            "nfa": None,
             "buffer": None,
         }
 
@@ -948,6 +1046,10 @@ class CmdDump(UICommand):
                 print("\nREI: \n")
                 print(self.ui._rei)
 
+            elif args[0] == "nfa":
+                print("\nNFA: \n")
+                g = self.ui._nfa.to_dot()   
+                print(g)
 
 class CmdStats(UICommand):
 
@@ -976,6 +1078,72 @@ class CmdHistory(UICommand):
             print("\n")
  
 
+class CmdSave(UICommand):
+
+    def get_completions(self):
+        return {
+            "nfa": None
+        }
+        
+    def execute(self, *args, **kwargs):
+        
+
+        n_args = len(args)
+        
+        if n_args == 0:
+            print("Please, specify an argument")
+
+        elif args[0] == "nfa":
+
+            if n_args < 2:  
+                print("Please, provide the output directory argument")
+            elif n_args < 3:
+                print("Plase, provide the filename argument")
+            elif n_args < 4:
+                print("Please, provide the format argument")
+        
+            else:
+    
+                outdir = args[1]
+                format = args[3]
+                filename = f"{args[2]}.gv"
+                outfile = f"{args[2]}.{format}"
+
+                g = self.ui._enforcer._engine._nfa.to_dot()
+                g.render(directory=outdir, filename=filename, outfile=outfile, format=format)
+                print(f"NFA saved as {filename} and {outfile}")
+
+        else:
+            print("Arguments not recognized")
+
+
+class CmdEnv(UICommand):
+
+    def get_completions(self):
+        d = {}
+        for k,v in self.ui.env:
+            d[k] = None
+        return d
+
+    def execute(self, *args, **kwargs):
+
+        n_args = len(args)
+        
+        if n_args == 0:
+#            print(f"Please, specify an argument: {self.get_completions().keys()}")
+            for k,v in self.ui.env:
+                print(f"{k} = {v}")
+
+        # TODO finish below
+        elif self.ui.has_env(args[0]):
+            if len(args) > 1:
+                self.ui.set_env(args[0], args[1])
+            else:
+                v = self.ui.get_env(args[0])
+                print(f"{args[0]} = {v}")
+        else:
+            print(f"Attribute not recognized ({args[0]}). Available attributes: {', '.join(self.get_completions().keys())}")
+
 
 class UI:
 
@@ -989,6 +1157,7 @@ class UI:
         self._registry = {
             "init"  : CmdInit(self), #self.cmd_init,
             "list"  : CmdList(self), #self.cmd_list,
+            "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
             "load"  : CmdLoad(self), #self.cmd_load,
             "start" : CmdStart(self), # self.cmd_start,
@@ -1000,13 +1169,25 @@ class UI:
             "quit"  : CmdQuit(self), #self.cmd_quit
             "stats" : CmdStats(self),
             "history": CmdHistory(self),
+            "save"  : CmdSave(self),
+            "env"   : CmdEnv(self),
         }
         self._model = Model()
         self._enforcer = None
         self._running = False
         self._rei = None
+        self._nfa = None
         self._debug = True
+##<<<<<<< HEAD
         self._stats = []
+##=======
+        self._env = {
+            "ONCHAIN_URL": settings.ONCHAIN_URL,
+            "ONCHAIN_CHAIN_ID": settings.ONCHAIN_CHAIN_ID,
+            "ONCHAIN_ADDRESS": settings.ONCHAIN_ADDRESS,
+            "ONCHAIN_PRIVATE_KEY": settings.ONCHAIN_PRIVATE_KEY,
+        }
+##>>>>>>> main
 
         if not os.path.exists(self.PROMPT_HISTORY_ENFORCER):
             Path(self.PROMPT_HISTORY_ENFORCER).touch(mode=0o666, exist_ok=True)
@@ -1019,6 +1200,19 @@ class UI:
 
         self._session_enforcer = prompt_toolkit.PromptSession(self.PROMPT_ENFORCER, history=FileHistory(self.PROMPT_HISTORY_ENFORCER), completer=enforcer_completer)
         self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI), completer=cli_completer)
+
+    @property
+    def env(self):
+        return self._env.items()
+
+    def get_env(self, key):
+        return self._env[key]
+
+    def set_env(self, key, value):
+        self._env[key] = value
+
+    def has_env(self, key):
+        return key in self._env
 
     def set_running(self, v : bool):
         self._running = v
