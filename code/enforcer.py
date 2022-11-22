@@ -457,6 +457,40 @@ class CmdList(UICommand):
                 print(f"* {cho_name} - {c.resource}")
 
 
+class CmdClear(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        num_cho = Choreography.objects.all().count()
+        while True:
+            confirm = self.ui.prompt(f"Do you want to remove {num_cho} choreography/ies? [(y)es/(N)o/(l)ist]")
+            if confirm.lower() == "y":
+
+                Choreography.objects.all().delete()
+                break
+            elif confirm.lower() == "l":
+                print("Available choreographies:")
+                items = Choreography.objects.all()
+        
+                if len(items) == 0:
+                    print(f"(* none *)")
+                else:
+                    longest = 0
+                    for c in items:
+                        if len(c.name) > longest:
+                            longest = len(c.name)
+        
+                    for c in items:
+                        cho_name = c.name.ljust(longest+3,".")
+                        print(f"* {cho_name} - {c.resource}")
+
+            else:
+                print(f"Operation interrupted by the user")
+                break
+
+
+
+
 class CmdStop(UICommand):
 
     def execute(self, *args, **kwargs):
@@ -533,6 +567,7 @@ class CmdStart(UICommand):
 
         self.ui._enforcer = Enforcer(automaton)
         self.ui._rei = regex
+        self.ui._nfa = automaton
         self.ui._running = True
 
         if self.ui._enforcer.ended():
@@ -548,6 +583,7 @@ class CmdDump(UICommand):
             "transitions": None,
             "states": None,
             "rei": None,
+            "nfa": None,
             "buffer": None,
         }
 
@@ -614,7 +650,77 @@ class CmdDump(UICommand):
                 print("\nREI: \n")
                 print(self.ui._rei)
 
+            elif args[0] == "nfa":
+                print("\nNFA: \n")
+                g = self.ui._nfa.to_dot()   
+                print(g)
 
+
+class CmdSave(UICommand):
+
+    def get_completions(self):
+        return {
+            "nfa": None
+        }
+        
+    def execute(self, *args, **kwargs):
+        
+
+        n_args = len(args)
+        
+        if n_args == 0:
+            print("Please, specify an argument")
+
+        elif args[0] == "nfa":
+
+            if n_args < 2:  
+                print("Please, provide the output directory argument")
+            elif n_args < 3:
+                print("Plase, provide the filename argument")
+            elif n_args < 4:
+                print("Please, provide the format argument")
+        
+            else:
+    
+                outdir = args[1]
+                format = args[3]
+                filename = f"{args[2]}.gv"
+                outfile = f"{args[2]}.{format}"
+
+                g = self.ui._enforcer._engine._nfa.to_dot()
+                g.render(directory=outdir, filename=filename, outfile=outfile, format=format)
+                print(f"NFA saved as {filename} and {outfile}")
+
+        else:
+            print("Arguments not recognized")
+
+
+class CmdEnableOnchain(UICommand):
+
+    def get_completions(self):
+        return {
+            "url": None,
+            "chain_id": None,
+            "address": None,
+            "private_key": None,
+        }
+
+    def execute(self, *args, **kwargs):
+
+        n_args = len(args)
+        
+        if n_args == 0:
+            print(f"Please, specify an argument: {self.get_completions().keys()}")
+
+        # TODO finish below
+        elif args[0] == "url":
+            pass
+        elif args[0] == "chain_id":
+            pass
+        elif args[0] == "address":
+            pass
+        elif args[0] == "private_key":
+            pass
 
 
 class UI:
@@ -629,6 +735,7 @@ class UI:
         self._registry = {
             "init"  : CmdInit(self), #self.cmd_init,
             "list"  : CmdList(self), #self.cmd_list,
+            "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
             "load"  : CmdLoad(self), #self.cmd_load,
             "start" : CmdStart(self), # self.cmd_start,
@@ -638,11 +745,13 @@ class UI:
             "dump"  : CmdDump(self), #self.cmd_dump,
             "exit"  : CmdQuit(self), #self.cmd_quit,
             "quit"  : CmdQuit(self), #self.cmd_quit
+            "save"  : CmdSave(self),
         }
         self._model = Model()
         self._enforcer = None
         self._running = False
         self._rei = None
+        self._nfa = None
         self._debug = True
 
         if not os.path.exists(self.PROMPT_HISTORY_ENFORCER):
