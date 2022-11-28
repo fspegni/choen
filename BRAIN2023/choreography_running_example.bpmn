@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xs="http://www.w3.org/2001/XMLSchema" id="_tTv5YOycEeiHGOQ2NkJZNQ" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn2:message id="Message_0apw5gj" name="decision" />
   <bpmn2:message id="Message_048r96w" name="decline" />
   <bpmn2:message id="Message_1f9zvvt" name="acceptance" />
   <bpmn2:message id="Message_03m548o" name="decline" />
@@ -22,6 +23,7 @@
     <bpmn2:participant id="Participant_0uy65y0" name="CMS" />
     <bpmn2:participant id="Participant_1d0gfx0" name="BDSS" />
     <bpmn2:participant id="Participant_09o3jgr" name="SDS" />
+    <bpmn2:messageFlow id="MessageFlow_1lsayb2" sourceRef="Participant_1d0gfx0" targetRef="Participant_0537iz2" messageRef="Message_0apw5gj" />
     <bpmn2:messageFlow id="MessageFlow_0p19aew" sourceRef="Participant_0mgz9si" targetRef="Participant_06qakjv" messageRef="Message_048r96w" />
     <bpmn2:messageFlow id="MessageFlow_0664wiy" sourceRef="Participant_0mgz9si" targetRef="Participant_06qakjv" messageRef="Message_1f9zvvt" />
     <bpmn2:messageFlow id="MessageFlow_1a4hxop" sourceRef="Participant_18xh96l" targetRef="Participant_0mgz9si" messageRef="Message_03m548o" />
@@ -62,7 +64,7 @@
       <bpmn2:participantRef>Participant_0537iz2</bpmn2:participantRef>
       <bpmn2:messageFlowRef>MessageFlow_03drbju</bpmn2:messageFlowRef>
     </bpmn2:choreographyTask>
-    <bpmn2:choreographyTask id="ChoreographyTask_04uk1l4" name="check energy cost" initiatingParticipantRef="Participant_18xh96l">
+    <bpmn2:choreographyTask id="ChoreographyTask_04uk1l4" name="check transport cost" initiatingParticipantRef="Participant_18xh96l">
       <bpmn2:incoming>Flow_16921lk</bpmn2:incoming>
       <bpmn2:outgoing>Flow_0b2q6wj</bpmn2:outgoing>
       <bpmn2:participantRef>Participant_18xh96l</bpmn2:participantRef>
@@ -98,6 +100,7 @@
       <bpmn2:outgoing>Flow_0y9he0h</bpmn2:outgoing>
       <bpmn2:participantRef>Participant_0537iz2</bpmn2:participantRef>
       <bpmn2:participantRef>Participant_1d0gfx0</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MessageFlow_1lsayb2</bpmn2:messageFlowRef>
       <bpmn2:messageFlowRef>MessageFlow_0fzc6y8</bpmn2:messageFlowRef>
     </bpmn2:choreographyTask>
     <bpmn2:sequenceFlow id="Flow_1fkv5ow" sourceRef="Gateway_17nsb6m" targetRef="ChoreographyTask_165a2e9" />
@@ -233,7 +236,7 @@
       <bpmndi:BPMNShape id="BPMNShape_04h31pp" bpmnElement="Participant_0537iz2" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="ChoreographyTask_165a2e9_di">
         <dc:Bounds x="1133" y="328" width="100" height="20" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_0so7mdi" bpmnElement="Participant_1d0gfx0" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="ChoreographyTask_165a2e9_di">
+      <bpmndi:BPMNShape id="BPMNShape_0so7mdi" bpmnElement="Participant_1d0gfx0" isMessageVisible="true" participantBandKind="bottom_non_initiating" choreographyActivityShape="ChoreographyTask_165a2e9_di">
         <dc:Bounds x="1133" y="388" width="100" height="20" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1fkv5ow_di" bpmnElement="Flow_1fkv5ow">
@@ -346,11 +349,11 @@
         <di:waypoint x="832" y="500" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="TextAnnotation_1ytqkqn_di" bpmnElement="TextAnnotation_1ytqkqn">
-        <dc:Bounds x="1065" y="430" width="160" height="40" />
+        <dc:Bounds x="1170" y="490" width="150" height="40" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Association_1g1jcya_di" bpmnElement="Association_1g1jcya">
-        <di:waypoint x="1183" y="409" />
-        <di:waypoint x="1183" y="430" />
+        <di:waypoint x="1213" y="409" />
+        <di:waypoint x="1273" y="490" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
     <bpmndi:BPMNLabelStyle id="BPMNLabelStyle_1">

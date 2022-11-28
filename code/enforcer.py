@@ -947,7 +947,7 @@ class CmdStart(UICommand):
 ##=======
 #        self.ui._enforcer = Enforcer(automaton)
         onchain_url = self.ui.get_env("ONCHAIN_URL")
-        onchain_chain_id = self.ui.get_env("ONCHAIN_CHAIN_ID")
+        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
         onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
 
@@ -1050,6 +1050,9 @@ class CmdDump(UICommand):
                 print("\nNFA: \n")
                 g = self.ui._nfa.to_dot()   
                 print(g)
+                print("\nEvent dictionary: \n")
+                for k,v in self.ui._nfa.event_dictionary.items():
+                    print(f" {k} : {v}")
 
 class CmdStats(UICommand):
 

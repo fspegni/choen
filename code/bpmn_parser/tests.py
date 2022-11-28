@@ -13,7 +13,6 @@ import rei
 import nfa
 import contracts
 from contracts import SmartContract
-from contract_generator import ContractGenerator
 import json
 from web3 import Web3
 import requests

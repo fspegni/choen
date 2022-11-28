@@ -193,16 +193,20 @@ class NFA:
         g.attr("edge", arrowsize="0.5")
         for source,tr_dict in self._transitions.items():
             for label, tr_set in tr_dict.items():
+                label = self._event_dictionary[label] if label else "<&#949;>"
                 for tr in tr_set:
 #                    print(f"Add transition: {tr.source} -> {tr.target} ...")
-                    label = self._event_dictionary[tr.label] if tr.label else "<&#949;>"
                     #label = tr.label if tr.label else "<&#949;>"
                     g.edge(tr.source.id, tr.target.id, label=label)
 
 #        g.render(format="png")
 #        print(g)
         return g
-        
+     
+    @property
+    def event_dictionary(self):
+        return self._event_dictionary_lookup
+   
 
     @property
     def iscan(self) -> InputScanner:
@@ -334,7 +338,7 @@ class NFA:
         transition_set[label] = labeled_transition_set
         self._transitions[source] = transition_set
 
-        if label not in self._event_dictionary:
+        if label and label not in self._event_dictionary:
             new_code = self._generate_label_code()
             self._event_dictionary[label] = new_code
             self._event_dictionary_lookup[new_code] = label
