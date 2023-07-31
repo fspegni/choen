@@ -331,6 +331,7 @@ class SmartContract(Compileable):
 
     def compile(self, debug : bool):
 
+        debug = True
         try:
             solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
         except solcx.exceptions.SolcNotInstalled:
@@ -375,7 +376,8 @@ pragma abicoder v2;
         )
         if (debug):
             file_name = "_".join(["smart_contract",datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
-            tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
+            #tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
+            tmp_path = os.path.join(settings.BASE_DIR, "..", "public", "tmp", f"{file_name}.sol")
             with open(tmp_path,"w") as file:
                 file.write(smart_contract_text)
                 print("\nSmart contract saved at: ",tmp_path,"\n")

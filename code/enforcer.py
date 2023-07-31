@@ -101,21 +101,34 @@ class EngineOffChain(Engine):
         self._buffer = {}
         self._curr_states = self._nfa.e_closure(set([ self._nfa.initial.id ]))
         self._debug : bool = True
-        
+        self._stats = [] 
+ 
+
+    @property
+    def stats(self) -> str:
+        return self._stats
+
+     
 
     def process_input(self, event):
 
         out = None
-        if self._engine.condition_rule_send(event):
-            out = self._engine.rule_send(event)
+        #if self._engine.condition_rule_send(event):
+        #    out = self._engine.rule_send(event)
+        if self.condition_rule_send(event):
+            out = self.rule_send(event)
 
-        elif self._engine.condition_rule_receive_now(event):
-                out = self._engine.rule_receive_now(event)
+        #elif self._engine.condition_rule_receive_now(event):
+        #        out = self._engine.rule_receive_now(event)
+        elif self.condition_rule_receive_now(event):
+            out = self.rule_receive_now(event)
 
-        elif self._engine.condition_rule_receive_delayed(event):
+        #elif self._engine.condition_rule_receive_delayed(event):
                 # TODO add check that the message may actually be consumed afterwards;
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
-            out = self._engine.rule_receive_delayed(event)
+        #    out = self._engine.rule_receive_delayed(event)
+        elif self.condition_rule_receive_delayed(event):
+            out = self.rule_receive_delayed(event)
         else:
             self._debug_log("(* No matching condition *)")        
 
@@ -125,8 +138,10 @@ class EngineOffChain(Engine):
     def process_check(self):
         out = None
         try:
-            actor, message = self._engine._buffer_find_usable_message()
-            out = self._engine.rule_receive_buffered(actor, message)
+            #actor, message = self._engine._buffer_find_usable_message()
+            actor, message = self._buffer_find_usable_message()
+            #out = self._engine.rule_receive_buffered(actor, message)
+            out = self.rule_receive_buffered(actor, message)
         except Exception:
             pass
 
@@ -956,6 +971,7 @@ class CmdStart(UICommand):
         else:
             e = EngineOffChain(automaton)
 
+        print(f"Enforcer: {e}") 
         self.ui._enforcer = Enforcer(e)
 ##>>>>>>> main
         self.ui._rei = regex
@@ -1315,7 +1331,7 @@ class UI:
             event = iscan.scan_input()
             self._debug_log(f"\n** Process input: {event} ... **")
             out = self._enforcer.process_input(event)
-            self._stats = self._enforcer._engine.stats
+            #self._stats = self._enforcer._engine.stats
         
             if out:
                 self._debug_log(f"\nOutput message: {out}\n")
