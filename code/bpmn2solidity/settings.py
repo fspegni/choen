@@ -39,9 +39,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
- 
+    
+    'rest_framework', 
+
     'django_extensions',    
     'bpmn_parser', 
+    'engine',
 ]
 
 MIDDLEWARE = [
@@ -137,3 +140,15 @@ ONCHAIN_ADDRESS = os.getenv("CHOEN_ONCHAIN_ADDRESS", None) #"<better_keep_this_s
 ONCHAIN_PRIVATE_KEY = os.getenv("CHOEN_ONCHAIN_PRIVATE_KEY", None) #"<better_keep_this_secret>"
 ONCHAIN_URL = os.getenv("CHOEN_ONCHAIN_URL", "https://sepolia.infura.io/v3/5d8ab00cfcc744768f1f3726a23a230d")
 ONCHAIN_CHAIN_ID = int(os.getenv("CHOEN_ONCHAIN_CHAIN_ID", "11155111")) # the default value is specific for the Sepolia test blockchain worldwide
+
+
+
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly'
+    ]
+}
+
+

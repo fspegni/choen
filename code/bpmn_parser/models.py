@@ -2,6 +2,7 @@ from re import A
 from django.db import models
 from django.conf import settings
 
+from django.utils.translation import ugettext as _
 from jinja2 import Environment, PackageLoader
 
 import xml.etree.ElementTree as ET
@@ -20,10 +21,19 @@ class Choreography(models.Model):
     name = models.TextField(max_length=100, null=True, blank=True)
     resource = models.FileField(upload_to=settings.UPLOAD_ROOT)
 
+    class Meta:
+    
+        verbose_name = _("choreography")
+        verbose_name_plural = _("choreographies")
+
     def __init__(self, *args, **kwargs):        
         super().__init__(*args, **kwargs)
         # self._parsed = None
         self._tree = None
+
+
+    def __str__(self):
+        return self.name
 
     @property
     def tree(self):
