@@ -19,7 +19,7 @@ import prompt_toolkit
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import NestedCompleter
 
-from bpmn_engine.models import Engine, EngineOnChain, EngineOffChain
+from engine.models import RunningInstance, Engine, EngineOnChain, EngineOffChain
 
 class Enforcer:
 
@@ -231,11 +231,12 @@ class CmdHelp(UICommand):
         print(", ".join(sorted(self.ui._registry.keys())))
 
 
-class CmdEnv(UICommand):
-
-    def execute(self, *args, **kwargs):
-        for k,v in self.ui.env:
-            print(f"{k} = {v}")
+##class CmdEnv(UICommand):
+##
+##    def execute(self, *args, **kwargs):
+##        for k,v in self.ui.env:
+##            print(f"{k} = {v}")
+##
 
 class CmdList(UICommand):
 
@@ -291,12 +292,12 @@ class CmdClear(UICommand):
 
 
 
-class CmdStop(UICommand):
-
-    def execute(self, *args, **kwargs):
-
-        self.ui.set_running(False)
-
+##class CmdStop(UICommand):
+##
+##    def execute(self, *args, **kwargs):
+##
+##        self.ui.set_running(False)
+##
 
 class CmdRemove(UICommand):
     
@@ -349,7 +350,40 @@ class CmdLoad(UICommand):
             else:
                 print(f"Cannot find choreography {name}")
  
-               
+
+class CmdLoadInstance(UICommand):
+    
+    def get_completions(self):
+        d = {}
+
+        for ri in RunningInstance.objects.all():
+            d[str(ri.id)] = None
+
+        #print(f"Completions: {d}")
+        return d
+
+    def execute(self, ri_id, *args, **kwargs):
+
+        try:
+            ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
+            self.ui._model.add_object("ri", ri)
+            
+        except RunningInstance.DoesNotExist as e:
+            print(f"Cannot find running instance {ri_id}")
+             
+
+class CmdStop(UICommand):
+    
+    def execute(self, *args, **kwargs):
+
+        ri : RunningInstance = self.ui._model.get_object("ri")
+
+        if not ri:
+            raise Exception("No running instance loaded or started, yet")
+
+        ri.stop()
+ 
+ 
 class CmdStart(UICommand):
 
     def execute(self, *args, **kwargs):
@@ -367,37 +401,52 @@ class CmdStart(UICommand):
                 f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
 
 
-        regex : rei.REI = c.to_rei()
-        automaton : nfa.NFA = nfa.ReiToNFA(regex)
+        #regex : rei.REI = c.to_rei()
+        #automaton : nfa.NFA = nfa.ReiToNFA(regex)
 
-##<<<<<<< HEAD
-##        # TODO pass both the automaton and the rei to the Enforcer constructor
-##        self.ui._enforcer = Enforcer(automaton)
-##=======
-#        self.ui._enforcer = Enforcer(automaton)
         onchain_url = self.ui.get_env("ONCHAIN_URL")
         onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
         onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
 
-        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
-            e = EngineOnChain(automaton, onchain_url, onchain_chain_id, onchain_address, onchain_private_key)
-        else:
-            e = EngineOffChain(automaton)
+        ri : RunningInstance = RunningInstance()
+        ri.choreography = c
+        ri.label = c.name
 
-        print(f"Enforcer: {e}") 
-        self.ui._enforcer = Enforcer(e)
-##>>>>>>> main
-        self.ui._rei = regex
-        self.ui._nfa = automaton
-        self.ui._running = True
+        #ri._nfa = automaton
+        #ri._rei = regex
+        #ri._running = True
 
-        if self.ui._enforcer._onChain:
+#        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
+#            ri.engine_type = RunningInstance.EngineType.ON_CHAIN
+#            e = EngineOnChain(automaton, onchain_url, onchain_chain_id, onchain_address, onchain_private_key)
+#        else:
+#            ri.engine_type = RunningInstance.EngineType.OFF_CHAIN
+#            e = EngineOffChain(automaton)
+#
+#        ri._enforcer = Enforcer(e)
+
+        ri.start() # NB the start method, also saves it
+        self.ui._model.add_object("ri", ri)
+
+        print(f"Enforcer: {ri.enforcer}") 
+#        self.ui._running_instances[ri.id] = ri
+##        self.ui._enforcer = Enforcer(e)
+##        self.ui._rei = regex
+##        self.ui._nfa = automaton
+##        self.ui._running = True
+
+#        if self.ui._enforcer._onChain:
+        #if ri._enforcer._onChain:
+        if isinstance(ri._enforcer, EngineOnChain):
             self.ui._debug_log(f"\nGas price:  {self.ui._enforcer._engine.w3.eth.gas_price} Wei")
 
 
-        if self.ui._enforcer.ended():
-            self.ui._running = False
+#        if self.ui._enforcer.ended():
+        if ri.enforcer.ended():
+#            self.ui._running = False
+            #ri.running = False
+            ri.stop()
             self.ui._debug_log("(* Ended *)")
 
 
@@ -593,6 +642,7 @@ class UI:
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
             "load"  : CmdLoad(self), #self.cmd_load,
+            "load_instance": CmdLoadInstance(self),
             "start" : CmdStart(self), # self.cmd_start,
             "stop"  : CmdStop(self), #self.cmd_stop,
             "debug" : CmdDebug(self), #self.cmd_debug,
@@ -605,22 +655,20 @@ class UI:
             "save"  : CmdSave(self),
             "env"   : CmdEnv(self),
         }
+#        self._running_instances = {}
         self._model = Model()
-        self._enforcer = None
-        self._running = False
-        self._rei = None
-        self._nfa = None
+#        self._enforcer = None
+#        self._running = False
+#        self._rei = None
+#        self._nfa = None
         self._debug = True
-##<<<<<<< HEAD
         self._stats = []
-##=======
         self._env = {
             "ONCHAIN_URL": settings.ONCHAIN_URL,
             "ONCHAIN_CHAIN_ID": settings.ONCHAIN_CHAIN_ID,
             "ONCHAIN_ADDRESS": settings.ONCHAIN_ADDRESS,
             "ONCHAIN_PRIVATE_KEY": settings.ONCHAIN_PRIVATE_KEY,
         }
-##>>>>>>> main
 
         if not os.path.exists(self.PROMPT_HISTORY_ENFORCER):
             Path(self.PROMPT_HISTORY_ENFORCER).touch(mode=0o666, exist_ok=True)
@@ -635,6 +683,30 @@ class UI:
         self._session_cli = prompt_toolkit.PromptSession(self.PROMPT_CLI, history=FileHistory(self.PROMPT_HISTORY_CLI), completer=cli_completer)
 
     @property
+    def ri(self):
+        return self._model.get_object("ri")
+
+    @property
+    def _enforcer(self):
+        ri = self._model.get_object("ri")
+        return ri.enforcer if ri else None
+
+    @property
+    def _running(self):
+        ri = self._model.get_object("ri") 
+        return ri.running if ri else False
+
+    @property
+    def _rei(self):
+        ri = self._model.get_object("ri")
+        return ri.rei if ri else None
+
+    @property
+    def _nfa(self):
+        ri = self._model.get_object("ri")
+        return ri.nfa if ri else None
+
+    @property
     def env(self):
         return self._env.items()
 
@@ -647,8 +719,8 @@ class UI:
     def has_env(self, key):
         return key in self._env
 
-    def set_running(self, v : bool):
-        self._running = v
+#    def set_running(self, v : bool):
+#        self._running = v
 
 
     def _get_enforcer_completer(self):
@@ -710,6 +782,7 @@ class UI:
     def consume(self, userin):
         #self._debug_log(f"(* Consume user input: '{userin}' *)")
 #        if not self._enforcer or userin[0] == "/":
+
         if not self._running or userin[0] == "/":
             if userin[0] == "/":
                 userin = userin[1:]
@@ -717,7 +790,6 @@ class UI:
             return self._consume_command(userin)
         else:
             return self._consume_events(userin)
-
 
     def _consume_command(self, userin : str):
 
@@ -739,34 +811,41 @@ class UI:
         assert self._enforcer is not None
         assert self._running is not None
 
-        iscan = nfa.InputScanner(event_stream)
-
-        while not iscan.eof:        
-            event = iscan.scan_input()
-            self._debug_log(f"\n** Process input: {event} ... **")
-            out = self._enforcer.process_input(event)
-            #self._stats = self._enforcer._engine.stats
-        
-            if out:
-                self._debug_log(f"\nOutput message: {out}\n")
-            self._debug_log(f"** Process completed. **\n")
+        try:
+            iscan = nfa.InputScanner(event_stream)
+    
+            while not iscan.eof:        
+                event = iscan.scan_input()
+                self._debug_log(f"\n** Process input: {event} ... **")
+                out = self._enforcer.process_input(event)
+                #self._stats = self._enforcer._engine.stats
             
-            self._debug_log("\n** Checking for usable messages in buffer ...")
-            while True:
-                out1 = self._enforcer.process_check()
-                if out1:
-                    self._debug_log(f"\nOutput message: {out1}\n")
-                else:
-                    break            
-            self._debug_log("** Checking completed. **\n")
+                if out:
+                    self._debug_log(f"\nOutput message: {out}\n")
+                self._debug_log(f"** Process completed. **\n")
+                
+                self._debug_log("\n** Checking for usable messages in buffer ...")
+                while True:
+                    out1 = self._enforcer.process_check()
+                    if out1:
+                        self._debug_log(f"\nOutput message: {out1}\n")
+                    else:
+                        break            
+                self._debug_log("** Checking completed. **\n")
+    
 
-        if self._enforcer.ended():
-            self._debug_log("(* Ended *)")
-            #print("\n")
-            #self.__print_stats()       
-            #self._enforcer = None
-            #self._rei = None
-            self._running = False
+        finally:        
+            if self._enforcer.ended():
+                self._debug_log("(* Ended *)")
+                #print("\n")
+                #self.__print_stats()       
+                #self._enforcer = None
+                #self._rei = None
+                #self._running = False
+                self.ri.stop()
+            else:
+                self.ri.save()
+
 
     def __enter__(self):
         return self

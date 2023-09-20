@@ -1,11 +1,13 @@
 from django.db import models
 from django.utils.translation import ugettext as _
 from web3 import Web3
+import re
+from picklefield.fields import PickledObjectField
 
 from bpmn_parser.models import Choreography
 
 import nfa
-
+import rei
 
 class RunningInstance(models.Model):
 
@@ -13,16 +15,89 @@ class RunningInstance(models.Model):
         OFF_CHAIN = 0
         ON_CHAIN = 1
 
-    engine_type = models.IntegerField(choices=EngineType.choices, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
+    engine_type = models.IntegerField(choices=EngineType.choices, default=EngineType.OFF_CHAIN, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
 
     label = models.CharField(max_length=500, null=True, blank=True)
     choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
-
+    running = models.BooleanField(default=False)
+    enforcer = PickledObjectField(blank=True, null=True)
 
 
     class Meta:
         verbose_name = _("running instance")
         verbose_name_plural = _("running instances")
+
+    @property
+    def _running(self):
+        return self.running
+
+    @property
+    def rei(self):
+#        if not self._rei and self.choreography:
+#            self._rei : rei.REI = self.choreography.to_rei()
+#       
+#        return self._rei
+        return self.enforcer.engine.rei if self.enforcer else None
+
+    @property
+    def nfa(self):
+#        if not self._nfa and self.rei:
+#            self._nfa : nfa.NFA = nfa.ReiToNFA(self.rei)
+#
+#        return self._nfa
+        return self.enforcer.engine.nfa if self.enforcer else None
+
+##    @property
+##    def enforcer(self):
+##        from enforcer import Enforcer
+##
+##        if not self._enforcer and self.nfa:
+##            if self.engine_type == self.EngineType.ON_CHAIN:
+##                raise ValueError("On-chain engine not supported, yet")
+##
+##            engine = EngineOffChain(self.nfa) 
+##            self._enforcer = Enforcer(engine)
+##
+##        return self._enforcer
+
+    def __str__(self):
+        if self.label:
+            return f"{self.label}/{self.pk}"
+        else:
+            return self.pk
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._rei = None
+        self._nfa = None
+        self._enforcer = None
+
+    def save(self, *args, **kwargs):
+        from enforcer import Enforcer
+
+        if self.engine_type == self.EngineType.ON_CHAIN:
+            raise ValueError("On-chain engine not supported at the moment")
+        
+        #if not self.enforcer:
+        if not self.enforcer: # or self.enforcer.engine.rei != rei:
+
+            rei = self.choreography.to_rei()
+            automaton = nfa.ReiToNFA(rei)
+            engine = EngineOffChain(automaton)    
+            self.enforcer = Enforcer(engine)
+
+        #print(f"Saved enforcer: {self.enforcer}")
+        super().save(*args, **kwargs)
+
+    def start(self):
+        self.running = True
+        self.save()
+
+    def stop(self):
+        self.running = False
+        self.save()
+
 
 class Engine:
 

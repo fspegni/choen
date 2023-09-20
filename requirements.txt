@@ -39,3 +39,4 @@ graphviz==0.20.1
 djangorestframework==3.14.0
 Markdown==3.4.4
 django-filter==23.2
+django-picklefield==3.1
