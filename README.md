@@ -68,7 +68,8 @@ Below is the list of commands interpreted by the outer prompt.
 | `clear` | Remove all the BPMN choreographies from the database. |
 | `list` | List the BPMN choreographies previously imported in the database. |
 | `load <diagram_name|path_of_diagram.bpmn>` | If a diagram with the given name is found in the database, it is loaded by the enforcer. Otherwise, a file at the given path is imported into the database and then loaded by the enforcer |
-| `start` | Start the enforcer. It switches the tool from the outer prompt to the inner one |
+| `load_instance <id>` | Load the running instance with the provided identifier `<id>` (if it exists) and then switches the tool from the outer prompt to the inner prompt |
+| `start` | Start the enforcer. It creates a new running instance and then switches the tool from the outer prompt to the inner one |
 | `stop` | Stop the enforcer, preserving the current state that can be queried (using the `dump ...` commands) or saved (using the `save ...` commands). It switches the tool from the inner prompt to the outer prompt |
 | `env` | Print a list of "variables" used by the tool internally |
 | `env <var>` | Print the value associated to the specified variable |
@@ -143,7 +144,9 @@ In order to use the WEB GUI, you need to run the internal web-server in your vir
 (your_env) $ django-admin runserver
 ```
 
-Then, use your favourite browser to access the following URL: `http://localhost:8000/admin`
+Then, use your favourite browser to access the following URL: `http://localhost:8000/admin`.
+
+Note that at the moment, you cannot use the WEB GUI to prepare new running instances, but you cannot feed them using the WEB GUI, at the moment. At the moment, the user can only feed events through the CLI and the REST API.
 
 # The REST API
 

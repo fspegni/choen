@@ -99,7 +99,7 @@ class RunningInstance(models.Model):
 
             #rei = self.choreography.to_rei()
             #automaton = nfa.ReiToNFA(rei)
-            automaton = self.choreography.to_automaton()
+            automaton = self.choreography.to_nfa()
             engine = EngineOffChain(automaton)    
             self.enforcer = Enforcer(engine)
 
