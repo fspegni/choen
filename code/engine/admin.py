@@ -1,19 +1,46 @@
 from django.contrib import admin
+from django.utils.translation import ugettext as _
 from django.utils.html import format_html
-
+from django_object_actions import DjangoObjectActions, action
 # Register your models here.
 
 from engine.models import RunningInstance
 
-class RunningInstanceAdmin(admin.ModelAdmin):
+class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 
     list_display = [ "id", "label", "engine_type", "choreography", "running", ]
     list_filter = [ "engine_type", "running", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
-    fields = [ "label", "engine_type", "choreography", "running", "rei", "automaton", "enforcer_states", "enforcer_buffer", ]
+    fields = [ "label", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "enforcer_states", "enforcer_buffer", ]
 
-    readonly_fields = [ "rei", "automaton", "enforcer_states",  "enforcer_buffer", ]
+    readonly_fields = [ "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "enforcer_buffer", ]
+
+    change_actions = [ "action_start", "action_stop", ]
+    changelist_actions = [ "action_start_all", "action_stop_all", ]
+
+
+    @action(label=_("Start"), description=_("Start the current instance"))
+    def action_start(self, request, obj):
+        obj.start()
+
+
+    @action(label=_("Start"), description=_("Start the selected instance(s)"))
+    def action_start_all(self, request, queryset):
+        for curr in queryset.all():
+            self.action_start(request, curr)
+
+
+    @action(label=_("Stop"), description=_("Stop the current instance"))
+    def action_stop(self, request, obj):
+        obj.stop()
+
+
+    @action(label=_("Stop"), description=_("Stop the selected instance(s)"))
+    def action_stop_all(self, request, queryset):
+        for curr in queryset.all():
+            self.action_stop(request, curr)
+
 
     def rei(self, obj : RunningInstance):
         return format_html("<pre>{}</pre>", str(obj.rei))

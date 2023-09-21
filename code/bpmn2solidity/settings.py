@@ -40,10 +40,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
-    'rest_framework', 
 
-    'django_extensions',    
+    'django_object_actions',   
+    'rest_framework', 
+    'django_extensions',
+    
     'bpmn_parser', 
     'engine',
 ]

@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.translation import ugettext as _
+from django.utils import timezone
 from web3 import Web3
 import re
 from picklefield.fields import PickledObjectField
@@ -21,6 +22,8 @@ class RunningInstance(models.Model):
     choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
     running = models.BooleanField(default=False)
     enforcer = PickledObjectField(blank=True, null=True)
+    execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+    execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
 
     class Meta:
@@ -91,10 +94,23 @@ class RunningInstance(models.Model):
         super().save(*args, **kwargs)
 
     def start(self):
+        if self.running:
+            raise Exception("Cannot start the running instance: it is already running")
+
+        if self.execution_ended:
+            raise Exception("Cannot start the running instance: it has already been executed")
         self.running = True
+        self.execution_started = timezone.now()
         self.save()
 
     def stop(self):
+        if not self.running:
+            raise Exception("Cannot stop the running instance: it has not been started")
+    
+        if self.execution_ended:
+            raise Exception("Cannot stop the running instance: its execution has been stopped")
+
+        self.execution_ended = timezone.now()
         self.running = False
         self.save()
 
