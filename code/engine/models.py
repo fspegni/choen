@@ -25,6 +25,9 @@ class RunningInstance(models.Model):
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
+    input_events = models.TextField(null=True, blank=True)
+    output_events = models.TextField(null=True, blank=True)
+
 
     class Meta:
         verbose_name = _("running instance")
@@ -36,11 +39,10 @@ class RunningInstance(models.Model):
 
     @property
     def rei(self):
-#        if not self._rei and self.choreography:
-#            self._rei : rei.REI = self.choreography.to_rei()
-#       
-#        return self._rei
-        return self.enforcer.engine.rei if self.enforcer else None
+        if not self._rei and self.choreography:
+            self._rei : rei.REI = self.choreography.to_rei()
+       
+        return self._rei
 
     @property
     def nfa(self):
@@ -63,6 +65,16 @@ class RunningInstance(models.Model):
 ##
 ##        return self._enforcer
 
+
+    @property
+    def enforcer_states(self):
+        return self.enforcer.engine.curr_states
+
+    @property
+    def enforcer_buffer(self):
+        return self.enforcer.engine.get_buffer_items()
+
+
     def __str__(self):
         if self.label:
             return f"{self.label}/{self.pk}"
@@ -73,8 +85,8 @@ class RunningInstance(models.Model):
         super().__init__(*args, **kwargs)
 
         self._rei = None
-        self._nfa = None
-        self._enforcer = None
+##        self._nfa = None
+##        self._enforcer = None
 
     def save(self, *args, **kwargs):
         from enforcer import Enforcer
@@ -85,13 +97,28 @@ class RunningInstance(models.Model):
         #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:
 
-            rei = self.choreography.to_rei()
-            automaton = nfa.ReiToNFA(rei)
+            #rei = self.choreography.to_rei()
+            #automaton = nfa.ReiToNFA(rei)
+            automaton = self.choreography.to_automaton()
             engine = EngineOffChain(automaton)    
             self.enforcer = Enforcer(engine)
 
         #print(f"Saved enforcer: {self.enforcer}")
         super().save(*args, **kwargs)
+
+    def append_input(self, new_input):
+        if not self.input_events:
+            self.input_events = new_input.strip()
+        else:
+            self.input_events = self.input_events + " " + new_input.strip()
+        self.save()
+
+    def append_output(self, new_output):
+        if not self.output_events:
+            self.output_events = new_output.strip()
+        else:
+            self.output_events = self.output_events + " " + new_output.strip()
+        self.save()
 
     def start(self):
         if self.running:
@@ -417,8 +444,6 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-##<<<<<<< HEAD
-
     def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : str, wallet_address : str, private_key : str, debug_compile : bool = False):
 
         super().__init__(nfa)
@@ -434,27 +459,13 @@ class EngineOnChain(Engine):
         self._private_key = private_key
 
 
-##    def __init__(self, nfa : nfa.NFA, debug_compile : bool = False):
-##        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
-
-##        assert settings.ONCHAIN_ADDRESS is not None, "You must configure your wallet address before continuing"
-##        assert settings.ONCHAIN_PRIVATE_KEY is not None, "You must configure your wallet private key before continuing"
-##        assert settings.ONCHAIN_BLOCKCHAIN_URL is not None, "You must configure your blockchain URL before continuing"
-##        assert settings.ONCHAIN_CHAIN_ID is not None, "You must configure your blockchain chain ID before continuing"
-##    
-##        self._nfa : nfa.NFA = nfa
         self._debug : bool = True
         self._runID = uuid.uuid4()
 
         self._debug_log(f"\nConnecting to {self._chain_url} ...")
-##        self._w3 : Web3 = Web3(Web3.HTTPProvider(settings.ONCHAIN_BLOCKCHAIN_URL, request_kwargs={'timeout': 300}))
         self._w3 : Web3 = Web3(Web3.HTTPProvider(self._chain_url, request_kwargs={'timeout': 300}))
-#        self._chain_id : int = settings.CHAIN_ID
         self._debug_log("Connected.")
         
-#        self._address : str = settings.ADDRESS
-#        self._private_key : str = settings.PRIVATE_KEY
-
         self._stats = []
 
         smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
@@ -476,20 +487,14 @@ class EngineOnChain(Engine):
     
     @property
     def chain_id(self) -> int:
-#        return self._chain_id
-#        return settings.ONCHAIN_CHAIN_ID
         return self._chain_id
 
     @property
     def address(self) -> str:
-#        return self._address
-#        return settings.ONCHAIN_ADDRESS
         return self._wallet_address
 
     @property
     def private_key(self) -> str:
-#        return self._private_key   
-#        return settings.ONCHAIN_PRIVATE_KEY
         return self._private_key
     
     @property

@@ -816,12 +816,17 @@ class UI:
     
             while not iscan.eof:        
                 event = iscan.scan_input()
+
+                self.ri.append_input(event)
+
                 self._debug_log(f"\n** Process input: {event} ... **")
                 out = self._enforcer.process_input(event)
                 #self._stats = self._enforcer._engine.stats
             
                 if out:
                     self._debug_log(f"\nOutput message: {out}\n")
+                    self.ri.append_output(out)
+
                 self._debug_log(f"** Process completed. **\n")
                 
                 self._debug_log("\n** Checking for usable messages in buffer ...")
@@ -829,6 +834,7 @@ class UI:
                     out1 = self._enforcer.process_check()
                     if out1:
                         self._debug_log(f"\nOutput message: {out1}\n")
+                        self.ri.append_output(out1)
                     else:
                         break            
                 self._debug_log("** Checking completed. **\n")

@@ -136,6 +136,26 @@ Next you can provide your input to the enforcer and see how it reacts. To send a
 
 The sequence of events returned by the enforcer represents the sequence in which such events can be executed. Each actor in the choreography is expected to input the event it is ready to execute. If the event is returned back from the enforcer, it means it is allowed to execute it in compliance with the choreography. Otherwise, the actor has to wait if and when the enforcer emits such event back, before actually executing it.
 
+# The WEB GUI
+
+In order to use the WEB GUI, you need to run the internal web-server in your virtualenv:
+```
+(your_env) $ django-admin runserver
+```
+
+Then, use your favourite browser to access the following URL: `http://localhost:8000/admin`
+
+# The REST API
+
+In order to use the REST API, you need to run the internal web-server in your virtualenv (as for the WEB GUI scenario, above):
+```
+(your_env) $ django-admin runserver
+```
+
+Next, you can use your favourite browser to navigate the automatically generated documentation at the following URL: `http://localhost:8000/api`. 
+
+Finally, you can program your application to use the endpoints published by the API (navigate the documentation in order to discover them). 
+
 # Drawing choreographies
 
 At the moment the choreography diagrams are generated using the following online tool:

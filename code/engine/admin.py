@@ -12,9 +12,9 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
     list_filter = [ "engine_type", "running", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
-    fields = [ "label", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "enforcer_states", "enforcer_buffer", ]
+    fields = [ "label", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
 
-    readonly_fields = [ "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "enforcer_buffer", ]
+    readonly_fields = [ "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", ]
 
     change_actions = [ "action_start", "action_stop", ]
     changelist_actions = [ "action_start_all", "action_stop_all", ]
@@ -63,9 +63,9 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 
     def enforcer_states(self, obj : RunningInstance):
         print(obj.enforcer)
-        return format_html("<pre>{}</pre>", ", ".join(obj.enforcer.engine.curr_states))
+        return format_html("<pre>{}</pre>", ", ".join(obj.enforcer_states))
 
     def enforcer_buffer(self, obj : RunningInstance):
-        return format_html("<pre>{}</pre>", ", ".join(map(str, obj.enforcer.engine.get_buffer_items())))
+        return format_html("<pre>{}</pre>", ", ".join(map(str, obj.enforcer_buffer)))
 
 admin.site.register(RunningInstance, RunningInstanceAdmin)
