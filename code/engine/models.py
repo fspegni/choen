@@ -79,7 +79,7 @@ class RunningInstance(models.Model):
         if self.label:
             return f"{self.label}/{self.pk}"
         else:
-            return self.pk
+            return str(self.pk)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -121,8 +121,8 @@ class RunningInstance(models.Model):
         self.save()
 
     def start(self):
-        if self.running:
-            raise Exception("Cannot start the running instance: it is already running")
+        #if self.running:
+        #    raise Exception("Cannot start the running instance: it is already running")
 
         if self.execution_ended:
             raise Exception("Cannot start the running instance: it has already been executed")
