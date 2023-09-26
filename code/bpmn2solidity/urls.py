@@ -20,9 +20,11 @@ from django.conf.urls.static import static
 from django.conf import settings
 
 from rest_framework import routers, serializers, viewsets
+from rest_framework.authtoken import views
 
 from bpmn_parser.api import ChoreographyViewSet
 from engine.api import RunningInstanceViewSet
+from bpmn2solidity.api import ChoenAuthToken #choen_login
 
 router = routers.DefaultRouter()
 router.register(r'choreographies', ChoreographyViewSet)
@@ -31,6 +33,9 @@ router.register(r'runninginstances', RunningInstanceViewSet)
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
-    path('api-auth/', include('rest_framework.urls', namespace='rest_framework'))
+    path('api/auth/', include('rest_framework.urls', namespace='rest_framework')),
+    path('api/login/', ChoenAuthToken.as_view()),
+#    path('api/login/', views.obtain_auth_token),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

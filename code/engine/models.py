@@ -10,6 +10,7 @@ from bpmn_parser.models import Choreography
 import nfa
 import rei
 
+
 class RunningInstance(models.Model):
 
     class EngineType(models.IntegerChoices):
