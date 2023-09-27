@@ -64,14 +64,25 @@ class RunningInstanceViewSet(viewsets.ModelViewSet):
                 if isinstance(events, str):
                     events = [ events ]
     
+                result = { "input": [], "output": [] }
+
                 for curr in events:
 
                     ri.append_input(curr)
-                    ri.enforcer.process_input(curr)
+                    out = ri.enforcer.process_input(curr)
+                    result["input"].append(curr)
+                    if out:
+                        result["output"].extend(out.split(" "))
 
                 ri.save()
+                result["status"] = "done"
+                result["input_events"] = ri.input_events
+                result["output_events"] = ri.output_events
+                result["enforcer_states"] = ri.enforcer_states
+                result["enforcer_buffer"] = ri.enforcer_buffer
+                
     
-                return Response({"status":"done"})
+                return Response(result)
             else:
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
