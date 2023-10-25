@@ -73,6 +73,16 @@ class RunningInstanceViewSet(viewsets.ModelViewSet):
                     result["input"].append(curr)
                     if out:
                         result["output"].extend(out.split(" "))
+                        ri.append_output(out)
+
+                    while True:
+                        out1 = ri.enforcer.process_check()
+                        if out1:
+                            result["output"].extend(out1.split(" "))
+                            ri.append_output(out1)
+                        else:
+                            break            
+     
 
                 ri.save()
                 result["status"] = "done"

@@ -438,7 +438,7 @@ class CmdStart(UICommand):
 
 #        if self.ui._enforcer._onChain:
         #if ri._enforcer._onChain:
-        if isinstance(ri._enforcer, EngineOnChain):
+        if isinstance(ri.enforcer, EngineOnChain):
             self.ui._debug_log(f"\nGas price:  {self.ui._enforcer._engine.w3.eth.gas_price} Wei")
 
 
