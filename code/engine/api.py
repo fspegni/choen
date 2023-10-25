@@ -60,7 +60,7 @@ class RunningInstanceViewSet(viewsets.ModelViewSet):
             ri = self.get_object()
             serializer = RunningInstanceSerializer(data=request.data, context={"request": request}, optional_fields=["choreography"])
             if serializer.is_valid():
-                events = request.data.get("events", [])
+                events = map(lambda a: a.strip(), request.data.get("events", "").split(" "))
                 if isinstance(events, str):
                     events = [ events ]
     
@@ -82,10 +82,16 @@ class RunningInstanceViewSet(viewsets.ModelViewSet):
                             ri.append_output(out1)
                         else:
                             break            
-     
+        
+                if ri.enforcer.ended():
+                    ri.stop()
+                else:
+                    ri.save()
 
-                ri.save()
                 result["status"] = "done"
+                result["ri_running"] = ri.running
+                result["ri_execution_started"] = ri.execution_started
+                result["ri_execution_ended"] = ri.execution_ended
                 result["input_events"] = ri.input_events
                 result["output_events"] = ri.output_events
                 result["enforcer_states"] = ri.enforcer_states
