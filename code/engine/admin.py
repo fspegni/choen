@@ -1,5 +1,6 @@
 from django.contrib import admin
-from django.utils.translation import ugettext as _
+#from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 from django.utils.html import format_html
 from django_object_actions import DjangoObjectActions, action
 # Register your models here.

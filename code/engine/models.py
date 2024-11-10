@@ -1,5 +1,6 @@
 from django.db import models
-from django.utils.translation import ugettext as _
+#from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 from django.utils import timezone
 from web3 import Web3
 import re
@@ -37,6 +38,10 @@ class RunningInstance(models.Model):
     @property
     def _running(self):
         return self.running
+
+    @property
+    def buffer(self):
+        return self.enforcer.buffer if self.enforcer else None
 
     @property
     def rei(self):

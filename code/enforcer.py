@@ -1,4 +1,4 @@
-from distutils.log import debug
+#from distutils.log import debug
 import json
 from tracemalloc import start
 import nfa
@@ -36,7 +36,11 @@ class Enforcer:
     @property
     def engine(self):
         return self._engine
-    
+ 
+    @property
+    def buffer(self):
+        return self._engine.buffer if self._engine else None
+   
     @property
     def history(self):
         return self._history
@@ -237,6 +241,18 @@ class CmdHelp(UICommand):
 ##        for k,v in self.ui.env:
 ##            print(f"{k} = {v}")
 ##
+
+class CmdListInstances(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        print("Running instances:")
+        ris = RunningInstance.objects.all()
+        if len(ris) == 0:
+            print("(* none *)")
+        else:
+            for ri in RunningInstance.objects.all():
+                print(f"* {ri}")
 
 class CmdList(UICommand):
 
@@ -460,6 +476,7 @@ class CmdDump(UICommand):
             "rei": None,
             "nfa": None,
             "buffer": None,
+            "ri": None,
         }
 
         return d
@@ -532,6 +549,41 @@ class CmdDump(UICommand):
                 print("\nEvent dictionary: \n")
                 for k,v in self.ui._nfa.event_dictionary.items():
                     print(f" {k} : {v}")
+
+                #breakpoint()
+                filename_prefix = args[1] if len(args) > 1 else "curr_graph"
+
+                filename_dot = filename_prefix + ".dot"
+                filename_png = filename_dot + ".png"
+            
+                counter = 1
+                while os.path.exists(filename_dot) or os.path.exists(filename_png):
+                    filename_prefix = f"{filename_prefix}_{counter}"
+                    counter = counter + 1
+                    filename_dot = filename_prefix + ".dot"
+                    filename_png = filename_dot + ".png"
+        
+                #g.save(filename_dot)
+                g.render(filename_dot, format="png", view=True)
+                print(f"Graph saved to files: {filename_dot} | {filename_png}")
+                    
+
+            elif args[0] == "ri":
+
+                ri = self.ui._model.get_object("ri")
+                if not ri:
+                    print("N/N")
+                else:
+                    #breakpoint()
+                    print(f"ID            : {ri.id}")
+                    print(f"Choreography  : {ri.choreography}")
+                    print(f"REI           : {ri.rei}")
+                    print(f"Running       : {ri.running}")
+                    print(f"Exec. started : {ri.execution_started or 'N/N'}")
+                    print(f"Exec. ended   : {ri.execution_ended or 'N/N'}")
+                    print(f"Input         : {ri.input_events}")
+                    print(f"Output        : {ri.output_events}")
+                    print(f"Buffer        : {ri.buffer}")
 
 class CmdStats(UICommand):
 
@@ -639,6 +691,7 @@ class UI:
         self._registry = {
             "init"  : CmdInit(self), #self.cmd_init,
             "list"  : CmdList(self), #self.cmd_list,
+            "list_instances": CmdListInstances(self), 
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
             "load"  : CmdLoad(self), #self.cmd_load,
@@ -661,7 +714,7 @@ class UI:
 #        self._running = False
 #        self._rei = None
 #        self._nfa = None
-        self._debug = True
+        self._debug = False #True
         self._stats = []
         self._env = {
             "ONCHAIN_URL": settings.ONCHAIN_URL,

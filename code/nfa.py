@@ -1,4 +1,3 @@
-from lib2to3.pygram import Symbols
 from rei import REI, Start, End, Symbol, Star, Conc, Par, Union
 import random
 import string
@@ -17,13 +16,17 @@ def random_string(length:int = 8):
 
 
 class State:
+ 
+    counter = 0   
 
     def __init__(self, id:str = None):
         # use name-mangling (aka double-underscore prefix) 
         # to avoid overwriting the original attribute, thus enforcing 
         # immutability of the object
         if not id:
-            id = random_string(8)
+            #id = random_string(8)
+            id = f"state_{State.counter}"
+            State.counter = State.counter + 1
 
         self.__id = id
 

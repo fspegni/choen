@@ -2,7 +2,8 @@ from re import A
 from django.db import models
 from django.conf import settings
 
-from django.utils.translation import ugettext as _
+#from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 from jinja2 import Environment, PackageLoader
 
 import xml.etree.ElementTree as ET
@@ -382,7 +383,7 @@ class Choreography(models.Model):
     def to_rei(self):
         from rei import ChoToRei, render_receive
         exp, closure = ChoToRei(self, render_receive)
-        print("REI:", exp)
+        #print("REI:", exp)
         return exp
 
     def to_nfa(self):
