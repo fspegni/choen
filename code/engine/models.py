@@ -5,11 +5,29 @@ from django.utils import timezone
 from web3 import Web3
 import re
 from picklefield.fields import PickledObjectField
-
+from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
 
 import nfa
 import rei
+
+class BlockchainConfiguration(models.Model):
+
+    label = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("label"))
+    url = models.CharField(max_length=1000, verbose_name=_("url"))
+    chain_id = models.CharField(max_length=50, verbose_name=_("chain id"))
+    address = models.CharField(max_length=50, verbose_name=_("address"))
+    private_key = models.CharField(max_length=500, help_text=_("this is supposed to be a secret"), verbose_name=_("private key"))
+
+
+    class Meta:
+        verbose_name = _("blockchain configuration")
+        verbose_name_plural = _("blockchain configurations")
+
+
+    def __str__(self):
+        short_url = self.url if len(self.url) < 20 else self.url[:20] + "..."
+        return self.label or short_url
 
 
 class RunningInstance(models.Model):
@@ -19,6 +37,8 @@ class RunningInstance(models.Model):
         ON_CHAIN = 1
 
     engine_type = models.IntegerField(choices=EngineType.choices, default=EngineType.OFF_CHAIN, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
+
+    blockchain_configuration = models.ForeignKey(BlockchainConfiguration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("blockchain configuration"))
 
     label = models.CharField(max_length=500, null=True, blank=True)
     choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
@@ -34,6 +54,8 @@ class RunningInstance(models.Model):
     class Meta:
         verbose_name = _("running instance")
         verbose_name_plural = _("running instances")
+
+
 
     @property
     def _running(self):
@@ -97,8 +119,11 @@ class RunningInstance(models.Model):
     def save(self, *args, **kwargs):
         from enforcer import Enforcer
 
-        if self.engine_type == self.EngineType.ON_CHAIN:
-            raise ValueError("On-chain engine not supported at the moment")
+#        if self.engine_type == self.EngineType.ON_CHAIN:
+#            raise ValueError("On-chain engine not supported at the moment")
+
+        if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
+            raise ValueError("On-chain engine require a blockchain configuration")
         
         #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:

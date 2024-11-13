@@ -4,16 +4,44 @@ from django.utils.translation import gettext as _
 from django.utils.html import format_html
 from django_object_actions import DjangoObjectActions, action
 # Register your models here.
+from django import forms
+from django.core.exceptions import ValidationError
+from engine.models import RunningInstance, BlockchainConfiguration
 
-from engine.models import RunningInstance
+@admin.register(BlockchainConfiguration)
+class BlockchainConfigurationAdmin(admin.ModelAdmin):
 
+    list_display = [ "chain_id", "url", ]
+    search_fields = [ "chain_id", "url", "address", "private_key", ]
+
+
+class RunningInstanceForm(forms.ModelForm):
+
+    def clean(self, *args, **kwargs):
+
+        print("In running instance form ...")
+        cleaned_data = super().clean()
+
+        print(cleaned_data)
+        if cleaned_data["engine_type"] == RunningInstance.EngineType.ON_CHAIN and not cleaned_data["blockchain_configuration"]:
+            raise ValidationError("On-chain engine require a blockchain configuration")
+
+        return cleaned_data
+
+    class Meta:
+        model = RunningInstance
+        exclude = []
+
+@admin.register(RunningInstance)
 class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
+
+    form = RunningInstanceForm
 
     list_display = [ "id", "label", "engine_type", "choreography", "running", ]
     list_filter = [ "engine_type", "running", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
-    fields = [ "label", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
+    fields = [ "label", "blockchain_configuration", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
 
     readonly_fields = [ "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", ]
 
@@ -69,4 +97,4 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
     def enforcer_buffer(self, obj : RunningInstance):
         return format_html("<pre>{}</pre>", ", ".join(map(str, obj.enforcer_buffer)))
 
-admin.site.register(RunningInstance, RunningInstanceAdmin)
+#admin.site.register(RunningInstance, RunningInstanceAdmin)
