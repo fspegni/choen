@@ -19,7 +19,7 @@ import prompt_toolkit
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import NestedCompleter
 
-from engine.models import RunningInstance, Engine, EngineOnChain, EngineOffChain
+from engine.models import Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
 
 class Enforcer:
 
@@ -335,6 +335,43 @@ class CmdRemove(UICommand):
                 c.delete()
             else:
                 print(f"Operation interrupted by the user")
+
+class CmdLoadConfiguration(UICommand):
+
+
+    def get_completions(self):
+
+        #breakpoint()
+        d = {}
+        for c in Configuration.objects.all():
+            d[c.label] = None
+
+        return d
+
+    def execute(self, label, *args, **kwargs):
+        #breakpoint()
+        #label = args[0] if len(args) > 0 else None
+
+        if not label:
+            print(f"Please, specify the label of the configuration to load.")
+            return
+
+        try:
+            c : Configuration = Configuration.objects.get(label__icontains=label)
+            #self.ui._model.add_object("", c)
+            # TODO
+            self.ui.set_env("ONCHAIN_URL", c.url)
+            self.ui.set_env("ONCHAIN_CHAIN_ID", c.chain_id)
+            self.ui.set_env("ONCHAIN_ADDRESS", c.address)
+            self.ui.set_env("ONCHAIN_PRIVATE_KEY", c.private_key)
+    
+        except Configuration.DoesNotExist as e:
+
+            print(f"Configuration containing label (*{label}*) does not exist")
+
+        except Configuration.MultipleObjectsReturned as e:
+
+            print(f"More than one configuration containing label (*{label}*) exist. Please, be more specific")
 
 class CmdLoad(UICommand):
 
@@ -666,14 +703,18 @@ class CmdEnv(UICommand):
         if n_args == 0:
 #            print(f"Please, specify an argument: {self.get_completions().keys()}")
             for k,v in self.ui.env:
+                if "PRIVATE" in k:
+                    v = "*" * len(v) # hide private variables
+
                 print(f"{k} = {v}")
 
-        # TODO finish below
         elif self.ui.has_env(args[0]):
             if len(args) > 1:
                 self.ui.set_env(args[0], args[1])
             else:
                 v = self.ui.get_env(args[0])
+                if "PRIVATE" in args[0]:
+                    v = "*" * len(v)
                 print(f"{args[0]} = {v}")
         else:
             print(f"Attribute not recognized ({args[0]}). Available attributes: {', '.join(self.get_completions().keys())}")
@@ -707,6 +748,7 @@ class UI:
             "history": CmdHistory(self),
             "save"  : CmdSave(self),
             "env"   : CmdEnv(self),
+            "load_config"   : CmdLoadConfiguration(self),
         }
 #        self._running_instances = {}
         self._model = Model()

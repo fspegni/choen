@@ -11,18 +11,18 @@ from bpmn_parser.models import Choreography
 import nfa
 import rei
 
-class BlockchainConfiguration(models.Model):
+class Configuration(models.Model):
 
     label = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("label"))
-    url = models.CharField(max_length=1000, verbose_name=_("url"))
-    chain_id = models.CharField(max_length=50, verbose_name=_("chain id"))
-    address = models.CharField(max_length=50, verbose_name=_("address"))
-    private_key = models.CharField(max_length=500, help_text=_("this is supposed to be a secret"), verbose_name=_("private key"))
+    url = models.CharField(max_length=1000, help_text=_("the RPC URL of the desired blockchain (see https://www.alchemy.com/chain-connect)"), verbose_name=_("url"))
+    chain_id = models.CharField(max_length=50, help_text=_("this is a configuration of the chosen blockchain (see https://www.alchemy.com/chain-connect)"), verbose_name=_("chain id"))
+    address = models.CharField(max_length=50, help_text=_("this is your wallet address; you can use Metamask or other tools to create one"), verbose_name=_("address"))
+    private_key = models.CharField(max_length=500, help_text=_("this is supposed to be a secret; after saving the configuration, it will be hidden"), verbose_name=_("private key"))
 
 
     class Meta:
-        verbose_name = _("blockchain configuration")
-        verbose_name_plural = _("blockchain configurations")
+        verbose_name = _("configuration")
+        verbose_name_plural = _("configurations")
 
 
     def __str__(self):
@@ -38,7 +38,7 @@ class RunningInstance(models.Model):
 
     engine_type = models.IntegerField(choices=EngineType.choices, default=EngineType.OFF_CHAIN, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
 
-    blockchain_configuration = models.ForeignKey(BlockchainConfiguration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("blockchain configuration"))
+    blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
 
     label = models.CharField(max_length=500, null=True, blank=True)
     choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
@@ -123,7 +123,7 @@ class RunningInstance(models.Model):
 #            raise ValueError("On-chain engine not supported at the moment")
 
         if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
-            raise ValueError("On-chain engine require a blockchain configuration")
+            raise ValueError("On-chain engine require a valid configuration")
         
         #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:

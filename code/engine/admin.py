@@ -6,23 +6,34 @@ from django_object_actions import DjangoObjectActions, action
 # Register your models here.
 from django import forms
 from django.core.exceptions import ValidationError
-from engine.models import RunningInstance, BlockchainConfiguration
+from engine.models import RunningInstance, Configuration
 
-@admin.register(BlockchainConfiguration)
-class BlockchainConfigurationAdmin(admin.ModelAdmin):
+class ConfigurationForm(forms.ModelForm):
 
-    list_display = [ "chain_id", "url", ]
+    class Meta:
+        model = Configuration
+        exclude = []
+        widgets = {
+            'private_key': forms.PasswordInput(),
+        }
+
+
+@admin.register(Configuration)
+class ConfigurationAdmin(admin.ModelAdmin):
+
+    form = ConfigurationForm
+
+    list_display = [ "label", "chain_id", "url", ]
     search_fields = [ "chain_id", "url", "address", "private_key", ]
 
+    
 
 class RunningInstanceForm(forms.ModelForm):
 
     def clean(self, *args, **kwargs):
 
-        print("In running instance form ...")
         cleaned_data = super().clean()
 
-        print(cleaned_data)
         if cleaned_data["engine_type"] == RunningInstance.EngineType.ON_CHAIN and not cleaned_data["blockchain_configuration"]:
             raise ValidationError("On-chain engine require a blockchain configuration")
 
@@ -31,6 +42,7 @@ class RunningInstanceForm(forms.ModelForm):
     class Meta:
         model = RunningInstance
         exclude = []
+
 
 @admin.register(RunningInstance)
 class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
