@@ -33,6 +33,9 @@ class Enforcer:
 
         self._append_history("",self._engine.get_curr_states(), self._engine.get_buffer_items())   
 
+    def __str__(self):
+        return f"Engine: {self._engine}, Debug: {self._debug}"
+
     @property
     def engine(self):
         return self._engine
@@ -348,12 +351,14 @@ class CmdLoadConfiguration(UICommand):
 
         return d
 
-    def execute(self, label, *args, **kwargs):
+    def execute(self, label=None, *args, **kwargs):
         #breakpoint()
         #label = args[0] if len(args) > 0 else None
 
         if not label:
-            print(f"Please, specify the label of the configuration to load.")
+            print(f"Please, specify the label of the configuration to load. Available configurations:")
+            available = "\n".join(map(lambda c: f"* {c.label}", Configuration.objects.all()))
+            print(available)
             return
 
         try:
@@ -364,6 +369,7 @@ class CmdLoadConfiguration(UICommand):
             self.ui.set_env("ONCHAIN_CHAIN_ID", c.chain_id)
             self.ui.set_env("ONCHAIN_ADDRESS", c.address)
             self.ui.set_env("ONCHAIN_PRIVATE_KEY", c.private_key)
+            print(f"Configuration loaded: {c.label}. Checkout the new /env")
     
         except Configuration.DoesNotExist as e:
 
@@ -382,7 +388,14 @@ class CmdLoad(UICommand):
             d[c.name] = None
         return d
    
-    def execute(self, name, *args, **kwargs):
+    def execute(self, name=None, *args, **kwargs):
+
+        if not name:
+            print("Please, specify a choreography to load. Available choreographies:")
+            available = "\n".join(map(lambda c: f"* {c.name}", Choreography.objects.all()))
+            print(available)
+            return
+
         try:
             c : Choreography = Choreography.objects.get(name=name)
             self.ui._model.add_object("choreography", c)
@@ -457,14 +470,22 @@ class CmdStart(UICommand):
         #regex : rei.REI = c.to_rei()
         #automaton : nfa.NFA = nfa.ReiToNFA(regex)
 
+        ri : RunningInstance = RunningInstance()
+        ri.choreography = c
+        ri.label = c.name
+ 
         onchain_url = self.ui.get_env("ONCHAIN_URL")
         onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
         onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
-
-        ri : RunningInstance = RunningInstance()
-        ri.choreography = c
-        ri.label = c.name
+ 
+        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
+    
+            suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            conf, conf_created = Configuration.objects.get_or_create(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key, defaults={"label": f"New configuration {suffix}"})
+    
+            ri.blockchain_configuration = conf
+            ri.engine_type = RunningInstance.EngineType.ON_CHAIN
 
         #ri._nfa = automaton
         #ri._rei = regex
@@ -482,7 +503,9 @@ class CmdStart(UICommand):
         ri.start() # NB the start method, also saves it
         self.ui._model.add_object("ri", ri)
 
-        print(f"Enforcer: {ri.enforcer}") 
+        #breakpoint()
+        ri_enforcer = str(ri.enforcer) if ri.enforcer else "N/N"
+        print(f"Enforcer: {ri_enforcer}") 
 #        self.ui._running_instances[ri.id] = ri
 ##        self.ui._enforcer = Enforcer(e)
 ##        self.ui._rei = regex

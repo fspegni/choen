@@ -2,14 +2,19 @@ from django.db import models
 #from django.utils.translation import ugettext as _
 from django.utils.translation import gettext as _
 from django.utils import timezone
+from eth_account import Account
 from web3 import Web3
 import re
 from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
 
+from generator import SmartContractGenerator
+import uuid
 import nfa
 import rei
+import json
+import time
 
 class Configuration(models.Model):
 
@@ -56,6 +61,10 @@ class RunningInstance(models.Model):
         verbose_name_plural = _("running instances")
 
 
+    @property
+    def configuration(self):
+        # TODO rename field: blockchain_configuration -> configuration
+        return self.blockchain_configuration
 
     @property
     def _running(self):
@@ -104,10 +113,11 @@ class RunningInstance(models.Model):
 
 
     def __str__(self):
+        engine_type = "on-chain" if self.engine_type == self.EngineType.ON_CHAIN else "off-chain"
         if self.label:
-            return f"{self.label}/{self.pk}"
+            return f"{self.label}/{self.pk} ({engine_type})"
         else:
-            return str(self.pk)
+            return f"{self.pk} ({engine_type})"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -124,14 +134,19 @@ class RunningInstance(models.Model):
 
         if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
             raise ValueError("On-chain engine require a valid configuration")
-        
+ 
+        breakpoint()
+       
         #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:
 
             #rei = self.choreography.to_rei()
             #automaton = nfa.ReiToNFA(rei)
             automaton = self.choreography.to_nfa()
-            engine = EngineOffChain(automaton)    
+            if self.engine_type == self.EngineType.OFF_CHAIN:
+                engine = EngineOffChain(automaton)    
+            else:
+                engine = EngineOnChain(automaton, self.configuration.url, self.configuration.id, self.configuration.address, self.configuration.private_key)
             self.enforcer = Enforcer(engine)
 
         #print(f"Saved enforcer: {self.enforcer}")
@@ -496,7 +511,16 @@ class EngineOnChain(Engine):
         self._debug_log(f"\nConnecting to {self._chain_url} ...")
         self._w3 : Web3 = Web3(Web3.HTTPProvider(self._chain_url, request_kwargs={'timeout': 300}))
         self._debug_log("Connected.")
+
+        # test network connection, by retrieving the network_id
+        network_id = self._w3.net.version
+        self._debug_log(f"Network ID: {network_id}")
         
+        # test account
+        account = Account.from_key(self._private_key)
+        balance = self._w3.eth.get_balance(account.address) 
+        print(f"Account: {account}. Balance: {self.w3.from_wei(balance, 'ether')} ETH")
+
         self._stats = []
 
         smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
@@ -590,12 +614,14 @@ class EngineOnChain(Engine):
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
-        nonce =  self.w3.eth.getTransactionCount(self.address)
+        #nonce =  self.w3.eth.getTransactionCount(self.address)
+        nonce =  self.w3.eth.get_transaction_count(self.address)
 
         start_time = time.time()
         # build transaction
         if (address == None):
-            transaction = contract.constructor().buildTransaction(
+#            transaction = contract.constructor().buildTransaction(
+            transaction = contract.constructor().build_transaction(
             {
                 "chainId": self.chain_id,
                 "gasPrice": self.w3.eth.gas_price,
@@ -604,7 +630,8 @@ class EngineOnChain(Engine):
             }
         )
         else:
-            transaction = contract.constructor(address).buildTransaction(
+#            transaction = contract.constructor(address).buildTransaction(
+            transaction = contract.constructor(address).build_transaction(
             {
                 "chainId": self.chain_id,
                 "gasPrice": self.w3.eth.gas_price,
@@ -616,8 +643,8 @@ class EngineOnChain(Engine):
         self._debug_log(f"\nDeploying contract {contract_name} ...")
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
-        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Contract Creation")
-        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
+        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Contract Creation")
+        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
         self._debug_log(f"Done! Contract deployed to {tx_receipt.contractAddress}\n")
         return tx_receipt.contractAddress
 
@@ -692,7 +719,8 @@ class EngineOnChain(Engine):
             )
         nonce = self.w3.eth.getTransactionCount(self.address)
         start_time = time.time()
-        transaction = enforcer.functions.process_input(event).buildTransaction({
+#        transaction = enforcer.functions.process_input(event).buildTransaction({
+        transaction = enforcer.functions.process_input(event).build_transaction({
                         "chainId": self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
@@ -701,8 +729,8 @@ class EngineOnChain(Engine):
         build_time = time.time() - start_time
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
-        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
-        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
+        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
+        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
 #        return enforcer.events.outputEvent().processReceipt(tx_receipt)
         logs = enforcer.events.outputEvent().processReceipt(tx_receipt)
 
@@ -719,7 +747,8 @@ class EngineOnChain(Engine):
             )
         nonce = self.w3.eth.getTransactionCount(self.address)
         start_time = time.time()
-        transaction = enforcer.functions.process_check().buildTransaction({
+#        transaction = enforcer.functions.process_check().buildTransaction({
+        transaction = enforcer.functions.process_check().build_transaction({
                         "chainId": self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
@@ -728,8 +757,8 @@ class EngineOnChain(Engine):
         build_time = time.time() - start_time
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
-        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.fromWei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
+        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
+        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
         receipt = enforcer.events.outputEvent().processReceipt(tx_receipt)
 
         self._debug_log(logs[0].args.debug)
