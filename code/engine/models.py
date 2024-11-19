@@ -9,6 +9,7 @@ from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
 
+from datetime import datetime
 from generator import SmartContractGenerator
 import uuid
 import nfa
@@ -135,7 +136,7 @@ class RunningInstance(models.Model):
         if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
             raise ValueError("On-chain engine require a valid configuration")
  
-        breakpoint()
+        #breakpoint()
        
         #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:
@@ -146,7 +147,7 @@ class RunningInstance(models.Model):
             if self.engine_type == self.EngineType.OFF_CHAIN:
                 engine = EngineOffChain(automaton)    
             else:
-                engine = EngineOnChain(automaton, self.configuration.url, self.configuration.id, self.configuration.address, self.configuration.private_key)
+                engine = EngineOnChain(automaton, self.configuration.url, int(self.configuration.chain_id), self.configuration.address, self.configuration.private_key)
             self.enforcer = Enforcer(engine)
 
         #print(f"Saved enforcer: {self.enforcer}")
@@ -490,7 +491,7 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : str, wallet_address : str, private_key : str, debug_compile : bool = False):
+    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : int, wallet_address : str, private_key : str, debug_compile : bool = False):
 
         super().__init__(nfa)
 
@@ -519,7 +520,8 @@ class EngineOnChain(Engine):
         # test account
         account = Account.from_key(self._private_key)
         balance = self._w3.eth.get_balance(account.address) 
-        print(f"Account: {account}. Balance: {self.w3.from_wei(balance, 'ether')} ETH")
+        #breakpoint()
+        print(f"Account: {account.address}. Balance: {self.w3.from_wei(balance, 'ether')} ETH")
 
         self._stats = []
 
@@ -603,7 +605,8 @@ class EngineOnChain(Engine):
         sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
         
         # Send the transaction
-        tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
+        #tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
         
         # Wait for the transaction to be mined, and get the transaction receipt
         tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)

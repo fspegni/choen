@@ -361,8 +361,10 @@ class CmdLoadConfiguration(UICommand):
             print(available)
             return
 
-        try:
-            c : Configuration = Configuration.objects.get(label__icontains=label)
+        c_list = Configuration.objects.filter(label__icontains=label)
+
+        if len(c_list) > 0:
+            c = c_list[0]
             #self.ui._model.add_object("", c)
             # TODO
             self.ui.set_env("ONCHAIN_URL", c.url)
@@ -371,13 +373,10 @@ class CmdLoadConfiguration(UICommand):
             self.ui.set_env("ONCHAIN_PRIVATE_KEY", c.private_key)
             print(f"Configuration loaded: {c.label}. Checkout the new /env")
     
-        except Configuration.DoesNotExist as e:
+        else:    
 
             print(f"Configuration containing label (*{label}*) does not exist")
 
-        except Configuration.MultipleObjectsReturned as e:
-
-            print(f"More than one configuration containing label (*{label}*) exist. Please, be more specific")
 
 class CmdLoad(UICommand):
 
@@ -481,8 +480,23 @@ class CmdStart(UICommand):
  
         if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
     
-            suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
-            conf, conf_created = Configuration.objects.get_or_create(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key, defaults={"label": f"New configuration {suffix}"})
+            #suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            #conf, conf_created = Configuration.objects.get_or_create(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key, defaults={"label": f"New configuration {suffix}"})
+            c_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
+    
+            if len(c_list) > 0:
+                conf = c_list[0]
+            else:
+
+                suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                conf = Configuration()
+                conf.url = onchain_url
+                conf.chain_id = onchain_chain_id
+                conf.address = onchain_address
+                conf.private_key = onchain_private_key
+                conf.label = f"New configuration {suffix}"
+                conf.save()
     
             ri.blockchain_configuration = conf
             ri.engine_type = RunningInstance.EngineType.ON_CHAIN
