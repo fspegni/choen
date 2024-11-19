@@ -1,0 +1,25 @@
+<html>
+<head>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chor-js@latest/dist/assets/chor-js.css">
+<script src="https://cdn.jsdelivr.net/npm/chor-js@latest/dist/chor-js-modeler.min.js"></script>
+<!-- ... or 'viewer' or 'navigated-viewer'! -->
+</head>
+<body>
+<div id="canvas">
+</div>
+</body>
+<script>
+//const xml = ""; // your BPMN2 choreography XML
+
+// Setup modeler
+const modeler = new ChorJS({
+  container: '#canvas',
+  keyboard: {
+    bindTo: document
+  }
+});
+
+// Load model (optionally with a specific diagram ID)
+//modeler.importXML(xml, '_choreo1');
+</script>
+</html>

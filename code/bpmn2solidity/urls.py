@@ -16,6 +16,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls.static import static
+from django.views.generic import TemplateView
 
 from django.conf import settings
 
@@ -25,6 +26,10 @@ from rest_framework.authtoken import views
 from bpmn_parser.api import ChoreographyViewSet
 from engine.api import RunningInstanceViewSet
 from bpmn2solidity.api import ChoenAuthToken #choen_login
+
+class HomeView(TemplateView):
+
+    template_name = "index.html"
 
 router = routers.DefaultRouter()
 router.register(r'choreographies', ChoreographyViewSet)
@@ -36,6 +41,7 @@ urlpatterns = [
     path('api/auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('api/login/', ChoenAuthToken.as_view()),
 #    path('api/login/', views.obtain_auth_token),
+    path('', HomeView.as_view()),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
