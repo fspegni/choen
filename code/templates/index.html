@@ -1,25 +1,162 @@
 <html>
 <head>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chor-js@latest/dist/assets/chor-js.css">
-<script src="https://cdn.jsdelivr.net/npm/chor-js@latest/dist/chor-js-modeler.min.js"></script>
-<!-- ... or 'viewer' or 'navigated-viewer'! -->
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chor-js@latest/dist/assets/chor-js.css">
+    <script src="https://cdn.jsdelivr.net/npm/chor-js@latest/dist/chor-js-modeler.min.js"></script>
+
+    <style>
+      html, body, #canvas {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+
 </head>
 <body>
-<div id="canvas">
+<div class="content">
+    <div id="canvas"></div>
 </div>
+<div class="buttons djs-container">
+<button id="js-new-diagram" class="icon-doc-new" title="Create new empty diagram"></button>
+<button id="js-open-file" class="icon-folder" title="Select BPMN XML file"></button>
+<div class="divider"></div>
+<a id="js-download-diagram" class="icon-file-code" title="Download BPMN XML file" href="#">Export diagram as BPMN</a>
+<a id="js-download-svg" class="icon-file-image" title="Download as SVG image" href="#">Export diagram as SVG</a>
+</div>
+<input id="file-input" name="name" type="file" accept=".bpmn, .xml" style="display:none"/>
 </body>
 <script>
-//const xml = ""; // your BPMN2 choreography XML
 
-// Setup modeler
-const modeler = new ChorJS({
-  container: '#canvas',
-  keyboard: {
-    bindTo: document
+  let container = document.getElementById("canvas")
+
+  let diagramUrl = 'https://cdn.jsdelivr.net/gh/bptlab/chor-js@latest/docs/sample.bpmn';
+    
+    function registerFileDrop(container, callback) {
+    
+      function handleFileSelect(e) {
+        e.stopPropagation();
+        e.preventDefault();
+    
+        var files = e.dataTransfer.files;
+    
+        var file = files[0];
+    
+        var reader = new FileReader();
+    
+        reader.onload = function(e) {
+    
+          var xml = e.target.result;
+    
+          callback(xml);
+        };
+    
+        reader.readAsText(file);
+      }
+    
+      function handleDragOver(e) {
+        e.stopPropagation();
+        e.preventDefault();
+    
+        e.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
+      }
+    
+    
+      container.addEventListener('dragover', handleDragOver, false);
+      container.addEventListener('drop', handleFileSelect, false);
+    }
+    
+    function openDiagram(xml) {
+        bpmnModeler.importXML(xml)
+
+    }
+
+    function openDiagramFromURL(diagramUrl) {
+    
+        // Load the XML of a BPMN choreography model.
+        fetch(diagramUrl).then(response => response.text()).then(async xml => {
+            await openDiagram(xml)
+        });
+    
+
+    }
+
+    registerFileDrop(container, openDiagram);
+    openDiagramFromURL(diagramUrl)
+
+    
+    // Setup modeler
+    const bpmnModeler = new ChorJS({
+      container: '#canvas',
+      keyboard: {
+        bindTo: document
+      }
+    });
+    
+
+// helpers //////////////////////
+
+function debounce(fn, timeout) {
+
+  var timer;
+
+  return function() {
+    if (timer) {
+      clearTimeout(timer);
+    }
+
+    timer = setTimeout(fn, timeout);
+  };
+}
+
+
+  function setEncoded(link, name, data) {
+    var encodedData = encodeURIComponent(data);
+
+    if (data) {
+      //link.addClass('active').attr({
+      link.classList.add('active')
+      link.setAttribute("href", 'data:application/bpmn20-xml;charset=UTF-8,' + encodedData)
+      link.setAttribute("download", name)
+    } else {
+      //link.removeClass('active');
+      link.classList.remove('active')
+    }
   }
-});
 
-// Load model (optionally with a specific diagram ID)
-//modeler.importXML(xml, '_choreo1');
+
+  //var downloadLink = $('#js-download-diagram');
+  //var downloadSvgLink = $('#js-download-svg');
+  var downloadLink = document.getElementById("js-download-diagram")
+  var downloadSvgLink = document.getElementById("js-download-svg")
+
+
+  var exportArtifacts = debounce(async function() {
+
+    try {
+
+      const { svg } = await bpmnModeler.saveSVG();
+
+      setEncoded(downloadSvgLink, 'diagram.svg', svg);
+    } catch (err) {
+
+      console.error('Error happened saving svg: ', err);
+      setEncoded(downloadSvgLink, 'diagram.svg', null);
+    }
+
+    try {
+
+      const { xml } = await bpmnModeler.saveXML({ format: true });
+      setEncoded(downloadLink, 'diagram.bpmn', xml);
+    } catch (err) {
+
+      console.error('Error happened saving XML: ', err);
+      setEncoded(downloadLink, 'diagram.bpmn', null);
+    }
+  }, 500);
+
+  bpmnModeler.on('commandStack.changed', exportArtifacts);
+
+
 </script>
 </html>
