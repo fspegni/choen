@@ -49,7 +49,7 @@ class RunningInstance(models.Model):
     label = models.CharField(max_length=500, null=True, blank=True)
     choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
     running = models.BooleanField(default=False)
-    enforcer = PickledObjectField(blank=True, null=True)
+    enforcer = PickledObjectField(blank=True, null=True) 
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
@@ -137,7 +137,7 @@ class RunningInstance(models.Model):
             raise ValueError("On-chain engine require a valid configuration")
  
         #breakpoint()
-       
+ 
         #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:
 
@@ -151,7 +151,18 @@ class RunningInstance(models.Model):
             self.enforcer = Enforcer(engine)
 
         #print(f"Saved enforcer: {self.enforcer}")
-        super().save(*args, **kwargs)
+
+        if self.engine_type == self.EngineType.ON_CHAIN and self.enforcer is not None:
+
+            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on save)...")
+            old_engine = self.enforcer.engine
+            #self.enforcer.engine = None # FS no setter -> exception
+            self.enforcer.set_engine(None)
+            super().save(*args, **kwargs)
+            #self.enforcer.engine = old_engine # FS no setter -> exception
+            self.enforcer.set_engine(old_engine)
+        else:
+            super().save(*args, **kwargs)
 
     def append_input(self, new_input):
         if not self.input_events:
@@ -175,7 +186,16 @@ class RunningInstance(models.Model):
             raise Exception("Cannot start the running instance: it has already been executed")
         self.running = True
         self.execution_started = timezone.now()
-        self.save()
+
+        #breakpoint()
+        if self.engine_type == self.EngineType.ON_CHAIN and self.enforcer:
+            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on start)...")
+            old_engine = self.enforcer.engine
+            self.enforcer.engine = None
+            self.save()
+            self.enforcer.engine = old_engine
+        else:
+            self.save()
 
     def stop(self):
         if not self.running:
@@ -608,8 +628,10 @@ class EngineOnChain(Engine):
         #tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
         tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
         
+        print(f"Transaction hash: {tx_hash}. Wait for validation ...")
         # Wait for the transaction to be mined, and get the transaction receipt
-        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=600)
+        print(f"Transaction validated. Receipt: {tx_receipt}")
 
         return tx_receipt
 
@@ -617,7 +639,7 @@ class EngineOnChain(Engine):
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
-        #nonce =  self.w3.eth.getTransactionCount(self.address)
+        #nonce =  self.w3.eth.get_transaction_count(self.address)
         nonce =  self.w3.eth.get_transaction_count(self.address)
 
         start_time = time.time()
@@ -656,7 +678,7 @@ class EngineOnChain(Engine):
         return self.__deployContract("NFA", abi, bytecode)
     
     def deployContractEnforcer(self, abi, bytecode, nfa_address : str):
-        return self.__deployContract("Enfocer", abi, bytecode, nfa_address)
+        return self.__deployContract("Enforcer", abi, bytecode, nfa_address)
 
 
     # INTERFACE methods
@@ -720,7 +742,7 @@ class EngineOnChain(Engine):
                 address = self.enforcer_address,
                 abi = self.enforcer_abi
             )
-        nonce = self.w3.eth.getTransactionCount(self.address)
+        nonce = self.w3.eth.get_transaction_count(self.address)
         start_time = time.time()
 #        transaction = enforcer.functions.process_input(event).buildTransaction({
         transaction = enforcer.functions.process_input(event).build_transaction({
@@ -748,7 +770,7 @@ class EngineOnChain(Engine):
                 address = self.enforcer_address,
                 abi = self.enforcer_abi
             )
-        nonce = self.w3.eth.getTransactionCount(self.address)
+        nonce = self.w3.eth.get_transaction_count(self.address)
         start_time = time.time()
 #        transaction = enforcer.functions.process_check().buildTransaction({
         transaction = enforcer.functions.process_check().build_transaction({

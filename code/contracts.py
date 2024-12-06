@@ -374,6 +374,7 @@ pragma abicoder v2;
             solc_version = settings.SOLC_VERSION, #"0.8.0",
             allow_paths = ["."]
         )
+        #breakpoint()
         if (debug):
             file_name = "_".join(["smart_contract",datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
             #tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"

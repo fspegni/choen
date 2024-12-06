@@ -46,7 +46,7 @@ class EnforcerDeployer:
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
-        nonce =  self.w3.eth.getTransactionCount(self.address)
+        nonce =  self.w3.eth.get_transaction_count(self.address)
 
         # build transaction
         if (address == None):
@@ -83,7 +83,7 @@ class EnforcerDeployer:
 
     """def process_input(self, msg : str):
         contract = self.getContract()
-        nonce = self.w3.eth.getTransactionCount(self.address)
+        nonce = self.w3.eth.get_transaction_count(self.address)
         transaction = contract.functions.process_input(msg).buildTransaction({
                         "chainId": self.chain_id,
                         "from": self.address,

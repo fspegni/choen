@@ -39,6 +39,11 @@ class Enforcer:
     @property
     def engine(self):
         return self._engine
+
+    def set_engine(self, new_engine):
+        if self._engine != new_engine:
+            print(f"WARNING: replacing old engine ({self._engine}) with new one ({new_engine}).")
+            self._engine = new_engine
  
     @property
     def buffer(self):
@@ -740,7 +745,7 @@ class CmdEnv(UICommand):
         if n_args == 0:
 #            print(f"Please, specify an argument: {self.get_completions().keys()}")
             for k,v in self.ui.env:
-                if "PRIVATE" in k:
+                if "PRIVATE" in k and v is not None:
                     v = "*" * len(v) # hide private variables
 
                 print(f"{k} = {v}")
@@ -769,10 +774,12 @@ class UI:
         self._registry = {
             "init"  : CmdInit(self), #self.cmd_init,
             "list"  : CmdList(self), #self.cmd_list,
+            "list_choreographies"  : CmdList(self), #self.cmd_list, # FS redundant but more familiar name
             "list_instances": CmdListInstances(self), 
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
             "load"  : CmdLoad(self), #self.cmd_load,
+            "load_choreography"  : CmdLoad(self), #self.cmd_load, # FS redundant but more familiar name
             "load_instance": CmdLoadInstance(self),
             "start" : CmdStart(self), # self.cmd_start,
             "stop"  : CmdStop(self), #self.cmd_stop,

@@ -12,10 +12,10 @@ class EnforcerGenerator:
         
         #c.add_import("github.com/Arachnid/solidity-stringutils/strings.sol")
 
-        #Enfocer directives
+        #Enforcer directives
         c.add_directive("using strings for *")
 
-        #Enfocer events
+        #Enforcer events
         c.add_event(Event("outputEvent",[Variable("debug","string"), Variable("messageOut","string")]))
 
         #Enforcer variables
