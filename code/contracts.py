@@ -126,7 +126,7 @@ class Constructor(Function):
 
     def compile(self):
         parameters_text = ", ".join(map(lambda p: p.compile(), self.parameters))
-        return f"""{self._name}({parameters_text}) {self._visibility} {{
+        return f"""{self._name}({parameters_text}) {{
 {self._body}
 }}
 """
@@ -345,7 +345,10 @@ class SmartContract(Compileable):
         libraries_text = "\n".join(map(lambda l: l+"\n", self.libraries.values()))
         contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
         
-        smart_contract_text = f"""pragma solidity >= {self._version};
+        smart_contract_text = f"""
+// SPDX-Licence-Identiier: CC-BY-NC-4.0	
+
+pragma solidity >= {self._version};
 pragma abicoder v2;
 {imports_text}
 

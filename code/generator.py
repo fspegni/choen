@@ -50,9 +50,9 @@ currentStates = e_closure(tmpStates);"""
     def __create_functions(self, contract : Contract):
 
         contract.add_function(Function("arrContains",
-                                [Variable("s","string","memory"),Variable("states","string[]","memory")],
-                                """for (uint i = 0; i < states.length; i++) {
-    if (strCompare(s,states[i])) {
+                                [Variable("s","string","memory"),Variable("newStates","string[]","memory")],
+                                """for (uint i = 0; i < newStates.length; i++) {
+    if (strCompare(s, newStates[i])) {
         return true;
     }
 }
@@ -82,15 +82,15 @@ return false;""",
 ##                        "bool"))
 
         contract.add_function(Function("checkInitialAndFinalStates",
-                        [Variable("states", "string[]","memory")],
+                        [Variable("newStates", "string[]","memory")],
                         """start = false;
 end = false;
-for (uint i = 0; i < states.length; i++) {
-    if (strCompare(states[i],initialState)) {
+for (uint i = 0; i < newStates.length; i++) {
+    if (strCompare(newStates[i],initialState)) {
             start = true;
         }
         for (uint k = 0; k < finalStates.length; k++) {
-            if (strCompare(states[i],finalStates[k])) {
+            if (strCompare(newStates[i],finalStates[k])) {
                 end = true;
            }
         }
@@ -111,9 +111,9 @@ return tmpStates;""",
                         "string[] memory"))
 
         contract.add_function(Function("e_closure",
-                        [Variable("states","string[]","memory")],
+                        [Variable("newStates","string[]","memory")],
                         """delete tmpStates;
-tmpStates = states;
+tmpStates = newStates;
 bool found = (tmpStates.length > 0);
 while (found) {
     found = false;
@@ -175,14 +175,15 @@ return tmpStates;""",
 
         contract.add_function(Function("isInitial",
                                 [Variable("curr","string","memory")],
-                                """return arrContains(curr, currentStates);""", 
+##                                """return arrContains(curr, currentStates);""", 
+                                """return strCompare(curr, initialState);""",
                                 "public view",
                                 "bool"))
 
 
         contract.add_function(Function("isCurrent",
                                 [Variable("curr","string","memory")],
-                                """return arrContains(curr, states);""", # TODO
+                                """return arrContains(curr, currentStates);""", # TODO
                                 "public view",
                                 "bool"))
 
@@ -196,7 +197,7 @@ return tmpStates;""",
         contract.add_function(Function("transitionFrom",
                                 [Variable("state","string","memory"), Variable("label","string","memory")],
                                 "return transitions[state][label];",
-                                "public",
+                                "public view",
                                 "string[] memory"))
 
         contract.add_function(Function("transition",
@@ -209,7 +210,7 @@ for (uint i = 0; i < currentStates.length; i++) {
 require(tmpStates.length != 0);
 message.push(label);
 currentStates = e_closure(tmpStates);""",
-                                "public"))
+                                "public")) 
         
         contract.add_function(Function("checkEnabledTransitions",
                         [Variable("symbol","string","memory")],
@@ -219,7 +220,7 @@ currentStates = e_closure(tmpStates);""",
     //reached = union(reached, s_reached); 
 }
 return false;""",
-                        "public",
+                        "public view",
                         "bool"))
     
     def createContract(self):
@@ -282,9 +283,9 @@ return false;""",
 
         contract.add_function(Function("contains",
                                 [Variable("what","string","memory"),Variable("where","string","memory")],
-                                """strings.slice memory where = where.toSlice();
-strings.slice memory what = what.toSlice();
-return where.contains(what);""",
+                                """strings.slice memory whereSliced = where.toSlice();
+strings.slice memory whatSliced = what.toSlice();
+return whereSliced.contains(whatSliced);""",
                                 "internal pure",
                                 "bool"))
 
@@ -297,7 +298,7 @@ for(uint i = 0; i < parts.length; i++) {
     parts[i] = s.split(delim).toString();
 }
 return parts;""",
-                                "private",
+                                "private pure",
                                 "string[] memory"))
         
         contract.add_function(Function("union",
@@ -340,19 +341,19 @@ buffer[actor][message] = counter;""",
         contract.add_function(Function("condition_rule_send",
                                 [Variable("message","string","memory")],
                                 """return contains("!", message);""",
-                                "private",
+                                "private pure",
                                 "bool"))
                 
         contract.add_function(Function("condition_rule_receive_now",
                                 [Variable("message","string","memory")],
                                 """return contains("?", message) && nfa.checkEnabledTransitions(message);""",
-                                "private",
+                                "private view",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_receive_delayed",
                                 [Variable("message","string","memory")],
                                 """return contains("?", message);""",
-                                "private",
+                                "private pure",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_receive_buffered",
@@ -380,7 +381,7 @@ return "None";""",
         contract.add_function(Function("rule_send",
                                 [Variable("message","string","memory")],
                                 "return message;",
-                                "private",
+                                "private pure",
                                 "string memory"))
         
         contract.add_function(Function("rule_receive_now",
@@ -433,8 +434,8 @@ if (condition_rule_send(event_input)) {
     debug = string(abi.encodePacked("(* Condition rule receive send: ", event_input, " *)"));
     out = rule_send(event_input);
 } else if (condition_rule_receive_now(event_input)) {
-    string memory actor = split(event_input, "?")[0];
-    string memory message = split(event_input, "?")[1];
+    //string memory actor = split(event_input, "?")[0];
+    //string memory message = split(event_input, "?")[1];
     debug = string(abi.encodePacked("(* Condition rule receive now: ", event_input, " *)"));
     out = rule_receive_now(event_input);
     } else if (condition_rule_receive_delayed(event_input)) {

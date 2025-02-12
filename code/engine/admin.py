@@ -6,7 +6,7 @@ from django_object_actions import DjangoObjectActions, action
 # Register your models here.
 from django import forms
 from django.core.exceptions import ValidationError
-from engine.models import RunningInstance, Configuration
+from engine.models import RunningInstance, Configuration, Transaction, Contract
 
 class ConfigurationForm(forms.ModelForm):
 
@@ -109,4 +109,15 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
     def enforcer_buffer(self, obj : RunningInstance):
         return format_html("<pre>{}</pre>", ", ".join(map(str, obj.enforcer_buffer)))
 
-#admin.site.register(RunningInstance, RunningInstanceAdmin)
+@admin.register(Contract)
+class ContractAdmin(admin.ModelAdmin):
+
+    list_display = [ "label", "contract_address", "running_instance", ]
+    search_fields = [ "label", "contract_address", "running_instance__configuration__address", ]
+
+@admin.register(Transaction)
+class TransactionAdmin(admin.ModelAdmin):
+
+    list_display = [ "tx_hash", "block_number", "running_instance", ]
+    search_fields = [ "tx_hash", "block_hash", "block_number", "running_instance__configuration__address", ]
+

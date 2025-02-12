@@ -49,7 +49,7 @@ class RunningInstance(models.Model):
     label = models.CharField(max_length=500, null=True, blank=True)
     choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
     running = models.BooleanField(default=False)
-    enforcer = PickledObjectField(blank=True, null=True) 
+#    enforcer = PickledObjectField(blank=True, null=True) 
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
@@ -63,6 +63,14 @@ class RunningInstance(models.Model):
 
 
     @property
+    def enforcer(self):
+        if not self._enforcer:
+            print("Setting an enforcer ...")
+            self._set_enforcer()
+
+        return self._enforcer
+
+    @property
     def configuration(self):
         # TODO rename field: blockchain_configuration -> configuration
         return self.blockchain_configuration
@@ -73,7 +81,7 @@ class RunningInstance(models.Model):
 
     @property
     def buffer(self):
-        return self.enforcer.buffer if self.enforcer else None
+        return self._enforcer.buffer if self._enforcer else None
 
     @property
     def rei(self):
@@ -84,15 +92,15 @@ class RunningInstance(models.Model):
 
     @property
     def nfa(self):
-        return self.enforcer.engine.nfa if self.enforcer else None
+        return self._enforcer.engine.nfa if self._enforcer else None
 
     @property
     def enforcer_states(self):
-        return self.enforcer.engine.curr_states
+        return self._enforcer.engine.curr_states if self._enforcer else None
 
     @property
     def enforcer_buffer(self):
-        return self.enforcer.engine.get_buffer_items()
+        return self._enforcer.engine.get_buffer_items() if self._enforcer else None
 
 
     def __str__(self):
@@ -105,34 +113,70 @@ class RunningInstance(models.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self._enforcer = None
         self._rei = None
 
-    def save(self, *args, **kwargs):
+    def _set_enforcer(self):
         from enforcer import Enforcer
 
-        if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
-            raise ValueError("On-chain engine require a valid configuration")
- 
-        if not self.enforcer: # or self.enforcer.engine.rei != rei:
+        if not self.choreography:
+            raise Exception("Cannot set enforcer if a choreography is not attached to the current running instance")
 
-            automaton = self.choreography.to_nfa()
-            if self.engine_type == self.EngineType.OFF_CHAIN:
-                engine = EngineOffChain(automaton)    
-            else:
-                engine = EngineOnChain(automaton, self.configuration.url, int(self.configuration.chain_id), self.configuration.address, self.configuration.private_key)
-            self.enforcer = Enforcer(engine)
-
-        if self.engine_type == self.EngineType.ON_CHAIN and self.enforcer is not None:
-
-            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on save)...")
-            old_engine = self.enforcer.engine
-            #self.enforcer.engine = None # FS no setter -> exception
-            self.enforcer.set_engine(None)
-            super().save(*args, **kwargs)
-            #self.enforcer.engine = old_engine # FS no setter -> exception
-            self.enforcer.set_engine(old_engine)
+        automaton = self.choreography.to_nfa()
+        if self.engine_type == self.EngineType.OFF_CHAIN:
+            engine = EngineOffChain(automaton)    
         else:
-            super().save(*args, **kwargs)
+
+            def handle_transactions(tx_hash, tx_receipt):
+
+                #breakpoint()
+        
+                t = Transaction()
+                t.tx_hash = tx_hash.hex()
+                t.block_hash = tx_receipt["blockHash"].hex()  
+                t.running_instance = self
+                t.initiator_address = tx_receipt["from"]
+                t.gas_used = tx_receipt["gasUsed"]
+                t.contract_address = tx_receipt["contractAddress"]
+                t.block_number = tx_receipt["blockNumber"]
+                t.save()
+       
+            #breakpoint()
+            engine = EngineOnChain(automaton, self.configuration.url, int(self.configuration.chain_id), self.configuration.address, self.configuration.private_key, handle_transactions)
+
+            c_nfa = Contract.objects.filter(running_instance=self, label="nfa")
+            c_enforcer = Contract.objects.filter(running_instance=self, label="enforcer")
+
+            #breakpoint()
+
+            if len(c_nfa) > 0 and len(c_enforcer) > 0:
+                engine.load_smart_contracts(c_nfa[0].contract_address, c_nfa[0].abi, c_enforcer[0].contract_address, c_enforcer[0].abi)
+            else:
+                engine.deploy_smart_contracts()    
+                Contract.objects.create(label="nfa", running_instance=self, contract_address=engine.nfa_address, abi=engine.nfa_abi, bytecode=engine.nfa_bytecode)           
+                Contract.objects.create(label="enforcer", running_instance=self, contract_address=engine.enforcer_address, abi=engine.enforcer_abi, bytecode=engine.enforcer_bytecode)           
+
+        self._enforcer = Enforcer(engine)
+##
+## FS try to make this DEPRECATED ; TODO finish implementation/testing
+##
+##    def save(self, *args, **kwargs):
+##
+##
+##        if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
+##            raise ValueError("On-chain engine require a valid configuration")
+##
+##        if self.engine_type == self.EngineType.ON_CHAIN and self._enforcer is not None:
+##
+##            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on save)...")
+##            old_engine = self.enforcer.engine
+##            #self.enforcer.engine = None # FS no setter -> exception
+##            self.enforcer.set_engine(None)
+##            super().save(*args, **kwargs)
+##            #self.enforcer.engine = old_engine # FS no setter -> exception
+##            self.enforcer.set_engine(old_engine)
+##        else:
+##            super().save(*args, **kwargs)
 
     def append_input(self, new_input):
         if not self.input_events:
@@ -149,23 +193,27 @@ class RunningInstance(models.Model):
         self.save()
 
     def start(self):
-        #if self.running:
-        #    raise Exception("Cannot start the running instance: it is already running")
 
         if self.execution_ended:
             raise Exception("Cannot start the running instance: it has already been executed")
         self.running = True
         self.execution_started = timezone.now()
 
+        self.save() # FS it was in the if-else branches, it has been here (refactoring)
+
         #breakpoint()
-        if self.engine_type == self.EngineType.ON_CHAIN and self.enforcer:
+
+        if self.engine_type == self.EngineType.ON_CHAIN and self._enforcer:
+    
             print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on start)...")
             old_engine = self.enforcer.engine
-            self.enforcer.engine = None
-            self.save()
-            self.enforcer.engine = old_engine
-        else:
-            self.save()
+            #self.enforcer.engine = None
+            self.enforcer.set_engine(None)
+            #self.save()
+            #self.enforcer.engine = old_engine
+            self.enforcer.set_engine(old_engine)
+        #else:
+        #    self.save()
 
     def stop(self):
         if not self.running:
@@ -187,10 +235,15 @@ class Engine:
 
         self._debug : bool = True
         self._nfa = nfa
+        self._history = []
 
     @property
     def nfa(self):
         return self._nfa
+
+    @property
+    def history(self):
+        return self._history
 
     def set_debug(self, debug: bool):
         self._debug = debug
@@ -262,12 +315,16 @@ class EngineOffChain(Engine):
         self._debug : bool = True
         self._stats = [] 
  
-
     @property
     def stats(self) -> str:
         return self._stats
 
-     
+    def _append_history(self, event : str, curr_states : list, buffer : list):
+        self._history.append({
+            "event" : event, 
+            "curr_states" : curr_states, 
+            "buffer" : buffer}
+        )
 
     def process_input(self, event):
 
@@ -291,6 +348,8 @@ class EngineOffChain(Engine):
         else:
             self._debug_log("(* No matching condition *)")        
 
+        self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self.get_buffer_items())))
+
         return out
 
 
@@ -303,6 +362,8 @@ class EngineOffChain(Engine):
             out = self.rule_receive_buffered(actor, message)
         except Exception:
             pass
+
+        self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self.get_buffer_items())))
 
         return out
 
@@ -481,7 +542,7 @@ class EngineOffChain(Engine):
 
 class EngineOnChain(Engine):
 
-    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : int, wallet_address : str, private_key : str, debug_compile : bool = False):
+    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : int, wallet_address : str, private_key : str, transaction_callback = None, deploy_callback = None):
 
         super().__init__(nfa)
 
@@ -494,7 +555,6 @@ class EngineOnChain(Engine):
         self._chain_id = chain_id
         self._wallet_address = wallet_address
         self._private_key = private_key
-
 
         self._debug : bool = True
         self._runID = uuid.uuid4()
@@ -510,19 +570,33 @@ class EngineOnChain(Engine):
         # test account
         account = Account.from_key(self._private_key)
         balance = self._w3.eth.get_balance(account.address) 
-        #breakpoint()
         print(f"Account: {account.address}. Balance: {self.w3.from_wei(balance, 'ether')} ETH")
-
         self._stats = []
 
-        smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
-        compiled_sol = smartContractGenerator.createSmartContract().compile(debug_compile)
+        #breakpoint()
+        self._transaction_callback = transaction_callback
+        self._deploy_callback = deploy_callback
+
+
+    def load_smart_contracts(self, nfa_address, nfa_abi, enforcer_address, enforcer_abi):
+
+        self._nfa_abi = nfa_abi
+        self._nfa_address = nfa_address
+        self._enforcer_abi = enforcer_abi
+        self._enforcer_address = enforcer_address
+
+
+    def deploy_smart_contracts(self):
+
+        scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
+        compiled_sol = scg.createSmartContract().compile(self._debug)
         
         self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "NFA")
         self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
 
         self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
         self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
+
 
     @property
     def w3(self) -> Web3:
@@ -594,10 +668,14 @@ class EngineOnChain(Engine):
         #tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
         tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
         
-        print(f"Transaction hash: {tx_hash}. Wait for validation ...")
+        print(f"Transaction hash: {tx_hash.hex()}. Wait for validation ...")
         # Wait for the transaction to be mined, and get the transaction receipt
         tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=600)
         print(f"Transaction validated. Receipt: {tx_receipt}")
+
+        #breakpoint()
+        if self._transaction_callback:
+            self._transaction_callback(tx_hash, tx_receipt)
 
         return tx_receipt
 
@@ -686,8 +764,8 @@ class EngineOnChain(Engine):
             ).functions.isInitial(s).call()
 
     def is_state_current(self, s):
-#        if isinstance(s, nfa.State):
-#            s = s.id
+        if isinstance(s, nfa.State):
+            s = s.id
 #
 #        curr_states = self.get_curr_states()
 #        return s in curr_states
@@ -771,4 +849,39 @@ class EngineOnChain(Engine):
 
         return out
 
+class Contract(models.Model):
 
+    contract_address =models.CharField(max_length=100, null=True, blank=False, verbose_name=_("contract address"))
+    running_instance = models.ForeignKey(RunningInstance, null=True, blank=False, on_delete=models.SET_NULL, verbose_name=_("running instance"))
+    label = models.CharField(max_length=100, verbose_name=_("label"))
+    abi = models.JSONField(null=True, blank=False, verbose_name=_("abi"))
+    bytecode = models.TextField(null=True, blank=False, verbose_name=_("bytecode"))
+   
+
+    class Meta:
+        verbose_name = _("contract")
+        verbose_name_plural = _("contracts")
+        unique_together = (("contract_address",), ("label", "running_instance"))
+
+
+
+class Transaction(models.Model):
+
+    tx_hash = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("hash"))
+    block_hash = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("block hash"))
+    running_instance = models.ForeignKey(RunningInstance, null=True, blank=False, on_delete=models.SET_NULL, verbose_name=_("running instance"))
+
+    as_of = models.DateTimeField(null=True, blank=False, help_text=_("The time when the transaction was recorded"))
+    gas_used = models.IntegerField(null=True, help_text=_("gas used"))
+    contract_address =models.CharField(max_length=100, null=True, blank=False, verbose_name=_("contract address"))
+    initiator_address =models.CharField(max_length=100, null=True, blank=False, verbose_name=_("initiator address"))
+    block_number =models.IntegerField(null=True, blank=False, verbose_name=_("block number"))
+
+    class Meta:
+        verbose_name = _("transaction")
+        verbose_name_plural = _("transactions")
+        unique_together = (("tx_hash",))
+
+#    def save(self, *args, **kwargs):
+#        self.as_of = timezone.now()
+#        super().save(self, *args, **kwargs)

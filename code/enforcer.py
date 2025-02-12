@@ -24,14 +24,14 @@ from engine.models import Configuration, RunningInstance, Engine, EngineOnChain,
 class Enforcer:
 
     def __init__(self, engine : Engine):
-        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
+#        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._debug : bool = True
         self._onChain : bool = isinstance(engine, EngineOnChain)
         
-        self._history = []  
+        #self._history = []  
         self._engine = engine
 
-        self._append_history("",self._engine.get_curr_states(), self._engine.get_buffer_items())   
+        #self._append_history("",self._engine.get_curr_states(), self._engine.get_buffer_items())   
 
     def __str__(self):
         return f"Engine: {self._engine}, Debug: {self._debug}"
@@ -51,7 +51,8 @@ class Enforcer:
    
     @property
     def history(self):
-        return self._history
+        #return self._history
+        return self._engine.history if self._engine else None
 
     # DEBUG LOG
 
@@ -63,12 +64,12 @@ class Enforcer:
         if self._debug:
             print(text)
 
-    def _append_history(self, event : str, curr_states : list, buffer : list):
-        self.history.append({
-            "event" : event, 
-            "curr_states" : curr_states, 
-            "buffer" : buffer}
-        )
+#    def _append_history(self, event : str, curr_states : list, buffer : list):
+#        self.history.append({
+#            "event" : event, 
+#            "curr_states" : curr_states, 
+#            "buffer" : buffer}
+#        )
 
     def ended(self):
         return self._engine.ended()
@@ -108,7 +109,7 @@ class Enforcer:
         
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
         
-        self._append_history(event, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
+#        self._append_history(event, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
         return out
         
          
@@ -133,7 +134,7 @@ class Enforcer:
         try:
             out = self._engine.process_check()
 
-            self._append_history(out, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
+#            self._append_history(out, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
         except Exception:
             pass
 
@@ -424,6 +425,30 @@ class CmdGetBalance(UICommand):
                 print(f"Error fetching balance. Account: {address}. URL: {chain_url}")
     
 
+class CmdBuildContracts(UICommand):
+
+    def execute(self, name=None, *args, **kwargs):
+
+        c : Choreography = self.ui._model.get_object("choreography")
+
+        if not c:
+            print("No choreography loaded, yet. Cannot continue")
+            return
+
+        nfa = c.to_nfa()
+
+        self.compile(nfa)
+
+    
+    def compile(self, nfa):
+
+        debug = True
+        smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
+        compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
+ 
+
+
+
 class CmdLoad(UICommand):
 
     def get_completions(self):
@@ -473,15 +498,19 @@ class CmdLoadInstance(UICommand):
         #print(f"Completions: {d}")
         return d
 
-    def execute(self, ri_id, *args, **kwargs):
+    def execute(self, ri_id=None, *args, **kwargs):
 
-        try:
-            ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
-            self.ui._model.add_object("ri", ri)
-            
-        except RunningInstance.DoesNotExist as e:
-            print(f"Cannot find running instance {ri_id}")
-             
+        if not ri_id:
+            print(f"Please, specify a running instance to load. Use /list_instances to know them")
+        else:
+    
+            try:
+                ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
+                self.ui._model.add_object("ri", ri)
+                
+            except RunningInstance.DoesNotExist as e:
+                print(f"Cannot find running instance {ri_id}")
+                 
 
 class CmdStop(UICommand):
     
@@ -512,9 +541,6 @@ class CmdStart(UICommand):
                 f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
 
 
-        #regex : rei.REI = c.to_rei()
-        #automaton : nfa.NFA = nfa.ReiToNFA(regex)
-
         ri : RunningInstance = RunningInstance()
         ri.choreography = c
         ri.label = c.name
@@ -526,8 +552,6 @@ class CmdStart(UICommand):
  
         if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
     
-            #suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
-            #conf, conf_created = Configuration.objects.get_or_create(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key, defaults={"label": f"New configuration {suffix}"})
             c_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
     
             if len(c_list) > 0:
@@ -547,41 +571,18 @@ class CmdStart(UICommand):
             ri.blockchain_configuration = conf
             ri.engine_type = RunningInstance.EngineType.ON_CHAIN
 
-        #ri._nfa = automaton
-        #ri._rei = regex
-        #ri._running = True
-
-#        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
-#            ri.engine_type = RunningInstance.EngineType.ON_CHAIN
-#            e = EngineOnChain(automaton, onchain_url, onchain_chain_id, onchain_address, onchain_private_key)
-#        else:
-#            ri.engine_type = RunningInstance.EngineType.OFF_CHAIN
-#            e = EngineOffChain(automaton)
-#
-#        ri._enforcer = Enforcer(e)
 
         ri.start() # NB the start method, also saves it
         self.ui._model.add_object("ri", ri)
 
-        #breakpoint()
         ri_enforcer = str(ri.enforcer) if ri.enforcer else "N/N"
         print(f"Enforcer: {ri_enforcer}") 
-#        self.ui._running_instances[ri.id] = ri
-##        self.ui._enforcer = Enforcer(e)
-##        self.ui._rei = regex
-##        self.ui._nfa = automaton
-##        self.ui._running = True
 
-#        if self.ui._enforcer._onChain:
-        #if ri._enforcer._onChain:
         if isinstance(ri.enforcer, EngineOnChain):
             self.ui._debug_log(f"\nGas price:  {self.ui._enforcer._engine.w3.eth.gas_price} Wei")
 
 
-#        if self.ui._enforcer.ended():
         if ri.enforcer.ended():
-#            self.ui._running = False
-            #ri.running = False
             ri.stop()
             self.ui._debug_log("(* Ended *)")
 
@@ -602,15 +603,16 @@ class CmdDump(UICommand):
         return d
 
     def execute(self, *args, **kwargs):
-        if self.ui._enforcer is None:
-            print("You must start the enforcer, before dumping the state")
-            return
 
         if len(args) == 0:
             print("Please specify an argument: dump <curr_states|states|transitions|buffer|rei>")
         else:
             if args[0] == "curr_states":    
                 print("\nCurrent states: \n")
+                if self.ui._enforcer is None:
+                    print("You must start the enforcer, before dumping its current states")
+                    return
+
                 for s in self.ui._enforcer.engine.get_curr_states():
                     label = str(s)
                     if self.ui._enforcer.engine.is_state_initial(s):
@@ -622,6 +624,10 @@ class CmdDump(UICommand):
 
             elif args[0] == "transitions":
                 print("\nTransitions (*=enabled): \n")
+                if self.ui._enforcer is None:
+                    print("You must start the enforcer, before dumping its transitions")
+                    return
+
                 for t in self.ui._enforcer.engine.get_transitions():
 
                     t_repr = str(t)
@@ -634,6 +640,10 @@ class CmdDump(UICommand):
 
             elif args[0] == "states":
                 print("\nStates (*=current, i=initial, f=final) : \n")
+                if self.ui._enforcer is None:
+                    print("You must start the enforcer, before dumping its states")
+                    return
+
                 for s in self.ui._enforcer.engine.get_all_states():
                     label = str(s)
 
@@ -653,21 +663,34 @@ class CmdDump(UICommand):
 
             elif args[0] == "buffer":
                 print("\nBuffer: \n")
+                if self.ui._enforcer is None:
+                    print("You must start the enforcer, before dumping its buffer")
+                    return
+
                 for actor,message in self.ui._enforcer.engine.get_buffer_items():
                     msg = f"{actor}?{message}"
 
                     print(msg)
             
             elif args[0] == "rei":
+                c : Choreography = self.ui._model.get_object("choreography")
+
                 print("\nREI: \n")
-                print(self.ui._rei)
+#                print(self.ui._rei)
+                print(c.to_rei())
 
             elif args[0] == "nfa":
+
+                c : Choreography = self.ui._model.get_object("choreography")
+                nfa = c.to_nfa()
+
                 print("\nNFA: \n")
-                g = self.ui._nfa.to_dot()   
+#                g = self.ui._nfa.to_dot()   
+                g = nfa.to_dot()   
                 print(g)
                 print("\nEvent dictionary: \n")
-                for k,v in self.ui._nfa.event_dictionary.items():
+#                for k,v in self.ui._nfa.event_dictionary.items():
+                for k,v in nfa.event_dictionary.items():
                     print(f" {k} : {v}")
 
                 #breakpoint()
@@ -835,6 +858,7 @@ class UI:
             "env"   : CmdEnv(self),
             "load_config"   : CmdLoadConfiguration(self),
             "get_balance"   : CmdGetBalance(self),
+            "build_contracts"   : CmdBuildContracts(self),
         }
 #        self._running_instances = {}
         self._model = Model()
