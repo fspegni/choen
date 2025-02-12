@@ -18,7 +18,7 @@ from pathlib import Path
 import prompt_toolkit
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import NestedCompleter
-
+from web3 import Web3
 from engine.models import Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
 
 class Enforcer:
@@ -382,6 +382,47 @@ class CmdLoadConfiguration(UICommand):
 
             print(f"Configuration containing label (*{label}*) does not exist")
 
+class CmdGetBalance(UICommand):
+
+
+    def get_completions(self):
+
+        #breakpoint()
+        d = {}
+        for c in Configuration.objects.all():
+            d[c.label] = None
+
+        return d
+
+
+    def execute(self, label=None, *args, **kwargs):
+ 
+        chain_url = self.ui.get_env("ONCHAIN_URL")
+        address = self.ui.get_env("ONCHAIN_ADDRESS")
+
+        if label:
+            c_list = Configuration.objects.filter(label__icontains=label)
+            if len(c_list) == 0:
+                print(f"Cannot find configuration matching label: {label}")
+            else:
+                chain_url = c_list[0].url
+                address = c_list[0].address
+    
+        if not chain_url:
+            print(f"Cannot find a blockchain URL in the env or in the passed configuration")
+        elif not address:
+            print(f"Cannot find wallet address in the env or in the passed configuration")
+        else:        
+
+            try:
+                w3 : Web3 = Web3(Web3.HTTPProvider(chain_url, request_kwargs={"timeout": 300}))
+                balance = w3.eth.get_balance(address)
+                balance_eth = w3.from_wei(balance, 'ether')
+
+                print(f"Account: {address}. Balance: {balance_eth} ETH")
+            except Exception as err:
+                print(f"Error fetching balance. Account: {address}. URL: {chain_url}")
+    
 
 class CmdLoad(UICommand):
 
@@ -793,6 +834,7 @@ class UI:
             "save"  : CmdSave(self),
             "env"   : CmdEnv(self),
             "load_config"   : CmdLoadConfiguration(self),
+            "get_balance"   : CmdGetBalance(self),
         }
 #        self._running_instances = {}
         self._model = Model()
