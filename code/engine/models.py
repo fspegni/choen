@@ -84,25 +84,7 @@ class RunningInstance(models.Model):
 
     @property
     def nfa(self):
-#        if not self._nfa and self.rei:
-#            self._nfa : nfa.NFA = nfa.ReiToNFA(self.rei)
-#
-#        return self._nfa
         return self.enforcer.engine.nfa if self.enforcer else None
-
-##    @property
-##    def enforcer(self):
-##        from enforcer import Enforcer
-##
-##        if not self._enforcer and self.nfa:
-##            if self.engine_type == self.EngineType.ON_CHAIN:
-##                raise ValueError("On-chain engine not supported, yet")
-##
-##            engine = EngineOffChain(self.nfa) 
-##            self._enforcer = Enforcer(engine)
-##
-##        return self._enforcer
-
 
     @property
     def enforcer_states(self):
@@ -124,33 +106,21 @@ class RunningInstance(models.Model):
         super().__init__(*args, **kwargs)
 
         self._rei = None
-##        self._nfa = None
-##        self._enforcer = None
 
     def save(self, *args, **kwargs):
         from enforcer import Enforcer
 
-#        if self.engine_type == self.EngineType.ON_CHAIN:
-#            raise ValueError("On-chain engine not supported at the moment")
-
         if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
             raise ValueError("On-chain engine require a valid configuration")
  
-        #breakpoint()
- 
-        #if not self.enforcer:
         if not self.enforcer: # or self.enforcer.engine.rei != rei:
 
-            #rei = self.choreography.to_rei()
-            #automaton = nfa.ReiToNFA(rei)
             automaton = self.choreography.to_nfa()
             if self.engine_type == self.EngineType.OFF_CHAIN:
                 engine = EngineOffChain(automaton)    
             else:
                 engine = EngineOnChain(automaton, self.configuration.url, int(self.configuration.chain_id), self.configuration.address, self.configuration.private_key)
             self.enforcer = Enforcer(engine)
-
-        #print(f"Saved enforcer: {self.enforcer}")
 
         if self.engine_type == self.EngineType.ON_CHAIN and self.enforcer is not None:
 
@@ -555,10 +525,6 @@ class EngineOnChain(Engine):
         self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
 
     @property
-    def nfa(self):
-        return self._nfa
-
-    @property
     def w3(self) -> Web3:
         return self._w3
     
@@ -687,7 +653,8 @@ class EngineOnChain(Engine):
         return self.w3.eth.contract(
                 address = self.nfa_address,
                 abi = self.nfa_abi
-            ).functions.isFinal().call()
+#            ).functions.isFinal().call()
+            ).functions.isEnded().call()
 
     def get_all_states(self):
         return self.w3.eth.contract(
@@ -702,20 +669,32 @@ class EngineOnChain(Engine):
             ).functions.getCurrentStates().call()
 
     def get_transitions(self):
-        return self._nfa.transitions
+        return self._nfa.transitions # TODO FS
 
     def is_state_final(self, s):
-        return self._nfa.is_final(s)
+#        return self._nfa.is_final(s)
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.isFinal(s).call()
 
     def is_state_initial(self, s):  
-        return self._nfa.is_initial(s)
+#        return self._nfa.is_initial(s)
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.isInitial(s).call()
 
     def is_state_current(self, s):
-        if isinstance(s, nfa.State):
-            s = s.id
-
-        curr_states = self.get_curr_states()
-        return s in curr_states
+#        if isinstance(s, nfa.State):
+#            s = s.id
+#
+#        curr_states = self.get_curr_states()
+#        return s in curr_states
+        return self.w3.eth.contract(
+                address = self.nfa_address,
+                abi = self.nfa_abi
+            ).functions.isCurrent(s).call() # TODO FS
 
     def get_buffer_items(self):
         enforcer = self.w3.eth.contract(
@@ -757,7 +736,7 @@ class EngineOnChain(Engine):
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
         self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
 #        return enforcer.events.outputEvent().processReceipt(tx_receipt)
-        logs = enforcer.events.outputEvent().processReceipt(tx_receipt)
+        logs = enforcer.events.outputEvent().process_receipt(tx_receipt)
 
         self._debug_log(logs[0].args.debug)
         out = logs[0].args.messageOut
@@ -784,7 +763,7 @@ class EngineOnChain(Engine):
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
         self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-        receipt = enforcer.events.outputEvent().processReceipt(tx_receipt)
+        receipt = enforcer.events.outputEvent().process_receipt(tx_receipt)
 
         self._debug_log(logs[0].args.debug)
         out = logs[0].args.messageOut

@@ -48,22 +48,38 @@ currentStates = e_closure(tmpStates);"""
         contract.add_constructor(Constructor([], constructorBody))
 
     def __create_functions(self, contract : Contract):
-        contract.add_function(Function("strCompare",
-                                [Variable("stringA", "string", "memory"), Variable("stringB", "string", "memory")],
-                                "return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));",
-                                "private",
-                                "bool"))
 
-        contract.add_function(Function("contains",
-                        [Variable("s","string","memory"), Variable("states","string[]","memory")],
-                        """for (uint i = 0; i < states.length; i++) {
+        contract.add_function(Function("arrContains",
+                                [Variable("s","string","memory"),Variable("states","string[]","memory")],
+                                """for (uint i = 0; i < states.length; i++) {
     if (strCompare(s,states[i])) {
         return true;
     }
 }
 return false;""",
-                        "private",
-                        "bool"))
+                                "internal pure",
+                                "bool"))
+
+
+        contract.add_function(Function("strCompare",
+                                [Variable("stringA", "string", "memory"), Variable("stringB", "string", "memory")],
+                                "return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));",
+                                "internal pure", # FS: was "private"
+                                "bool"))
+##
+## THIS IS DEPRECATED : it seems to overload the function contains(string, string); but at the
+## same time we have also arrContains that is defined exactly like this function here; solution: stop using contains(string, string[]) and move every such reference to arrContains(string, string[])
+##
+##        contract.add_function(Function("contains",
+##                        [Variable("s","string","memory"), Variable("states","string[]","memory")],
+##                        """for (uint i = 0; i < states.length; i++) {
+##    if (strCompare(s,states[i])) {
+##        return true;
+##    }
+##}
+##return false;""",
+##                        "private",
+##                        "bool"))
 
         contract.add_function(Function("checkInitialAndFinalStates",
                         [Variable("states", "string[]","memory")],
@@ -86,7 +102,7 @@ for (uint i = 0; i < states.length; i++) {
                         """delete tmpStates;
 tmpStates = arrayA;
 for (uint i = 0; i < arrayB.length; i++) {
-    if(!contains(arrayB[i], tmpStates)) {
+    if(!arrContains(arrayB[i], tmpStates)) {
         tmpStates.push(arrayB[i]);
     }
 }
@@ -103,7 +119,7 @@ while (found) {
     found = false;
     for (uint i = 0; i < tmpStates.length; i++) {
         for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
-            if (!contains(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
+            if (!arrContains(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
                 tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
                 found = true;
             }
@@ -133,17 +149,43 @@ return tmpStates;""",
                                 "public view",
                                 "string[] memory"))
 
-        contract.add_function(Function("isFinal",
+        contract.add_function(Function("isEnded",
                                 [],
                                 "return end;",
                                 "public view",
                                 "bool"))
 
-        contract.add_function(Function("isInitial",
-                                [],
-                                "return start;",
+#        contract.add_function(Function("isFinal",
+#                                [],
+#                                "return end;",
+#                                "public view",
+#                                "bool"))
+
+        contract.add_function(Function("isFinal",
+                                [Variable("curr","string","memory")],
+                                """return arrContains(curr, finalStates);""", 
                                 "public view",
                                 "bool"))
+ 
+#        contract.add_function(Function("isInitial",
+#                                [],
+#                                "return start;",
+#                                "public view",
+#                                "bool"))
+
+        contract.add_function(Function("isInitial",
+                                [Variable("curr","string","memory")],
+                                """return arrContains(curr, currentStates);""", 
+                                "public view",
+                                "bool"))
+
+
+        contract.add_function(Function("isCurrent",
+                                [Variable("curr","string","memory")],
+                                """return arrContains(curr, states);""", # TODO
+                                "public view",
+                                "bool"))
+
 
         contract.add_function(Function("getMessage",
                                 [],
@@ -228,7 +270,7 @@ class EnforcerContractGenerator(Generator):
                                 "bool"))
 
         contract.add_function(Function("arrContains",
-                                [Variable("states","string[]","memory"),Variable("s","string","memory")],
+                                [Variable("s","string","memory"),Variable("states","string[]","memory")],
                                 """for (uint i = 0; i < states.length; i++) {
     if (strCompare(s,states[i])) {
         return true;
@@ -265,7 +307,7 @@ for (uint i = 0; i < arrayB.length; i++) {
     tmpStates.push(arrayB[i]);
 }
 for (uint i = 0; i < arrayA.length; i++) {
-    if(!arrContains(tmpStates, arrayA[i])) {
+    if(!arrContains(arrayA[i], tmpStates)) {
         tmpStates.push(arrayA[i]);
     }
 }
@@ -277,10 +319,10 @@ return tmpStates;""",
                                 [Variable("actor","string","memory"),Variable("message","string","memory")],
                                 """uint counter = buffer[actor][message];
 counter += 1;
-if (!arrContains(actors,actor)) {
+if (!arrContains(actor,actors)) {
     actors.push(actor);
 }
-if(!arrContains(messages,message)) {
+if(!arrContains(message,messages)) {
     messages.push(message);
 }
 buffer[actor][message] = counter;""",

@@ -353,6 +353,16 @@ pragma abicoder v2;
 
 {contracts_text}
 """
+
+        #breakpoint()
+        if (debug):
+            file_name = "_".join(["smart_contract",datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
+            #tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
+            tmp_path = os.path.join(settings.BASE_DIR, "..", "public", "tmp", f"{file_name}.sol")
+            with open(tmp_path,"w") as file:
+                file.write(smart_contract_text)
+                print("\nSmart contract saved at: ",tmp_path,"\n")
+
         compiled_sol = solcx.compile_standard(
             {
                 "language": "Solidity",
@@ -374,35 +384,6 @@ pragma abicoder v2;
             solc_version = settings.SOLC_VERSION, #"0.8.0",
             allow_paths = ["."]
         )
-        #breakpoint()
-        if (debug):
-            file_name = "_".join(["smart_contract",datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
-            #tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
-            tmp_path = os.path.join(settings.BASE_DIR, "..", "public", "tmp", f"{file_name}.sol")
-            with open(tmp_path,"w") as file:
-                file.write(smart_contract_text)
-                print("\nSmart contract saved at: ",tmp_path,"\n")
-        """with open("compiled_sol.json", "w") as file:
-            json.dump(compiled_sol, file)
-
-        os.rename("compiled_sol.json",f"smart_contract_compiled_sol.json")
-        
-        try:
-            smartContract_file = open(f"{settings.BASE_DIR}\..\public\contracts\smart_contract.sol","w")
-            try: 
-                smartContract_file.write(smart_contract_text)
-                if (os.path.exists(f"{settings.BASE_DIR}\..\public\contracts\smart_contract_compiled_sol.json")):
-                    os.remove(f"{settings.BASE_DIR}\..\public\contracts\smart_contract_compiled_sol.json")
-                    #os.rename(f"{settings.BASE_DIR}\..\public\contracts\combined.json",f"{settings.BASE_DIR}\..\public\contracts\{self.name}_combined.json")
-                #else:
-                #    os.rename(f"{settings.BASE_DIR}\..\public\contracts\combined.json",f"{settings.BASE_DIR}\..\public\contracts\{self.name}_combined.json")
-                shutil.move(f"smart_contract_compiled_sol.json",f"{settings.BASE_DIR}\..\public\contracts\smart_contract_compiled_sol.json")
-            except Exception as err:
-                print("Something went wrong when writing to the file: ", err)
-            finally:
-                smartContract_file.close()
-        except:
-            print("Something went wrong when opening the file")"""
         return compiled_sol
 
 
