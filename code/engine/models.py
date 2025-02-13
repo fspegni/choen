@@ -8,6 +8,7 @@ import re
 from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
+from django.db import transaction
 
 from datetime import datetime
 from generator import SmartContractGenerator
@@ -192,28 +193,81 @@ class RunningInstance(models.Model):
             self.output_events = self.output_events + " " + new_output.strip()
         self.save()
 
-    def start(self):
-
-        if self.execution_ended:
-            raise Exception("Cannot start the running instance: it has already been executed")
-        self.running = True
-        self.execution_started = timezone.now()
-
-        self.save() # FS it was in the if-else branches, it has been here (refactoring)
-
-        #breakpoint()
-
-        if self.engine_type == self.EngineType.ON_CHAIN and self._enforcer:
-    
-            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on start)...")
-            old_engine = self.enforcer.engine
-            #self.enforcer.engine = None
-            self.enforcer.set_engine(None)
-            #self.save()
-            #self.enforcer.engine = old_engine
-            self.enforcer.set_engine(old_engine)
-        #else:
-        #    self.save()
+##    def attach(self, enforcer_contract_address):
+##
+##        raise Exception("TODO")
+##
+##        breakpoint()
+##
+##        if self.execution_ended:
+##            raise Exception("Cannot attach the running instance to a contract: it has already been executed")
+##        self.running = True
+##
+##        # 1. ensure the smart contract of the enforcer does not exist in the db
+##        c_enforcer = Contract.objects.filter(contract_address=enforcer_contract_address).first()
+##        if c_enforcer:
+##            raise Exception(f"The smart contract ({c_enforcer}) already exists in the database. Associated running instance: {c_enforcer.running_instance}")
+##
+##        # 2. prepare a new proxy to the smart contract for the enforcer and link it to the
+##        #    current working instance but do not save it (the running instance is not saved 
+##        #    yet) 
+##        c_enforcer = Contract()
+##        c_enforcer.label = "enforcer"
+##        c_enforcer.contract_address = enforcer_contract_address
+##        c_enforcer.running_instance = self
+##
+##        # 3. fetch the nfa contract address using the enforcer smart contract already deployed
+##        #    on the blockchain
+##        nfa_contract_address = self.w3.eth.contract(
+##                    address = enforcer_address,
+##                    abi = self.nfa_abi
+##                ).functions.nfaAddress().call()
+##
+##        # 4. ensure a smart contract for the nfa does not already exist in the database
+##        c_nfa = Contract.objects.filter(contract_address=nfa_contract_address).first()
+##        if c_nfa:
+##            raise Exception(f"The smart contract ({c_nfa}) already exists in the database. Associated running instance: {c_enforcer.running_instance}")
+##
+##        # 5. create a proxy for the smart contract running the nfa linked to the enforcer
+##        #    smart contract
+##        c_nfa = Contract()
+##        c_nfa.label = "nfa"
+##        c_nfa.contract_address = nfa_contract_address
+##        c_nfa.running_instance = self
+##
+##        # 6. save the current running instance (self) and the related smart contracts linked 
+##        #    to it
+##
+##        with transaction.atomic():
+##            self.save()
+##            c_enforcer.save()
+##            c_nfa.save()
+##
+##
+##    def start(self):
+##
+##        if self.execution_ended:
+##            raise Exception("Cannot start the running instance: it has already been executed")
+##        self.running = True
+##        self.execution_started = timezone.now()
+##
+##        self.save() # FS it was in the if-else branches, it has been here (refactoring)
+##
+##        #breakpoint()
+##
+#####        if self.engine_type == self.EngineType.ON_CHAIN and self._enforcer:
+#####    
+#####            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on start)...")
+#####            old_engine = self.enforcer.engine
+#####            #self.enforcer.engine = None
+#####            self.enforcer.set_engine(None)
+#####            #self.save()
+#####            #self.enforcer.engine = old_engine
+#####            self.enforcer.set_engine(old_engine)
+#####        #else:
+#####        #    self.save()
+#####
+##
 
     def stop(self):
         if not self.running:
@@ -577,6 +631,13 @@ class EngineOnChain(Engine):
         self._transaction_callback = transaction_callback
         self._deploy_callback = deploy_callback
 
+        self._nfa_address = None
+        self._nfa_abi = None
+        self._nfa_bytecode = None
+
+        self._enforcer_address = None
+        self._enforcer_abi = None
+        self._enforcer_bytecode = None
 
     def load_smart_contracts(self, nfa_address, nfa_abi, enforcer_address, enforcer_abi):
 
@@ -588,6 +649,9 @@ class EngineOnChain(Engine):
 
     def deploy_smart_contracts(self):
 
+        if not self._nfa:
+            raise Exception("No NFA has been set for this purpose")
+
         scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
         compiled_sol = scg.createSmartContract().compile(self._debug)
         
@@ -596,6 +660,33 @@ class EngineOnChain(Engine):
 
         self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
         self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
+
+
+    def attach_smart_contracts(self, sc_enforcer_address):
+
+        if not self._nfa:
+            raise Exception("No NFA has been set for this purpose")
+
+        # compile the smart contracts to get the abi and bytecode for each
+        scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
+        compiled_sol = scg.createSmartContract().compile(self._debug)
+        
+        self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "NFA")
+        self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
+
+        # query the enforcer smart contract to get the address of the nfa smart contract
+        # (from blockchain)    
+
+        self._enforcer_address = sc_enforcer_address
+
+        print(f"Fetching NFA contract address from enforcer smart contract ...")
+        self._nfa_address = self.w3.eth.contract(
+                address = sc_enforcer_address,
+                abi = self.enforcer_abi
+            ).functions.getNfaAddress().call()
+
+
+
 
 
     @property
@@ -629,6 +720,7 @@ class EngineOnChain(Engine):
     @property 
     def nfa_address(self) -> str:
         return self._nfa_address
+
 
     @property
     def enforcer_abi(self):
@@ -684,7 +776,7 @@ class EngineOnChain(Engine):
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
         #nonce =  self.w3.eth.get_transaction_count(self.address)
-        nonce =  self.w3.eth.get_transaction_count(self.address)
+        nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
 
         start_time = time.time()
         # build transaction
@@ -772,7 +864,7 @@ class EngineOnChain(Engine):
         return self.w3.eth.contract(
                 address = self.nfa_address,
                 abi = self.nfa_abi
-            ).functions.isCurrent(s).call() # TODO FS
+            ).functions.isCurrent(s).call() 
 
     def get_buffer_items(self):
         enforcer = self.w3.eth.contract(
@@ -799,7 +891,7 @@ class EngineOnChain(Engine):
                 address = self.enforcer_address,
                 abi = self.enforcer_abi
             )
-        nonce = self.w3.eth.get_transaction_count(self.address)
+        nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added 'pending' ot solve the nonce too low problem
         start_time = time.time()
 #        transaction = enforcer.functions.process_input(event).buildTransaction({
         transaction = enforcer.functions.process_input(event).build_transaction({
@@ -809,6 +901,8 @@ class EngineOnChain(Engine):
                         "nonce": nonce
                     })
         build_time = time.time() - start_time
+
+        self._debug_log(f"\nProcess input {event} ...")
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
@@ -827,7 +921,7 @@ class EngineOnChain(Engine):
                 address = self.enforcer_address,
                 abi = self.enforcer_abi
             )
-        nonce = self.w3.eth.get_transaction_count(self.address)
+        nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added 'pending', trying to solve the nonce-too-low problem
         start_time = time.time()
 #        transaction = enforcer.functions.process_check().buildTransaction({
         transaction = enforcer.functions.process_check().build_transaction({
@@ -837,6 +931,8 @@ class EngineOnChain(Engine):
                         "nonce": nonce
                     })
         build_time = time.time() - start_time
+
+        self._debug_log(f"\nProcess check ...")
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
@@ -863,6 +959,8 @@ class Contract(models.Model):
         verbose_name_plural = _("contracts")
         unique_together = (("contract_address",), ("label", "running_instance"))
 
+    def __str__(self):
+        return f"{self.contract_address}/{self.label}/{self.id}"
 
 
 class Transaction(models.Model):

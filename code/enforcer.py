@@ -1,4 +1,7 @@
 #from distutils.log import debug
+from django.utils import timezone
+from django.db import transaction
+import glob
 import json
 from tracemalloc import start
 import nfa
@@ -19,7 +22,7 @@ import prompt_toolkit
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import NestedCompleter
 from web3 import Web3
-from engine.models import Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
+from engine.models import Contract, Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
 
 class Enforcer:
 
@@ -372,7 +375,6 @@ class CmdLoadConfiguration(UICommand):
         if len(c_list) > 0:
             c = c_list[0]
             #self.ui._model.add_object("", c)
-            # TODO
             self.ui.set_env("ONCHAIN_URL", c.url)
             self.ui.set_env("ONCHAIN_CHAIN_ID", c.chain_id)
             self.ui.set_env("ONCHAIN_ADDRESS", c.address)
@@ -449,7 +451,7 @@ class CmdBuildContracts(UICommand):
 
 
 
-class CmdLoad(UICommand):
+class CmdLoadChoreography(UICommand):
 
     def get_completions(self):
  
@@ -471,20 +473,31 @@ class CmdLoad(UICommand):
             self.ui._model.add_object("choreography", c)
             print(f"Choreography '{name}' loaded ...")
         except Choreography.DoesNotExist as e:
+            #breakpoint()
             if os.path.exists(name):
-                cho_name = os.path.basename(name).rsplit(".",1)[0]
-                attribs = {
-                    "name": cho_name,
-                    "resource": File(open(name)),
-                }
-                c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
-                self.ui._model.add_object("choreography", c)
-                if created:
-                    print(f"Choreography {cho_name} imported and loaded ...")
+                if os.path.isfile(name):
+                    self.import_file(name)
                 else:
-                    print(f"Choreography {cho_name} already exists and has been loaded ...")
+                    # recursively scan directory
+                    for filename in glob.iglob(name + '/**/*.bpmn', recursive=True):
+                        self.import_file(filename)
+
             else:
                 print(f"Cannot find choreography {name}")
+
+    def import_file(self, name):
+        cho_name = os.path.basename(name).rsplit(".",1)[0]
+        attribs = {
+            "name": cho_name,
+            "resource": File(open(name)),
+        }
+        c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
+        self.ui._model.add_object("choreography", c)
+        if created:
+            print(f"Choreography {cho_name} imported and loaded ...")
+        else:
+            print(f"Choreography {cho_name} already exists and has been loaded ...")
+ 
  
 
 class CmdLoadInstance(UICommand):
@@ -526,36 +539,39 @@ class CmdStop(UICommand):
  
 class CmdStart(UICommand):
 
-    def execute(self, *args, **kwargs):
+    def execute(self, contract_address=None, *args, **kwargs):
 
-        c : Choreography = self.ui._model.get_object("choreography")
+        cho : Choreography = self.ui._model.get_object("choreography")
 
         if len(args) > 0:
-            c = Choreography.objects.get(name=args[0])
+            cho = Choreography.objects.get(name=args[0])
 
-        if not c:
+        if not cho:
             raise Exception("You must load a choreography or start a choreography")
 
         if not os.path.exists("log.txt"):
             with open(f'log.txt', 'w', encoding="utf-8") as f:
                 f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
 
+        #breakpoint()
 
-        ri : RunningInstance = RunningInstance()
-        ri.choreography = c
-        ri.label = c.name
+        # 1. create a pair enforcer/engine
+        enforcer = None
  
+        automaton = cho.to_nfa()
+
         onchain_url = self.ui.get_env("ONCHAIN_URL")
         onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
         onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
  
         if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
+ 
+            # detect whether a configuration exists with given parameters, otherwise save it
+            conf_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
     
-            c_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
-    
-            if len(c_list) > 0:
-                conf = c_list[0]
+            if len(conf_list) > 0:
+                conf = conf_list[0]
             else:
 
                 suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -567,25 +583,123 @@ class CmdStart(UICommand):
                 conf.private_key = onchain_private_key
                 conf.label = f"New configuration {suffix}"
                 conf.save()
+
+            engine = EngineOnChain(automaton, onchain_url, onchain_chain_id, onchain_address, onchain_private_key)
+        else:
+
+            if contract_address:
+                raise Exception(f"You specified a smart contract address for the enforcer, but you did not provide your blockchain configuration in the /env")
     
-            ri.blockchain_configuration = conf
-            ri.engine_type = RunningInstance.EngineType.ON_CHAIN
+            engine = EngineOffChain(automaton)
+
+        enforcer = Enforcer(engine)
+
+        if contract_address:
+
+            # 2b1. search nfa address, if enforcer address is given (use the enforcer/engine of previous step)
+#            c_enforcer = Contract.objects.filter(contract_address=contract_address).first()
+#            if c_enforcer:
+#                raise Excetpion(f"The specified smart contract ({c_enforcer}) already exists in the database. Associated running instance: {c_enforcer.running_instance}")
+#
+#            c_enforcer = Contract()
+#            c_enforcer.label = "enforcer"
+#            c_enforcer.contract_address = contract_address
+            engine.attach_smart_contracts(contract_address)
+
+        else:
+
+            # 2a. deploy new contracts if no address is given
+            #scg = SmartContractGenerator(automaton)
+            #compiled = scq.createSmartContract().compile(True) # True => debug mode
+            engine.deploy_smart_contracts()
+
+        # 3. store contracts with attached/deploy smart contract addresses, abis, 
+        #    and bytecodes
+        breakpoint()
+
+        sc_enforcer, sc_enforcer_created = Contract.objects.get_or_create(contract_address=engine._enforcer_address, defaults={"abi":engine._enforcer_abi, "bytecode":engine._enforcer_bytecode,"label":"enforcer"})
+        if not sc_enforcer_created and sc_enforcer.running_instance is not None:
+            raise Exception(f"The smart contract ({sc_enforcer}) is already attached to a running instance: {sc_enforcer.running_instance}")
+
+        sc_nfa, sc_nfa_created = Contract.objects.get_or_create(contract_address=engine._nfa_address, defaults={"abi":engine._nfa_abi, "bytecode":engine._nfa_bytecode,"label":"nfa"})
+        if not sc_nfa_created and sc_nfa.running_instance is not None:
+            raise Exception(f"The smart contract ({sc_nfa}) is already attached to a running instance: {sc_nfa.running_instance}")
+
+        # 4. create running instance
+        ri = RunningInstance()
+        ri.choreography = cho
+        ri.label = cho.name
+        ri.running = True   
+        ri.execution_started = timezone.now() # TODO this is ok when starting a new instance; when attaching a running smart contract, one should try to find the time when the deployment transaction was validated
+ 
+        # 5. link contracts to running instance (and save the contracts again)
+        sc_enforcer.running_instance = ri
+        sc_nfa.running_instance = ri
+
+        with transaction.atomic():
+            ri.save()
+            sc_enforcer.save()
+            sc_nfa.save()
 
 
-        ri.start() # NB the start method, also saves it
         self.ui._model.add_object("ri", ri)
 
-        ri_enforcer = str(ri.enforcer) if ri.enforcer else "N/N"
-        print(f"Enforcer: {ri_enforcer}") 
-
-        if isinstance(ri.enforcer, EngineOnChain):
-            self.ui._debug_log(f"\nGas price:  {self.ui._enforcer._engine.w3.eth.gas_price} Wei")
-
-
-        if ri.enforcer.ended():
-            ri.stop()
-            self.ui._debug_log("(* Ended *)")
-
+##        # TODO refactor the following
+##
+##        ri : RunningInstance = RunningInstance()
+##        ri.choreography = c
+##        ri.label = c.name
+## 
+##        onchain_url = self.ui.get_env("ONCHAIN_URL")
+##        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
+##        onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
+##        onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
+## 
+##        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
+##    
+##            c_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
+##    
+##            if len(c_list) > 0:
+##                conf = c_list[0]
+##            else:
+##
+##                suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+##
+##                conf = Configuration()
+##                conf.url = onchain_url
+##                conf.chain_id = onchain_chain_id
+##                conf.address = onchain_address
+##                conf.private_key = onchain_private_key
+##                conf.label = f"New configuration {suffix}"
+##                conf.save()
+##    
+##            ri.blockchain_configuration = conf
+##            ri.engine_type = RunningInstance.EngineType.ON_CHAIN
+##
+##        if contract_address:
+##            if ri.engine_type != RunningInstance.EngineType.ON_CHAIN:
+##                raise Exception("Cannot attach to a running contract address with off-chain enforcer engines. Please, provide an on-chain configuration on your /env")
+##
+##            ri.attach(contract_address)
+##        else:
+##            ri.start() # NB the start method, also saves it
+##
+##        if not ri.enforcer:
+##            raise Exception(f"The start/attach procedure should have set an enforcer at this stage. Cannot continue")
+##
+##        self.ui._model.add_object("ri", ri)
+##
+##        #ri_enforcer = str(ri.enforcer) if ri.enforcer else "N/N"
+##        print(f"Enforcer: {ri.enforcer}") 
+##
+##        if isinstance(ri.enforcer, EngineOnChain):
+##            self.ui._debug_log(f"\nGas price:  {ri.enforcer._engine.w3.eth.gas_price} Wei")
+##
+##        if ri.enforcer.ended():
+##            ri.stop()
+##            self.ui._debug_log("(* Ended *)")
+##
+##
 
 class CmdDump(UICommand):
 
@@ -842,8 +956,8 @@ class UI:
             "list_instances": CmdListInstances(self), 
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
-            "load"  : CmdLoad(self), #self.cmd_load,
-            "load_choreography"  : CmdLoad(self), #self.cmd_load, # FS redundant but more familiar name
+#            "load"  : CmdLoadChoreography(self), #self.cmd_load,
+            "load_choreography"  : CmdLoadChoreography(self), #self.cmd_load, # FS redundant but more familiar name
             "load_instance": CmdLoadInstance(self),
             "start" : CmdStart(self), # self.cmd_start,
             "stop"  : CmdStop(self), #self.cmd_stop,

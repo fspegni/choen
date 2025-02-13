@@ -259,9 +259,13 @@ class EnforcerContractGenerator(Generator):
         contract.add_attribute(Variable("messages","string[]"))
         contract.add_attribute(Variable("tmpStates","string[]"))
         contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
+        contract.add_attribute(Variable("chainStartTime", "uint"))    
 
     def __create_constructor(self, contract : Contract):
-        contract.add_constructor(Constructor([Variable("nfaAddress","address")],f"nfa = {self.nfa.name}(nfaAddress);"))
+        contract.add_constructor(Constructor([Variable("nfaAddress","address")],f"""
+    nfa = {self.nfa.name}(nfaAddress);
+    chainStartTime = block.timestamp;
+        """))
     
     def __create_utils(self, contract : Contract):
         contract.add_function(Function("strCompare",
@@ -471,7 +475,11 @@ return out;""",
                                 "public",
                                 "string memory"))
 
-
+        contract.add_function(Function("getNfaAddress",
+                                [],
+                                """return address(nfa);""",
+                                "public view",
+                                "address"))
 
     def createContract(self):
         contract : Contract = Contract("Enforcer")
