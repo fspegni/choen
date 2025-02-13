@@ -28,32 +28,35 @@ class ConfigurationAdmin(admin.ModelAdmin):
 
     
 
-class RunningInstanceForm(forms.ModelForm):
-
-    def clean(self, *args, **kwargs):
-
-        cleaned_data = super().clean()
-
-        if cleaned_data["engine_type"] == RunningInstance.EngineType.ON_CHAIN and not cleaned_data["blockchain_configuration"]:
-            raise ValidationError("On-chain engine require a blockchain configuration")
-
-        return cleaned_data
-
-    class Meta:
-        model = RunningInstance
-        exclude = []
-
+##class RunningInstanceForm(forms.ModelForm):
+##
+##    def clean(self, *args, **kwargs):
+##
+##        cleaned_data = super().clean()
+##
+##        if cleaned_data["engine_type"] == RunningInstance.EngineType.ON_CHAIN and not cleaned_data["blockchain_configuration"]:
+##            raise ValidationError("On-chain engine require a blockchain configuration")
+##
+##        return cleaned_data
+##
+##    class Meta:
+##        model = RunningInstance
+##        exclude = []
+##
 
 @admin.register(RunningInstance)
 class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 
-    form = RunningInstanceForm
+##    form = RunningInstanceForm
 
-    list_display = [ "id", "label", "engine_type", "choreography", "running", ]
-    list_filter = [ "engine_type", "running", ]
+#    list_display = [ "id", "label", "engine_type", "choreography", "running", ]
+    list_display = [ "id", "label", "choreography", "running", ]
+#    list_filter = [ "engine_type", "running", ]
+    list_filter = [ "blockchain_configuration", "running", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
-    fields = [ "label", "blockchain_configuration", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
+#    fields = [ "label", "blockchain_configuration", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
+    fields = [ "label", "blockchain_configuration", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
 
     readonly_fields = [ "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", ]
 

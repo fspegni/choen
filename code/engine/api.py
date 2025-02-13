@@ -32,7 +32,8 @@ class RunningInstanceSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = RunningInstance
-        fields = [ "id", "choreography", "engine_type", "label", "nfa", "rei", "running", "execution_started", "execution_ended", "enforcer_states", "enforcer_buffer" ]
+#        fields = [ "id", "choreography", "engine_type", "label", "nfa", "rei", "running", "execution_started", "execution_ended", "enforcer_states", "enforcer_buffer" ]
+        fields = [ "id", "choreography", "label", "nfa", "rei", "running", "execution_started", "execution_ended", "enforcer_states", "enforcer_buffer" ]
 
 
     def __init__(self, *args, **kwargs):

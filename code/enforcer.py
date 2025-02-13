@@ -366,7 +366,11 @@ class CmdLoadConfiguration(UICommand):
 
         if not label:
             print(f"Please, specify the label of the configuration to load. Available configurations:")
-            available = "\n".join(map(lambda c: f"* {c.label}", Configuration.objects.all()))
+            config_labels = list(map(lambda c: f"* {c.label}", Configuration.objects.all()))
+            if len(config_labels) > 0:
+                available = "\n".join(config_labels)
+            else:
+                available = "(* None *)"
             print(available)
             return
 
@@ -539,60 +543,9 @@ class CmdStop(UICommand):
  
 class CmdStart(UICommand):
 
-    def execute(self, contract_address=None, *args, **kwargs):
-
-        cho : Choreography = self.ui._model.get_object("choreography")
-
-        if len(args) > 0:
-            cho = Choreography.objects.get(name=args[0])
-
-        if not cho:
-            raise Exception("You must load a choreography or start a choreography")
-
-        if not os.path.exists("log.txt"):
-            with open(f'log.txt', 'w', encoding="utf-8") as f:
-                f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
-
-        #breakpoint()
-
-        # 1. create a pair enforcer/engine
-        enforcer = None
- 
-        automaton = cho.to_nfa()
-
-        onchain_url = self.ui.get_env("ONCHAIN_URL")
-        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
-        onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
-        onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
- 
-        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
- 
-            # detect whether a configuration exists with given parameters, otherwise save it
-            conf_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
-    
-            if len(conf_list) > 0:
-                conf = conf_list[0]
-            else:
-
-                suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-                conf = Configuration()
-                conf.url = onchain_url
-                conf.chain_id = onchain_chain_id
-                conf.address = onchain_address
-                conf.private_key = onchain_private_key
-                conf.label = f"New configuration {suffix}"
-                conf.save()
-
-            engine = EngineOnChain(automaton, onchain_url, onchain_chain_id, onchain_address, onchain_private_key)
-        else:
-
-            if contract_address:
-                raise Exception(f"You specified a smart contract address for the enforcer, but you did not provide your blockchain configuration in the /env")
-    
-            engine = EngineOffChain(automaton)
-
-        enforcer = Enforcer(engine)
+    def setup_onchain_running_instance(self, ri, automaton, contract_address, conf): #onchain_url, onchain_chain_id, onchain_address, onchain_private_key):
+        # detect whether a configuration exists with given parameters, otherwise save it
+        engine = EngineOnChain(automaton, conf.url, conf.chain_id, conf.address, conf.private_key)
 
         if contract_address:
 
@@ -613,25 +566,33 @@ class CmdStart(UICommand):
             #compiled = scq.createSmartContract().compile(True) # True => debug mode
             engine.deploy_smart_contracts()
 
+
         # 3. store contracts with attached/deploy smart contract addresses, abis, 
         #    and bytecodes
-        breakpoint()
 
-        sc_enforcer, sc_enforcer_created = Contract.objects.get_or_create(contract_address=engine._enforcer_address, defaults={"abi":engine._enforcer_abi, "bytecode":engine._enforcer_bytecode,"label":"enforcer"})
+        sc_enforcer, sc_enforcer_created = Contract.objects.get_or_create(
+            contract_address=engine._enforcer_address, 
+            defaults={
+                "abi":engine._enforcer_abi, 
+                "bytecode":engine._enforcer_bytecode,
+                "label":"enforcer"
+            })
         if not sc_enforcer_created and sc_enforcer.running_instance is not None:
             raise Exception(f"The smart contract ({sc_enforcer}) is already attached to a running instance: {sc_enforcer.running_instance}")
 
-        sc_nfa, sc_nfa_created = Contract.objects.get_or_create(contract_address=engine._nfa_address, defaults={"abi":engine._nfa_abi, "bytecode":engine._nfa_bytecode,"label":"nfa"})
+        sc_nfa, sc_nfa_created = Contract.objects.get_or_create(
+            contract_address=engine._nfa_address, 
+            defaults={
+                "abi":engine._nfa_abi, 
+                "bytecode":engine._nfa_bytecode,
+                "label":"nfa"
+            })
         if not sc_nfa_created and sc_nfa.running_instance is not None:
             raise Exception(f"The smart contract ({sc_nfa}) is already attached to a running instance: {sc_nfa.running_instance}")
-
-        # 4. create running instance
-        ri = RunningInstance()
-        ri.choreography = cho
-        ri.label = cho.name
-        ri.running = True   
-        ri.execution_started = timezone.now() # TODO this is ok when starting a new instance; when attaching a running smart contract, one should try to find the time when the deployment transaction was validated
  
+        enforcer = Enforcer(engine)
+        ri.set_enforcer(enforcer)
+
         # 5. link contracts to running instance (and save the contracts again)
         sc_enforcer.running_instance = ri
         sc_nfa.running_instance = ri
@@ -641,7 +602,78 @@ class CmdStart(UICommand):
             sc_enforcer.save()
             sc_nfa.save()
 
+        return ri
 
+
+    def setup_offchain_running_instance(self, ri, automaton):
+        engine = EngineOffChain(automaton)
+
+        enforcer = Enforcer(engine)
+        ri.set_enforcer(enforcer)
+        ri.save()
+        return ri
+
+
+    def execute(self, contract_address=None, *args, **kwargs):
+
+        cho : Choreography = self.ui._model.get_object("choreography")
+
+        if len(args) > 0:
+            cho = Choreography.objects.get(name=args[0])
+
+        if not cho:
+            raise Exception("You must load a choreography or start a choreography")
+
+        if not os.path.exists("log.txt"):
+            with open(f'log.txt', 'w', encoding="utf-8") as f:
+                f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
+    
+        breakpoint()
+
+        # 0. create a stub of running instance
+        ri = RunningInstance()
+        ri.choreography = cho
+        ri.label = cho.name
+#        ri.running = True   
+#        ri.execution_started = timezone.now() # TODO this is ok when starting a new instance; when attaching a running smart contract, one should try to find the time when the deployment transaction was validated
+ 
+        # 1. create a pair enforcer/engine
+        #enforcer = None
+ 
+        automaton = cho.to_nfa()
+
+        onchain_url = self.ui.get_env("ONCHAIN_URL")
+        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
+        onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
+        onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
+ 
+        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
+
+            conf_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
+    
+            if len(conf_list) > 0:
+                conf = conf_list[0]
+            else:
+
+                suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                conf = Configuration()
+                conf.url = onchain_url
+                conf.chain_id = onchain_chain_id
+                conf.address = onchain_address
+                conf.private_key = onchain_private_key
+                conf.label = f"New configuration {suffix}"
+                conf.save()
+
+            ri = self.setup_onchain_running_instance(ri, automaton, contract_address, conf) #onchain_url, onchain_chain_id, onchain_address, onchain_private_key)     
+    
+        else:
+
+            if contract_address:
+                raise Exception(f"You specified a smart contract address for the enforcer, but you did not provide your blockchain configuration in the /env")
+ 
+            ri = self.setup_offchain_running_instance(ri, automaton)
+   
         self.ui._model.add_object("ri", ri)
 
 ##        # TODO refactor the following
@@ -712,6 +744,8 @@ class CmdDump(UICommand):
             "nfa": None,
             "buffer": None,
             "ri": None,
+            "input": None,
+            "output": None,
         }
 
         return d
@@ -825,7 +859,7 @@ class CmdDump(UICommand):
                 print(f"Graph saved to files: {filename_dot} | {filename_png}")
                     
 
-            elif args[0] == "ri":
+            elif args[0] == "instance":
 
                 ri = self.ui._model.get_object("ri")
                 if not ri:
@@ -841,6 +875,24 @@ class CmdDump(UICommand):
                     print(f"Input         : {ri.input_events}")
                     print(f"Output        : {ri.output_events}")
                     print(f"Buffer        : {ri.buffer}")
+
+            elif args[0] == "input":
+    
+                ri = self.ui._model.get_object("ri")
+                if not ri:
+                    print("N/N")
+                else:
+                    print(ri.input_events)
+
+            elif args[0] == "output":
+
+                ri = self.ui._model.get_object("ri")
+                if not ri:
+                    print("N/N")
+                else:
+                    print(ri.output_events)
+            else:
+                print(f"Option not recognized: {' '.join(args)}")
 
 class CmdStats(UICommand):
 

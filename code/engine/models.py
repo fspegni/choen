@@ -39,11 +39,11 @@ class Configuration(models.Model):
 
 class RunningInstance(models.Model):
 
-    class EngineType(models.IntegerChoices):
-        OFF_CHAIN = 0
-        ON_CHAIN = 1
+#    class EngineType(models.IntegerChoices):
+#        OFF_CHAIN = 0
+#        ON_CHAIN = 1
 
-    engine_type = models.IntegerField(choices=EngineType.choices, default=EngineType.OFF_CHAIN, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
+#    engine_type = models.IntegerField(choices=EngineType.choices, default=EngineType.OFF_CHAIN, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
 
     blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
 
@@ -65,17 +65,22 @@ class RunningInstance(models.Model):
 
     @property
     def enforcer(self):
-        if not self._enforcer:
-            print("Setting an enforcer ...")
-            self._set_enforcer()
-
+##        if not self._enforcer:
+##            print("Setting an enforcer ...")
+##            self._set_enforcer()
+##
         return self._enforcer
 
-    @property
-    def configuration(self):
-        # TODO rename field: blockchain_configuration -> configuration
-        return self.blockchain_configuration
+    def set_enforcer(self, enforcer):
+        self._enforcer = enforcer
+        self.running = True
+        self.execution_started = datetime.now() # FS this is true when a new enforcer has been deployed, it may be not true in case of an enforcer attached to a running smart contract
 
+    @property
+##    def configuration(self):
+##        # TODO rename field: blockchain_configuration -> configuration
+##        return self.blockchain_configuration
+##
     @property
     def _running(self):
         return self.running
@@ -105,7 +110,8 @@ class RunningInstance(models.Model):
 
 
     def __str__(self):
-        engine_type = "on-chain" if self.engine_type == self.EngineType.ON_CHAIN else "off-chain"
+        #engine_type = "on-chain" if self.engine_type == self.EngineType.ON_CHAIN else "off-chain"
+        engine_type = "on-chain" if self.blockchain_configuration is not None else "off-chain" 
         if self.label:
             return f"{self.label}/{self.pk} ({engine_type})"
         else:
@@ -124,7 +130,8 @@ class RunningInstance(models.Model):
             raise Exception("Cannot set enforcer if a choreography is not attached to the current running instance")
 
         automaton = self.choreography.to_nfa()
-        if self.engine_type == self.EngineType.OFF_CHAIN:
+        #if self.engine_type == self.EngineType.OFF_CHAIN:
+        if self.blockchain_configuration is None:
             engine = EngineOffChain(automaton)    
         else:
 
@@ -143,7 +150,7 @@ class RunningInstance(models.Model):
                 t.save()
        
             #breakpoint()
-            engine = EngineOnChain(automaton, self.configuration.url, int(self.configuration.chain_id), self.configuration.address, self.configuration.private_key, handle_transactions)
+            engine = EngineOnChain(automaton, self.blockchain_configuration.url, int(self.blockchain_configuration.chain_id), self.blockchain_configuration.address, self.blockchain_configuration.private_key, handle_transactions)
 
             c_nfa = Contract.objects.filter(running_instance=self, label="nfa")
             c_enforcer = Contract.objects.filter(running_instance=self, label="enforcer")
