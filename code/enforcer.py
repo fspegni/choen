@@ -267,12 +267,12 @@ class CmdListInstances(UICommand):
     def execute(self, *args, **kwargs):
 
         print("Running instances:")
-        ris = RunningInstance.objects.all()
-        if len(ris) == 0:
+        instances = RunningInstance.objects.all()
+        if len(instances) == 0:
             print("(* none *)")
         else:
             for ri in RunningInstance.objects.all():
-                print(f"* {ri}")
+                print(f" * {ri.id} : {ri}")
 
 class CmdList(UICommand):
 
@@ -328,13 +328,6 @@ class CmdClear(UICommand):
 
 
 
-##class CmdStop(UICommand):
-##
-##    def execute(self, *args, **kwargs):
-##
-##        self.ui.set_running(False)
-##
-
 class CmdRemove(UICommand):
     
     def get_completions(self):
@@ -377,7 +370,7 @@ class CmdLoadConfiguration(UICommand):
             if len(config_labels) > 0:
                 available = "\n".join(config_labels)
             else:
-                available = "(* None *)"
+                available = "(* none *)"
             print(available)
             return
 
@@ -518,11 +511,21 @@ class CmdStop(UICommand):
         ri : RunningInstance = self.ui._model.get_object("ri")
 
         if not ri:
-            raise Exception("No running instance loaded or started, yet")
+            raise Exception("No running instance to stop")
 
         ri.stop()
  
- 
+class CmdPause(UICommand):
+  
+    def execute(self, *args, **kwargs):
+
+        ri : RunningInstance = self.ui._model.get_object("ri")
+
+        if not ri:
+            raise Exception("No running instance to pause")
+
+        self.ui._model.add_object("ri", None)
+
 class CmdStart(UICommand):
 
     def setup_onchain_running_instance(self, ri, automaton, contract_address, conf): #onchain_url, onchain_chain_id, onchain_address, onchain_private_key):
@@ -734,7 +737,14 @@ class CmdLoadInstance(CmdStart):
         #breakpoint()
 
         if not ri_id:
-            print(f"Please, specify a running instance to load. Use /list_instances to know them")
+            print(f"Please, specify a running instance to load. Available instances:")
+            instances = RunningInstance.objects.all()
+            if len(instances) > 0:
+                for ri in instances:
+                    print(f" * {ri.id} : {ri}")
+            else:
+                print("(* none *)")
+
         else:
     
             try:
@@ -874,6 +884,10 @@ class CmdDump(UICommand):
             
             elif args[0] == "rei":
                 c : Choreography = self.ui._model.get_object("choreography")
+
+                if not c:
+                    print("You must load a choreography, before dumping its rei")
+                    return
 
                 print("\nREI: \n")
 #                print(self.ui._rei)
@@ -1065,6 +1079,7 @@ class UI:
             "load_instance": CmdLoadInstance(self),
             "start" : CmdStart(self), # self.cmd_start,
             "stop"  : CmdStop(self), #self.cmd_stop,
+            "pause"  : CmdPause(self), #self.cmd_stop,
             "debug" : CmdDebug(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
             "dump"  : CmdDump(self), #self.cmd_dump,
