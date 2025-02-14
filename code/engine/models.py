@@ -72,9 +72,16 @@ class RunningInstance(models.Model):
         return self._enforcer
 
     def set_enforcer(self, enforcer):
+
+        if self.execution_ended:
+            raise Exception("Setting an enforcer for enforcer instances that already ended is not supported")
+
         self._enforcer = enforcer
-        self.running = True
-        self.execution_started = datetime.now() # FS this is true when a new enforcer has been deployed, it may be not true in case of an enforcer attached to a running smart contract
+        if not self.running:
+            self.running = True
+
+        if not self.execution_started:
+            self.execution_started = datetime.now() # FS this is true when a new enforcer has been deployed, it may be not true in case of an enforcer attached to a running smart contract
 
     @property
 ##    def configuration(self):

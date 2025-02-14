@@ -24,6 +24,14 @@ from prompt_toolkit.completion import NestedCompleter
 from web3 import Web3
 from engine.models import Contract, Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
 
+import random
+import string
+
+
+def random_string(length):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
 class Enforcer:
 
     def __init__(self, engine : Engine):
@@ -350,7 +358,6 @@ class CmdRemove(UICommand):
 
 class CmdLoadConfiguration(UICommand):
 
-
     def get_completions(self):
 
         #breakpoint()
@@ -504,31 +511,6 @@ class CmdLoadChoreography(UICommand):
  
  
 
-class CmdLoadInstance(UICommand):
-    
-    def get_completions(self):
-        d = {}
-
-        for ri in RunningInstance.objects.all():
-            d[str(ri.id)] = None
-
-        #print(f"Completions: {d}")
-        return d
-
-    def execute(self, ri_id=None, *args, **kwargs):
-
-        if not ri_id:
-            print(f"Please, specify a running instance to load. Use /list_instances to know them")
-        else:
-    
-            try:
-                ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
-                self.ui._model.add_object("ri", ri)
-                
-            except RunningInstance.DoesNotExist as e:
-                print(f"Cannot find running instance {ri_id}")
-                 
-
 class CmdStop(UICommand):
     
     def execute(self, *args, **kwargs):
@@ -590,6 +572,7 @@ class CmdStart(UICommand):
         if not sc_nfa_created and sc_nfa.running_instance is not None:
             raise Exception(f"The smart contract ({sc_nfa}) is already attached to a running instance: {sc_nfa.running_instance}")
  
+        ri.blockchain_configuration = conf
         enforcer = Enforcer(engine)
         ri.set_enforcer(enforcer)
 
@@ -733,6 +716,75 @@ class CmdStart(UICommand):
 ##
 ##
 
+
+#class CmdLoadInstance(UICommand):   
+class CmdLoadInstance(CmdStart):
+
+    def get_completions(self):
+        d = {}
+
+        for ri in RunningInstance.objects.all():
+            d[str(ri.id)] = None
+
+        #print(f"Completions: {d}")
+        return d
+
+    def execute(self, ri_id=None, *args, **kwargs):
+
+        #breakpoint()
+
+        if not ri_id:
+            print(f"Please, specify a running instance to load. Use /list_instances to know them")
+        else:
+    
+            try:
+                # 1. load instance
+                ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
+
+                automaton = ri.choreography.to_nfa()
+
+                # 2. load the environment from the running instance blockchain configuration
+                if ri.blockchain_configuration:
+                    self.ui.set_env("ONCHAIN_URL", ri.blockchain_configuration.url)
+                    self.ui.set_env("ONCHAIN_CHAIN_ID", ri.blockchain_configuration.chain_id)
+                    self.ui.set_env("ONCHAIN_ADDRESS", ri.blockchain_configuration.address)
+                    self.ui.set_env("ONCHAIN_PRIVATE_KEY", ri.blockchain_configuration.private_key)
+
+                    self.setup_onchain_running_instance(ri, automaton, None, ri.blockchain_configuration)
+
+                else:
+                    self.ui.set_env("ONCHAIN_URL", None)
+                    self.ui.set_env("ONCHAIN_CHAIN_ID", None)
+                    self.ui.set_env("ONCHAIN_ADDRESS", None)
+                    self.ui.set_env("ONCHAIN_PRIVATE_KEY", None)
+
+                    self.setup_offchain_running_instance(ri, automaton)
+
+
+                # 3. call the setup_onchain/offchain_engine
+
+                # 4. set the running instance
+                self.ui._model.add_object("ri", ri)
+                
+            except RunningInstance.DoesNotExist as e:
+                print(f"Cannot find running instance {ri_id}")
+                 
+
+
+class CmdRandom(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+        ri = self.ui._model.get_object("ri")
+        if ri:
+    
+ 
+            actor = random_string(10)
+            msg = random_string(10)
+            action = random.choice(["?","!"])
+            random_event = f"{actor}{action}{msg}"
+            ri.enforcer.process_input(random_event)
+
 class CmdDump(UICommand):
 
     def get_completions(self):
@@ -743,7 +795,7 @@ class CmdDump(UICommand):
             "rei": None,
             "nfa": None,
             "buffer": None,
-            "ri": None,
+            "instance": None,
             "input": None,
             "output": None,
         }
@@ -1016,6 +1068,7 @@ class UI:
             "debug" : CmdDebug(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
             "dump"  : CmdDump(self), #self.cmd_dump,
+            "random"  : CmdRandom(self), #self.cmd_dump,
             "exit"  : CmdQuit(self), #self.cmd_quit,
             "quit"  : CmdQuit(self), #self.cmd_quit
             "stats" : CmdStats(self),
