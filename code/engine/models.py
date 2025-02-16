@@ -93,8 +93,8 @@ class RunningInstance(models.Model):
         if not self.running:
             self.running = True
 
-        if not self.execution_started:
-            enforcer.engine.get_execution_started()
+        if not self.execution_started and enforcer.engine:
+            self._Execution_started = enforcer.engine.get_execution_started()
 #            self.execution_started = datetime.now() # FS this is true when a new enforcer has been deployed, it may be not true in case of an enforcer attached to a running smart contract
 
     @property
@@ -410,6 +410,7 @@ class EngineOffChain(Engine,models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
     curr_states = models.JSONField(default=[], verbose_name=_("current states"))
+    history = models.JSONField(default=[], verbose_name=_("current states"))
     buffer = models.JSONField(default={}, verbose_name=_("buffer"))
 
 #    def __init__(self, nfa : nfa.NFA):
@@ -419,15 +420,18 @@ class EngineOffChain(Engine,models.Model):
 #        super().__init__(nfa)
         e = EngineOffChain()
 
+        #breakpoint()
         nfa = ri.choreography.to_nfa()
 
         e._nfa : nfa.NFA = nfa
         e.buffer = {}
-        e.curr_states = nfa.e_closure(set([ nfa.initial.id ]))
+        e.curr_states = list(nfa.e_closure(set([ nfa.initial.id ])))
         e._debug : bool = True
-        e.stats = []
+        e._stats = []
         e.running_instance = ri
         e.save()
+
+        return e
     
 
     @property
@@ -435,7 +439,7 @@ class EngineOffChain(Engine,models.Model):
         return self._stats
 
     def _append_history(self, event : str, curr_states : list, buffer : list):
-        self._history.append({
+        self.history.append({
             "event" : event, 
             "curr_states" : curr_states, 
             "buffer" : buffer}
@@ -472,7 +476,7 @@ class EngineOffChain(Engine,models.Model):
         out = None
         try:
             #actor, message = self._engine._buffer_find_usable_message()
-            actor, message = self._buffer_find_usable_message()
+            actor, message = self.buffer_find_usable_message()
             #out = self._engine.rule_receive_buffered(actor, message)
             out = self.rule_receive_buffered(actor, message)
         except Exception:
@@ -482,27 +486,27 @@ class EngineOffChain(Engine,models.Model):
 
         return out
 
+#
+#    @property
+#    def buffer(self) -> dict:
+#        return self._buffer
 
-    @property
-    def buffer(self) -> dict:
-        return self._buffer
-
-    @property
-    def curr_states(self) -> str:
-        return self._curr_states
+#    @property
+#    def curr_states(self) -> str:
+#        return self._curr_states
 
     # UTILS
 
     def _buffer_add(self, actor : str, message : str):
 
-        actor_buffer = self._buffer.get(actor, {})
+        actor_buffer = self.buffer.get(actor, {})
         message_counter = actor_buffer.get(message, 0)
         actor_buffer[message] = message_counter + 1
-        self._buffer[actor] = actor_buffer
+        self.buffer[actor] = actor_buffer
 
     def _buffer_remove(self, actor : str, message : str):
 
-        actor_buffer = self._buffer.get(actor, {})
+        actor_buffer = self.buffer.get(actor, {})
         message_counter = actor_buffer.get(message, 0)
         assert message_counter >= 0
 
@@ -510,7 +514,7 @@ class EngineOffChain(Engine,models.Model):
             raise Exception(f"No message {message} to remove for actor {actor}")
         
         actor_buffer[message] = message_counter - 1
-        self._buffer[actor] = actor_buffer
+        self.buffer[actor] = actor_buffer
 
     
     def _buffer_find_usable_message(self):
@@ -518,13 +522,13 @@ class EngineOffChain(Engine,models.Model):
 #        print("in _buffer_find_usable_message...")
 
 #        print(f"Buffer: {self._buffer}")
-        for actor, actor_buffer in self._buffer.items():
+        for actor, actor_buffer in self.buffer.items():
 #            print(f"Actor: {actor} - Actor buffer: {actor_buffer}")
             for message, counter in actor_buffer.items():
 #                print(f"Message: {message} - Counter: {counter}")
                 if counter > 0:
                     event = f"{actor}?{message}"
-                    for s in self._curr_states:
+                    for s in self.curr_states:
                         if self._nfa.transitions_from(s, event):
                             found = (actor, message)
                             return found
@@ -535,13 +539,13 @@ class EngineOffChain(Engine,models.Model):
     # INTERFACE methods
 
     def ended(self):
-        return self._nfa.is_final(self._curr_states)
+        return self._nfa.is_final(self.curr_states)
 
     def get_all_states(self):
         return self._nfa.states
 
     def get_curr_states(self):
-        return self._curr_states
+        return self.curr_states
 
     def get_transitions(self):
         return self._nfa.transitions
@@ -556,13 +560,13 @@ class EngineOffChain(Engine,models.Model):
         if isinstance(s, nfa.State):
             s = s.id
         
-        res = (s in self._curr_states)
+        res = (s in self.curr_states)
         return res
 
     def get_buffer_items(self):
         items = []
 
-        for actor,actor_buffer in self._buffer.items():
+        for actor,actor_buffer in self.buffer.items():
             for message,counter in actor_buffer.items():
                 for i in range(counter):
                     items.append((actor, message))
@@ -585,7 +589,7 @@ class EngineOffChain(Engine,models.Model):
         if m is None:
             return False
 
-        for curr in self._curr_states:
+        for curr in self.curr_states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
 
             if len(enabled_transitions) > 0:
@@ -607,7 +611,7 @@ class EngineOffChain(Engine,models.Model):
     def rule_receive_now(self, event):
 
         reached = set()
-        for s in self._curr_states:
+        for s in self.curr_states:
 
             s_reached = self._nfa.read_symbol(event, s)
 
@@ -617,7 +621,7 @@ class EngineOffChain(Engine,models.Model):
                 reached = reached.union(s_reached)
             
 
-        self._curr_states = reached
+        self.curr_states = reached
         return event
 
 #    def rule_receive_delayed(self, actor, message):
@@ -628,16 +632,16 @@ class EngineOffChain(Engine,models.Model):
 
     def rule_receive_buffered(self, actor, message):
         
-        assert actor in self._buffer and message in self._buffer[actor]
+        assert actor in self.buffer and message in self._buffer[actor]
         
-        counter = self._buffer[actor][message]
+        counter = self.buffer[actor][message]
 
         assert counter > 0
 
         event = f"{actor}?{message}"
 
         reached = set()
-        for s in self._curr_states:
+        for s in self.curr_states:
             s_reached = self._nfa.read_symbol(event, s)
 
             if len(s_reached) == 0:
@@ -647,9 +651,9 @@ class EngineOffChain(Engine,models.Model):
         
         self._buffer_remove(actor, message)
 
-        nd_factor = (len(reached) - len(self._curr_states)) / len(self._curr_states)
+        nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-        self._curr_states = reached
+        self.curr_states = reached
 
 
         return event

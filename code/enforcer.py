@@ -620,6 +620,7 @@ class CmdStart(UICommand):
     def setup_offchain_running_instance(self, ri): #, automaton):
         #engine = EngineOffChain(automaton)
 
+        #breakpoint()
         automaton = ri.choreography.to_nfa()
 
         try:
@@ -628,7 +629,7 @@ class CmdStart(UICommand):
             if not engine:
                 raise Excepion("Engine off-chain not set yet")
         except Exception:
-            engine = EngineOffChain.create_engine(automaton)
+            engine = EngineOffChain.create_engine(ri) #automaton)
 
         enforcer = Enforcer(engine)
         ri.set_enforcer(enforcer)
@@ -639,7 +640,7 @@ class CmdStart(UICommand):
     @transaction.atomic
     def execute(self, contract_address=None, *args, **kwargs):
 
-        breakpoint()
+        #breakpoint()
         cho : Choreography = self.ui._model.get_object("choreography")
 
         if len(args) > 0:

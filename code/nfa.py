@@ -374,7 +374,7 @@ class NFA:
         elif isinstance(states, str):
             states = set([ states ])
 
-        assert isinstance(states, set)
+        assert isinstance(states, ( set, list ))
 
         for s in states:
             if s not in self._states:
