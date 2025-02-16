@@ -111,6 +111,10 @@ class RunningInstance(models.Model):
         return self._enforcer.buffer if self._enforcer else None
 
     @property
+    def kb(self):
+        return self._enforcer.kb if self._enforcer else None
+
+    @property
     def rei(self):
         if not self._rei and self.choreography:
             self._rei : rei.REI = self.choreography.to_rei()
@@ -382,26 +386,28 @@ class Engine:
     def get_buffer_items(self):
         raise Exception("This is an abstract method, you should implement it")
 
+    def get_kb(self):
+        raise Exception("This is an abstract method, you should implement it")
 
     # RULE CONDITIONS
-    def condition_rule_send(self, event):
+    def condition_rule_send(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
 
-    def condition_rule_receive_now(self, event):
+    def condition_rule_receive_now(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
 
-    def condition_rule_receive_delayed(self, event):
+    def condition_rule_receive_delayed(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
     
     # RULE EFFECTS
-    def rule_send(self, event):
+    def rule_send(self, event, knowledge):
         raise Exception("This is an abstract method, you should implement it")
     
-    def rule_receive_now(self, event):
+    def rule_receive_now(self, event, knowledge):
 
         raise Exception("This is an abstract method, you should implement it")
 
-    def rule_receive_delayed(self, event):
+    def rule_receive_delayed(self, event, knowledge):
 
         raise Exception("This is an abstract method, you should implement it")
 
@@ -412,6 +418,7 @@ class EngineOffChain(Engine,models.Model):
     curr_states = models.JSONField(default=[], verbose_name=_("current states"))
     history = models.JSONField(default=[], verbose_name=_("current states"))
     buffer = models.JSONField(default={}, verbose_name=_("buffer"))
+    kb = models.JSONField(default=[], verbose_name=_("buffer"))
 
 #    def __init__(self, nfa : nfa.NFA):
     @staticmethod
@@ -429,6 +436,7 @@ class EngineOffChain(Engine,models.Model):
         e._debug : bool = True
         e._stats = []
         e.running_instance = ri
+        e.kb = []
         e.save()
 
         return e
@@ -445,25 +453,46 @@ class EngineOffChain(Engine,models.Model):
             "buffer" : buffer}
         )
 
-    def process_input(self, event):
+    def _parse_event(self, text):
+        #breakpoint()
+        m = re.match("^(([a-zA-Z0-9&|!\(\)]+)_=>_)?([a-zA-Z0-9]+)([?!])([a-zA-Z0-9]+)(\([a-zA-Z0-9,]+\))$", text)
+
+        if not m:
+            raise Exception(f"Event has an unrecognized format")
+
+        breakpoint()
+        _, precondition, actor, action, message, knowledge = m.groups()
+
+        if knowledge:
+            knowledge = knowledge.strip("()").split(",")
+
+        return precondition, actor, action, message, knowledge
+
+    def process_input(self, symbol):
 
         out = None
         #if self._engine.condition_rule_send(event):
         #    out = self._engine.rule_send(event)
-        if self.condition_rule_send(event):
-            out = self.rule_send(event)
+
+        (precondition, actor, action, message, knowledge) = self._parse_event(symbol)
+
+        event = f"{actor}{action}{message}"
+        print(f"Precondition: {precondition} - Event: {event} - Knowledge: {knowledge}")
+
+        if self.condition_rule_send(precondition, event):
+            out = self.rule_send(event, knowledge)
 
         #elif self._engine.condition_rule_receive_now(event):
         #        out = self._engine.rule_receive_now(event)
-        elif self.condition_rule_receive_now(event):
-            out = self.rule_receive_now(event)
+        elif self.condition_rule_receive_now(precondition, event):
+            out = self.rule_receive_now(event, knowledge)
 
         #elif self._engine.condition_rule_receive_delayed(event):
                 # TODO add check that the message may actually be consumed afterwards;
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
         #    out = self._engine.rule_receive_delayed(event)
-        elif self.condition_rule_receive_delayed(event):
-            out = self.rule_receive_delayed(event)
+        elif self.condition_rule_receive_delayed(precondition, event):
+            out = self.rule_receive_delayed(event, knowledge)
         else:
             self._debug_log("(* No matching condition *)")        
 
@@ -475,10 +504,11 @@ class EngineOffChain(Engine,models.Model):
     def process_check(self):
         out = None
         try:
+            # TODO add precondition and knowledge
             #actor, message = self._engine._buffer_find_usable_message()
             actor, message = self.buffer_find_usable_message()
             #out = self._engine.rule_receive_buffered(actor, message)
-            out = self.rule_receive_buffered(actor, message)
+            out = self.rule_receive_buffered(actor, message, None)
         except Exception:
             pass
 
@@ -538,6 +568,39 @@ class EngineOffChain(Engine,models.Model):
     
     # INTERFACE methods
 
+    def add_knowledge(self, knowledge):
+        breakpoint()
+        for p in knowledge:
+            m = re.match("^(!)?([a-zA-Z0-9]+)$", p)
+    
+            if not m:
+                raise Exception(f"Unexpected format for proposition: {p}")
+    
+            neg, prop = m.groups()
+    
+            if neg:
+                try:
+                    self.kb = self.kb.remove(prop)
+                except ValueError:
+                    # element not present, no problem
+                    pass
+            else:
+                self.kb = list(set(self.kb + [ prop ]))
+    
+    def check_sat(self, formula):
+        breakpoint()
+        # at the moment assume the formula is a single proposition
+        m = re.match("^(!)?([a-zA-Z0-9]+)", formula)
+        if not m:
+            raise Exception(f"Formula not recognized: {formula}")
+
+        neg, prop = m.groups()
+
+        if neg:
+            return prop not in self.kb
+        else:
+            return prop in self.kb
+
     def ended(self):
         return self._nfa.is_final(self.curr_states)
 
@@ -572,17 +635,21 @@ class EngineOffChain(Engine,models.Model):
                     items.append((actor, message))
         return items
 
-
+    def get_kb(self):
+        return self.kb
 
     # CONDITIONS below
 
-    def condition_rule_send(self, event):
+    def condition_rule_send(self, precondition, event):
         #return "!" in event
+    
+           
+
         m = re.match("^[^?!]+![^!?]+$", event) 
         self._debug_log(f"(* Condition rule receive send: {event} => {m} *)")
-        return m is not None
+        return m is not None and self.check_sat(precondition)
 
-    def condition_rule_receive_now(self, event):
+    def condition_rule_receive_now(self, precondition, event):
 
         m = re.match("^[^!?]+\?[^!?]+$", event) 
         self._debug_log(f"(* Condition rule receive now 1st: {event} => {m} *)")
@@ -597,7 +664,7 @@ class EngineOffChain(Engine,models.Model):
 
         return False
 
-    def condition_rule_receive_delayed(self, event):    
+    def condition_rule_receive_delayed(self, precondition, event):    
 
         m = re.match("^[^!?]+\?[^!?]+$", event) 
         self._debug_log(f"(* Condition rule receive delayed: {event} => {m} *)")
@@ -605,10 +672,11 @@ class EngineOffChain(Engine,models.Model):
 
     # RULES below
 
-    def rule_send(self, event):
+    def rule_send(self, event, knowledge):
+        self.add_knowledge(knowledge)
         return event
 
-    def rule_receive_now(self, event):
+    def rule_receive_now(self, event, knowledge):
 
         reached = set()
         for s in self.curr_states:
@@ -622,15 +690,18 @@ class EngineOffChain(Engine,models.Model):
             
 
         self.curr_states = reached
+
+        self.add_knowledge(knowledge)
         return event
 
 #    def rule_receive_delayed(self, actor, message):
-    def rule_receive_delayed(self, event):
+    def rule_receive_delayed(self, event, knowledge):
+        # TODO we should buffer the precondition and knowledge
         actor, message = event.split("?")
         self._buffer_add(actor, message)
         return ""
 
-    def rule_receive_buffered(self, actor, message):
+    def rule_receive_buffered(self, actor, message, knowledge):
         
         assert actor in self.buffer and message in self._buffer[actor]
         
@@ -655,7 +726,7 @@ class EngineOffChain(Engine,models.Model):
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
         self.curr_states = reached
 
-
+        self.add_knowledge(knowledge)
         return event
 
 class Contract(models.Model):
@@ -1010,6 +1081,15 @@ class EngineOnChain(Engine,models.Model):
                 for i in range(counter):
                     items.append((actor, message))
         return items
+
+    def get_kb(self):
+        #breakpoint()
+        enforcer = self.w3.eth.contract(
+                address = self.enforcer_address,
+                abi = self.enforcer_abi
+            ).functions.getKB().call()
+
+
 
     #PROCESSORS
     def process_input(self, event):

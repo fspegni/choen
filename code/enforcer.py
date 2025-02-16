@@ -59,7 +59,11 @@ class Enforcer:
     @property
     def buffer(self):
         return self._engine.get_buffer_items() if self._engine else None
-   
+ 
+    @property
+    def kb(self):
+        return self._engine.get_kb() if self._engine else None
+  
     @property
     def history(self):
         #return self._history
@@ -548,7 +552,7 @@ class CmdStart(UICommand):
         except Exception:
             engine = EngineOnChain.create_engine(ri) #automaton, conf)
 
-        breakpoint()
+        #breakpoint()
         if contract_address:
 
             if ri.engineonchain and ri.engineonchain.contract_enforcer and ri.engineonchain.contract_enforcer.contract_address != contract_address:
@@ -993,6 +997,7 @@ class CmdDump(UICommand):
                     print(f"Input         : {in_events}")
                     print(f"Output        : {out_events}")
                     print(f"Buffer        : {ri.buffer}")
+                    print(f"KB            : {ri.kb}")
 
             elif args[0] == "input":
     
@@ -1300,6 +1305,7 @@ class UI:
         assert self._running is not None
 
         try:
+            #breakpoint()
             iscan = nfa.InputScanner(event_stream)
     
             while not iscan.eof:        
