@@ -106,21 +106,27 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
         return format_html("<pre>{}</pre>", str(obj.nfa) + "\n\nTransitions (*=enabled)" + "\n\n" + "\n".join(transitions))
 
     def enforcer_states(self, obj : RunningInstance):
-        print(obj.enforcer)
+        #print(obj.enforcer)
+        if not obj or not obj.enforcer or not obj.enforcer_states:
+            return ""
+
         return format_html("<pre>{}</pre>", ", ".join(obj.enforcer_states))
 
     def enforcer_buffer(self, obj : RunningInstance):
+        if not obj or not obj.enforcer or not obj.enforcer_buffer:
+            return ""
+
         return format_html("<pre>{}</pre>", ", ".join(map(str, obj.enforcer_buffer)))
 
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
 
-    list_display = [ "label", "contract_address", "running_instance", ]
-    search_fields = [ "label", "contract_address", "running_instance__configuration__address", ]
+    list_display = [ "label", "contract_address", ] #"running_instance", ]
+    search_fields = [ "label", "contract_address", ] #"running_instance__configuration__address", ]
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
 
-    list_display = [ "tx_hash", "block_number", "running_instance", ]
-    search_fields = [ "tx_hash", "block_hash", "block_number", "running_instance__configuration__address", ]
+    list_display = [ "tx_hash", "block_number", ] #"running_instance", ]
+    search_fields = [ "tx_hash", "block_hash", "block_number",  ] #"running_instance__configuration__address", ]
 
