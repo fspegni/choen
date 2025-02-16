@@ -274,12 +274,12 @@ class CmdListInstances(UICommand):
             for ri in RunningInstance.objects.all():
                 print(f" * {ri.id} : {ri}")
 
-class CmdList(UICommand):
+class CmdListChoreographies(UICommand):
 
     def execute(self, *args, **kwargs):
 
         print("Available choreographies:")
-        items = Choreography.objects.all()
+        items = Choreography.objects.all().order_by("name")
 
         if len(items) == 0:
             print(f"(* none *)")
@@ -452,9 +452,6 @@ class CmdBuildContracts(UICommand):
         smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
         compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
  
-
-
-
 class CmdLoadChoreography(UICommand):
 
     def get_completions(self):
@@ -490,17 +487,25 @@ class CmdLoadChoreography(UICommand):
                 print(f"Cannot find choreography {name}")
 
     def import_file(self, name):
+        #breakpoint()
         cho_name = os.path.basename(name).rsplit(".",1)[0]
         attribs = {
             "name": cho_name,
             "resource": File(open(name)),
         }
-        c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
+        c, created = Choreography.objects.get_or_create(name=cho_name, defaults=attribs)
+
+        try:
+            c.to_nfa()
+        except Exception as err:
+            print(f"KO Choreography {cho_name} : error extracting NFA ({err}), cannot import ...")
+            return
+
         self.ui._model.add_object("choreography", c)
         if created:
-            print(f"Choreography {cho_name} imported and loaded ...")
+            print(f"OK Choreography {cho_name} : imported and loaded ...")
         else:
-            print(f"Choreography {cho_name} already exists and has been loaded ...")
+            print(f"OK Choreography {cho_name} : already exists and has been loaded ...")
  
  
 
@@ -1112,8 +1117,8 @@ class UI:
     def __init__(self, *args, **kwargs):
         self._registry = {
             "init"  : CmdInit(self), #self.cmd_init,
-            "list"  : CmdList(self), #self.cmd_list,
-            "list_choreographies"  : CmdList(self), #self.cmd_list, # FS redundant but more familiar name
+            "list"  : CmdListChoreographies(self), #self.cmd_list,
+            "list_choreographies"  : CmdListChoreographies(self), #self.cmd_list, # FS redundant but more familiar name
             "list_instances": CmdListInstances(self), 
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,

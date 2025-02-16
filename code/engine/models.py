@@ -671,7 +671,13 @@ class Contract(models.Model):
     def __str__(self):
         return f"{self.contract_address}/{self.label}/{self.id}"
 
+    @property
+    def running_instance(self):
+        return self.enforcer_engine.running_instance if self.enforcer_engine else None
 
+    @property
+    def choreography(self):
+        return self.running_instance.choreography if self.running_instance else None
 
 class EngineOnChain(Engine,models.Model):
 

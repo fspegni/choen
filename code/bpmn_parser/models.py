@@ -26,6 +26,7 @@ class Choreography(models.Model):
     
         verbose_name = _("choreography")
         verbose_name_plural = _("choreographies")
+        unique_together = (("name",),)
 
     def __init__(self, *args, **kwargs):        
         super().__init__(*args, **kwargs)

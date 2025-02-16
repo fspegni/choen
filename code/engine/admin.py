@@ -121,8 +121,10 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
 
-    list_display = [ "label", "contract_address", ] #"running_instance", ]
+    list_display = [ "label", "contract_address", "running_instance", "choreography" ]
     search_fields = [ "label", "contract_address", ] #"running_instance__configuration__address", ]
+
+    readonly_fields = [ "running_instance", "choreography" ]
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
