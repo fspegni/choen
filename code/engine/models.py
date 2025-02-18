@@ -390,15 +390,27 @@ class Engine:
         raise Exception("This is an abstract method, you should implement it")
 
     # RULE CONDITIONS
-    def condition_rule_send(self, precondition, event):
+    def condition_rule_send_now(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
+
+    def condition_rule_send_delayed(self, precondition, event):
+        raise Exception("This is an abstract method, you should implement it")
+
+    def condition_rule_send_buffered(self, precondition, event):
+        raise Exception("This is an abstract method, you should implement it")
+
+
 
     def condition_rule_receive_now(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
 
     def condition_rule_receive_delayed(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
-    
+ 
+    def condition_rule_receive_buffered(self, precondition, event):
+        raise Exception("This is an abstract method, you should implement it")
+
+  
     # RULE EFFECTS
     def rule_send(self, event, knowledge):
         raise Exception("This is an abstract method, you should implement it")
@@ -454,14 +466,14 @@ class EngineOffChain(Engine,models.Model):
         )
 
     def _parse_event(self, text):
-        #breakpoint()
-        m = re.match("^(([a-zA-Z0-9&|!\(\)]+)_=>_)?([a-zA-Z0-9]+)([?!])([a-zA-Z0-9]+)(\([a-zA-Z0-9,]+\))$", text)
+        m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+)([?!])([a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
 
         if not m:
+            breakpoint()
             raise Exception(f"Event has an unrecognized format")
 
-        breakpoint()
-        _, precondition, actor, action, message, knowledge = m.groups()
+        #breakpoint()
+        _, precondition, actor, action, message, _, knowledge = m.groups()
 
         if knowledge:
             knowledge = knowledge.strip("()").split(",")
@@ -479,8 +491,11 @@ class EngineOffChain(Engine,models.Model):
         event = f"{actor}{action}{message}"
         print(f"Precondition: {precondition} - Event: {event} - Knowledge: {knowledge}")
 
-        if self.condition_rule_send(precondition, event):
-            out = self.rule_send(event, knowledge)
+        if self.condition_rule_send_now(precondition, event):
+            out = self.rule_send_now(event, knowledge)
+
+        elif self.condition_rule_send_delayed(precondition, event):
+            out = self.rule_send_delayed(event, knowledge)
 
         #elif self._engine.condition_rule_receive_now(event):
         #        out = self._engine.rule_receive_now(event)
@@ -504,15 +519,21 @@ class EngineOffChain(Engine,models.Model):
     def process_check(self):
         out = None
         try:
-            # TODO add precondition and knowledge
+            # TODO add precondition and knowledge; extract both info from buffer
             #actor, message = self._engine._buffer_find_usable_message()
+
             actor, message = self.buffer_find_usable_message()
             #out = self._engine.rule_receive_buffered(actor, message)
-            out = self.rule_receive_buffered(actor, message, None)
+
+            if message.starts_with("!"):
+                out = self.rule_send_buffered(actor, message, None)
+            else:
+                out = self.rule_receive_buffered(actor, message, None)
         except Exception:
             pass
 
-        self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self.get_buffer_items())))
+        #breakpoint()
+        self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[0]}{i[1]}" ,self.get_buffer_items())))
 
         return out
 
@@ -569,7 +590,9 @@ class EngineOffChain(Engine,models.Model):
     # INTERFACE methods
 
     def add_knowledge(self, knowledge):
-        breakpoint()
+        if not knowledge:   
+            return
+
         for p in knowledge:
             m = re.match("^(!)?([a-zA-Z0-9]+)$", p)
     
@@ -588,6 +611,9 @@ class EngineOffChain(Engine,models.Model):
                 self.kb = list(set(self.kb + [ prop ]))
     
     def check_sat(self, formula):
+        if not formula:
+            # tautology
+            return True
         breakpoint()
         # at the moment assume the formula is a single proposition
         m = re.match("^(!)?([a-zA-Z0-9]+)", formula)
@@ -640,16 +666,39 @@ class EngineOffChain(Engine,models.Model):
 
     # CONDITIONS below
 
-    def condition_rule_send(self, precondition, event):
-        #return "!" in event
+    def condition_rule_send_now(self, precondition, event):
     
-           
+        if not self.check_sat(precondition):
+            return False           
 
         m = re.match("^[^?!]+![^!?]+$", event) 
         self._debug_log(f"(* Condition rule receive send: {event} => {m} *)")
-        return m is not None and self.check_sat(precondition)
+
+        if m is None:
+            return False
+
+        for curr in self.curr_states:
+            enabled_transitions = self._nfa.transitions_from(curr, event)
+
+            if len(enabled_transitions) > 0:
+                return True
+
+        return False
+
+    def condition_rule_send_delayed(self, precondition, event):    
+
+        if not self.check_sat(precondition):
+            return True           
+
+        m = re.match("^[^!?]+\![^!?]+$", event) 
+        self._debug_log(f"(* Condition rule send delayed: {event} => {m} *)")
+        return m is not None
+
 
     def condition_rule_receive_now(self, precondition, event):
+
+        if not self.check_sat(precondition):
+            return False
 
         m = re.match("^[^!?]+\?[^!?]+$", event) 
         self._debug_log(f"(* Condition rule receive now 1st: {event} => {m} *)")
@@ -666,15 +715,74 @@ class EngineOffChain(Engine,models.Model):
 
     def condition_rule_receive_delayed(self, precondition, event):    
 
+        if not self.check_sat(precondition):
+            return True
+
         m = re.match("^[^!?]+\?[^!?]+$", event) 
         self._debug_log(f"(* Condition rule receive delayed: {event} => {m} *)")
         return m is not None
 
+    def condition_rule_receive_buffered(self, precondition, event):
+
+        if not self.check_sat(precondition):
+            return False
+
+        # TODO check (FS)
+        return True
+
     # RULES below
 
-    def rule_send(self, event, knowledge):
+    def rule_send_now(self, event, knowledge):
+        reached = set()
+        for s in self.curr_states:
+
+            s_reached = self._nfa.read_symbol(event, s)
+
+            if len(s_reached) == 0:
+                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+            else:
+                reached = reached.union(s_reached)
+            
+
+        self.curr_states = reached
+
         self.add_knowledge(knowledge)
         return event
+
+    def rule_send_delayed(self, event, knowledge):
+        # TODO we should buffer the precondition and knowledge
+        actor, message = event.split("!")
+        self._buffer_add(actor, message)
+        return ""
+
+    def rule_send_buffered(self, actor, message, knowledge):
+        
+        assert actor in self.buffer and message in self._buffer[actor]
+        
+        counter = self.buffer[actor][message]
+
+        assert counter > 0
+
+        event = f"{actor}!{message}"
+
+        reached = set()
+        for s in self.curr_states:
+            s_reached = self._nfa.read_symbol(event, s)
+
+            if len(s_reached) == 0:
+                self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
+            else:
+                reached = reached.union(s_reached)
+        
+        self._buffer_remove(actor, message)
+
+        nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
+        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+        self.curr_states = reached
+
+        self.add_knowledge(knowledge)
+        return event
+
 
     def rule_receive_now(self, event, knowledge):
 

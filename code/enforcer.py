@@ -92,31 +92,6 @@ class Enforcer:
 
     # PROCESSORS
     def process_input(self, event): #event_stream : str):
-##        out = None
-##        if (self._onChain):
-##            logs = self._engine.process_input(event)
-##            self._debug_log(logs[0].args.debug)
-##            out = logs[0].args.messageOut
-##            out = None if out == "None" else out
-##        else:
-##            num_states_pre = self._engine.get_num_states() #en(self._curr_states)
-##
-##            if self._engine.condition_rule_send(event):
-##                out = self._engine.rule_send(event)
-##
-##            elif self._engine.condition_rule_receive_now(event):
-##                    out = self._engine.rule_receive_now(event)
-##
-##            elif self._engine.condition_rule_receive_delayed(event):
-##                    # TODO add check that the message may actually be consumed afterwards;
-##                    # without this check, it does not make sense to implement the rule "Cannot receive" 
-##                out = self._engine.rule_receive_delayed(event)
-##            else:
-##                self._debug_log("(* No matching condition *)")        
-##
-##            nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
-##            self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-##
 
         num_states_pre = self._engine.get_num_states() #en(self._curr_states)
         out = self._engine.process_input(event)
@@ -124,7 +99,6 @@ class Enforcer:
         
         self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
         
-#        self._append_history(event, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
         return out
         
          
@@ -132,24 +106,9 @@ class Enforcer:
 
     def process_check(self):
         out = None
-##        if (self._onChain):
-##            logs = None
-##            logs = self._engine.process_check()
-##            self._debug_log(logs[0].args.debug)
-##            out = logs[0].args.messageOut
-##            out = None if out == "None" else out
-##        else:
-##
-##            try:
-##                actor, message = self._engine._buffer_find_usable_message()
-##                out = self._engine.rule_receive_buffered(actor, message)
-##            except Exception:
-##                pass
-##        
         try:
             out = self._engine.process_check()
 
-#            self._append_history(out, self._engine.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self._engine.get_buffer_items())))
         except Exception:
             pass
 
@@ -462,7 +421,9 @@ class CmdLoadChoreography(UICommand):
  
         d = {}
         for c in Choreography.objects.all():
-            d[c.name] = None
+            d[str(c.name)] = None
+
+        #breakpoint()
         return d
    
     def execute(self, name=None, *args, **kwargs):

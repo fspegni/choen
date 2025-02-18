@@ -382,8 +382,8 @@ class Choreography(models.Model):
         return res
 
     def to_rei(self):
-        from rei import ChoToRei, render_receive
-        exp, closure = ChoToRei(self, render_receive)
+        from rei import ChoToRei, render_send_receive, render_receive
+        exp, closure = ChoToRei(self, render_send_receive) #render_receive)
         #print("REI:", exp)
         return exp
 
