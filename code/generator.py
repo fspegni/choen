@@ -262,15 +262,28 @@ class EnforcerContractGenerator(Generator):
         contract.add_attribute(Variable("kb","string[]"))
         contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
         contract.add_attribute(Variable("chainStartTime", "uint"))    
+        contract.add_attribute(Variable("chainEndTime", "uint"))    
 
     def __create_constructor(self, contract : Contract):
         contract.add_constructor(Constructor([Variable("nfaAddress","address")],f"""
     nfa = {self.nfa.name}(nfaAddress);
     chainStartTime = block.timestamp;
+    chainEndTime = 0;
         """))
     
     def __create_utils(self, contract : Contract):
 
+        contract.add_function(Function("getStartTime", 
+                                [],
+                                """return chainStartTime;""",
+                                "public view",
+                                "uint"))
+
+        contract.add_function(Function("getEndTime", 
+                                [],
+                                """return chainEndTime;""",
+                                "public view",
+                                "uint"))
 
         contract.add_function(Function("getKB", 
                                 [],

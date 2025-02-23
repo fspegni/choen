@@ -97,7 +97,7 @@ class Enforcer:
         out = self._engine.process_input(event)
         nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
         
-        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
+        #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
         
         return out
         
@@ -510,6 +510,10 @@ class CmdStart(UICommand):
     
             if not engine:
                 raise Exception("Engine not set")
+
+            if not engine.nfa:
+                engine.set_nfa(automaton)
+
         except Exception:
             engine = EngineOnChain.create_engine(ri) #automaton, conf)
 
@@ -593,6 +597,10 @@ class CmdStart(UICommand):
 
             if not engine:
                 raise Excepion("Engine off-chain not set yet")
+
+            if not engine.nfa:
+                engine.set_nfa(automaton)
+
         except Exception:
             engine = EngineOffChain.create_engine(ri) #automaton)
 
@@ -633,7 +641,7 @@ class CmdStart(UICommand):
         automaton = cho.to_nfa()
 
         onchain_url = self.ui.get_env("ONCHAIN_URL")
-        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
+        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID", 0))
         onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
  
@@ -892,8 +900,7 @@ class CmdDump(UICommand):
                     return
 
                 for actor,message in self.ui._enforcer.engine.get_buffer_items():
-                    msg = f"{actor}?{message}"
-
+                    msg = f"* {actor}{message}"
                     print(msg)
             
             elif args[0] == "rei":
@@ -949,6 +956,8 @@ class CmdDump(UICommand):
                     out_events = " ".join(ri.output_events) if ri.output_events else ""
 
                     #breakpoint()
+                    
+                    print(f"Engine        : {ri.engine_type}({ri.id})")
                     print(f"ID            : {ri.id}")
                     print(f"Choreography  : {ri.choreography}")
                     print(f"REI           : {ri.rei}")
@@ -1164,8 +1173,9 @@ class UI:
     def env(self):
         return self._env.items()
 
-    def get_env(self, key):
-        return self._env[key]
+    def get_env(self, key, default=None):
+        #breakpoint()
+        return self._env.get(key, default)
 
     def set_env(self, key, value):
         self._env[key] = value

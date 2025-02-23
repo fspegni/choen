@@ -6,7 +6,7 @@ from django_object_actions import DjangoObjectActions, action
 # Register your models here.
 from django import forms
 from django.core.exceptions import ValidationError
-from engine.models import RunningInstance, Configuration, Transaction, Contract
+from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOffChain
 
 class ConfigurationForm(forms.ModelForm):
 
@@ -131,4 +131,14 @@ class TransactionAdmin(admin.ModelAdmin):
 
     list_display = [ "tx_hash", "block_number", ] #"running_instance", ]
     search_fields = [ "tx_hash", "block_hash", "block_number",  ] #"running_instance__configuration__address", ]
+
+@admin.register(EngineOffChain)
+class EngineOffChain(admin.ModelAdmin):
+    list_display = [ "running_instance", "running_instance__choreography", "curr_states", "kb" ]
+
+    readonly_fields = ["rei",]
+
+    def rei(self, obj : EngineOffChain):
+        return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None
+
 

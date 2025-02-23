@@ -56,8 +56,6 @@ class RunningInstance(models.Model):
 #    enforcer = PickledObjectField(blank=True, null=True) 
 
     # off-chain engine fields
-    execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
-    execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
     #input_events = models.TextField(null=True, blank=True)
     #output_events = models.TextField(null=True, blank=True)
@@ -77,6 +75,20 @@ class RunningInstance(models.Model):
         return e_on or e_off
 
     @property
+    def execution_started(self):
+        return self.engine.get_execution_started() if self.engine else None
+
+    @property
+    def execution_ended(self):
+        return self.engine.get_execution_ended() if self.engine else None
+
+    @property
+    def engine_type(self):
+        e = self.engine
+        return e.__class__.__name__ if e else "N/N"
+
+
+    @property
     def enforcer(self):
 ##        if not self._enforcer:
 ##            print("Setting an enforcer ...")
@@ -93,8 +105,8 @@ class RunningInstance(models.Model):
         if not self.running:
             self.running = True
 
-        if not self.execution_started and enforcer.engine:
-            self._Execution_started = enforcer.engine.get_execution_started()
+#        if not self.execution_started and enforcer.engine:
+#            self._execution_started = enforcer.engine.get_execution_started()
 #            self.execution_started = datetime.now() # FS this is true when a new enforcer has been deployed, it may be not true in case of an enforcer attached to a running smart contract
 
     @property
@@ -338,10 +350,17 @@ class Engine:
 ##        self._nfa = nfa
 ##        self._history = []
 ##
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._nfa = None
+
     @property
     def nfa(self):
-#        return self._nfa
-        raise Exception("This is an abstract method, you should implement it")
+        return self._nfa
+#        raise Exception("This is an abstract method, you should implement it")
+
+    def set_nfa(self, nfa):
+        self._nfa = nfa
 
     @property
     def history(self):
@@ -360,7 +379,12 @@ class Engine:
         raise Exception("This is an abstract method, you should implement it")
 
     def get_execution_started(self):
-        return None
+        #return None
+        raise Exception("This is an abstract method, you should implement it")
+
+    def get_execution_ended(self):
+        #return None
+        raise Exception("This is an abstract method, you should implement it")
 
     def get_all_states(self):
         raise Exception("This is an abstract method, you should implement it")
@@ -396,8 +420,8 @@ class Engine:
     def condition_rule_send_delayed(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
 
-    def condition_rule_send_buffered(self, precondition, event):
-        raise Exception("This is an abstract method, you should implement it")
+##    def condition_rule_send_buffered(self, precondition, event):
+##        raise Exception("This is an abstract method, you should implement it")
 
 
 
@@ -407,21 +431,32 @@ class Engine:
     def condition_rule_receive_delayed(self, precondition, event):
         raise Exception("This is an abstract method, you should implement it")
  
-    def condition_rule_receive_buffered(self, precondition, event):
-        raise Exception("This is an abstract method, you should implement it")
+##    def condition_rule_receive_buffered(self, precondition, event):
+##        raise Exception("This is an abstract method, you should implement it")
 
   
     # RULE EFFECTS
-    def rule_send(self, event, knowledge):
+    def rule_send_now(self, precondition, event, knowledge):
         raise Exception("This is an abstract method, you should implement it")
-    
-    def rule_receive_now(self, event, knowledge):
+ 
+    def rule_send_delayed(self, precondition, event, knowledge):
+        raise Exception("This is an abstract method, you should implement it")
+  
+    def rule_send_buffered(self, precondition, event, knowledge):
+        raise Exception("This is an abstract method, you should implement it")
+
+    def rule_receive_now(self, precondition, event, knowledge):
 
         raise Exception("This is an abstract method, you should implement it")
 
-    def rule_receive_delayed(self, event, knowledge):
+    def rule_receive_delayed(self, precondition, event, knowledge):
 
         raise Exception("This is an abstract method, you should implement it")
+
+    def rule_receive_buffered(self, precondition, event, knowledge):
+
+        raise Exception("This is an abstract method, you should implement it")
+
 
 
 class EngineOffChain(Engine,models.Model):
@@ -430,7 +465,10 @@ class EngineOffChain(Engine,models.Model):
     curr_states = models.JSONField(default=[], verbose_name=_("current states"))
     history = models.JSONField(default=[], verbose_name=_("current states"))
     buffer = models.JSONField(default={}, verbose_name=_("buffer"))
-    kb = models.JSONField(default=[], verbose_name=_("buffer"))
+    kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
+
+    execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+    execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
 #    def __init__(self, nfa : nfa.NFA):
     @staticmethod
@@ -449,6 +487,9 @@ class EngineOffChain(Engine,models.Model):
         e._stats = []
         e.running_instance = ri
         e.kb = []
+
+        e.execution_started = timezone.now()
+
         e.save()
 
         return e
@@ -457,6 +498,13 @@ class EngineOffChain(Engine,models.Model):
     @property
     def stats(self) -> str:
         return self._stats
+
+
+    def get_execution_started(self):
+        return self.execution_started
+
+    def get_execution_ended(self):
+        return self.execution_ended
 
     def _append_history(self, event : str, curr_states : list, buffer : list):
         self.history.append({
@@ -469,7 +517,7 @@ class EngineOffChain(Engine,models.Model):
         m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+)([?!])([a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
 
         if not m:
-            breakpoint()
+            #breakpoint()
             raise Exception(f"Event has an unrecognized format")
 
         #breakpoint()
@@ -491,50 +539,58 @@ class EngineOffChain(Engine,models.Model):
         event = f"{actor}{action}{message}"
         print(f"Precondition: {precondition} - Event: {event} - Knowledge: {knowledge}")
 
+        #breakpoint()
         if self.condition_rule_send_now(precondition, event):
-            out = self.rule_send_now(event, knowledge)
+            out = self.rule_send_now(precondition, event, knowledge)
 
         elif self.condition_rule_send_delayed(precondition, event):
-            out = self.rule_send_delayed(event, knowledge)
+            out = self.rule_send_delayed(precondition, event, knowledge)
 
         #elif self._engine.condition_rule_receive_now(event):
         #        out = self._engine.rule_receive_now(event)
         elif self.condition_rule_receive_now(precondition, event):
-            out = self.rule_receive_now(event, knowledge)
+            out = self.rule_receive_now(precondition, event, knowledge)
 
         #elif self._engine.condition_rule_receive_delayed(event):
                 # TODO add check that the message may actually be consumed afterwards;
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
         #    out = self._engine.rule_receive_delayed(event)
         elif self.condition_rule_receive_delayed(precondition, event):
-            out = self.rule_receive_delayed(event, knowledge)
+            out = self.rule_receive_delayed(precondition, event, knowledge)
         else:
             self._debug_log("(* No matching condition *)")        
 
-        self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[0]}?{i[1]}" ,self.get_buffer_items())))
+        #breakpoint()
+        self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[2]}:{i[0]}?{i[1]}({i[3]})" ,self.get_buffer_items())))
 
+        self.save()
         return out
 
 
     def process_check(self):
         out = None
+        #breakpoint()
         try:
-            # TODO add precondition and knowledge; extract both info from buffer
             #actor, message = self._engine._buffer_find_usable_message()
 
-            actor, message = self.buffer_find_usable_message()
+            precondition, event, knowledge = self.buffer_find_usable_event()
             #out = self._engine.rule_receive_buffered(actor, message)
 
-            if message.starts_with("!"):
-                out = self.rule_send_buffered(actor, message, None)
+            (_, actor, action, message, _) = self._parse_event(event) #symbol)
+
+            #breakpoint()
+            if action == "!": #message.starts_with("!"):
+                out = self.rule_send_buffered(precondition, event, knowledge)
             else:
-                out = self.rule_receive_buffered(actor, message, None)
-        except Exception:
+                out = self.rule_receive_buffered(precondition, event, knowledge)
+        except Enforcer.NoMessageFound: #Exception:
             pass
 
         #breakpoint()
         self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[0]}{i[1]}" ,self.get_buffer_items())))
 
+
+        self.save()
         return out
 
 #
@@ -547,46 +603,94 @@ class EngineOffChain(Engine,models.Model):
 #        return self._curr_states
 
     # UTILS
+##
+##    def _buffer_add(self, precondition, actor : str, message : str, knowledge):
+##
+##        # TODO what to do with precondition and knowledge?
+##        actor_buffer = self.buffer.get(actor, {})
+##        message_counter = actor_buffer.get(message, 0)
+##        actor_buffer[message] = message_counter + 1
+##        self.buffer[actor] = actor_buffer
+##
+##    def _buffer_remove(self, actor : str, message : str):
+##
+##        actor_buffer = self.buffer.get(actor, {})
+##        message_counter = actor_buffer.get(message, 0)
+##        assert message_counter >= 0
+##
+##        if message_counter <= 0:
+##            raise Exception(f"No message {message} to remove for actor {actor}")
+##        
+##        actor_buffer[message] = message_counter - 1
+##        self.buffer[actor] = actor_buffer
+##
 
-    def _buffer_add(self, actor : str, message : str):
+    def _buffer_add(self, precondition, actor : str, message : str, knowledge):
 
-        actor_buffer = self.buffer.get(actor, {})
-        message_counter = actor_buffer.get(message, 0)
-        actor_buffer[message] = message_counter + 1
-        self.buffer[actor] = actor_buffer
+        if not actor in self.buffer:
+            self.buffer[actor] = {}
 
-    def _buffer_remove(self, actor : str, message : str):
+        if not message in self.buffer[actor]:
+            self.buffer[actor][message] = []
 
-        actor_buffer = self.buffer.get(actor, {})
-        message_counter = actor_buffer.get(message, 0)
-        assert message_counter >= 0
+        self.buffer[actor][message].append({"precondition": precondition, "knowledge": knowledge})
 
-        if message_counter <= 0:
+    def _buffer_remove(self, precondition, actor : str, message : str, knowledge):
+
+        if not actor in self.buffer:
+            raise Exception(f"No message to remove for actor {actor}")
+
+        if not message in self.buffer[actor]:
             raise Exception(f"No message {message} to remove for actor {actor}")
-        
-        actor_buffer[message] = message_counter - 1
-        self.buffer[actor] = actor_buffer
 
+        for (idx,curr) in enumerate(self.buffer[actor][message]):
+            if curr["precondition"] == precondition and curr["knowledge"] == knowledge:
+                del self.buffer[actor][message][idx]
+                return # successful case
+
+        # if it reaches here, no message with precondition and knowledge was found for actor, thus raise an exception
+        raise Exception(f"No message {message} to remove for actor {actor} with given precondition and knowledge")
+        
     
-    def _buffer_find_usable_message(self):
-        found = None
-#        print("in _buffer_find_usable_message...")
+##    def buffer_find_usable_event(self):
+##        found = None
+###        print("in _buffer_find_usable_message...")
+##
+###        print(f"Buffer: {self._buffer}")
+##        for actor, actor_buffer in self.buffer.items():
+###            print(f"Actor: {actor} - Actor buffer: {actor_buffer}")
+##            for message, counter in actor_buffer.items():
+###                print(f"Message: {message} - Counter: {counter}")
+##                if counter > 0:
+##                    event = f"{actor}{message}"
+##                    for s in self.curr_states:
+##                        if self._nfa.transitions_from(s, event):
+##                            #found = (actor, message)
+##                            #return found
+##                            return None, event, None # TODO at the moment we do not return any precondition nor knowledge
+##        
+##        raise Enforcer.NoMessageFound("No usable message found")
+##
 
-#        print(f"Buffer: {self._buffer}")
-        for actor, actor_buffer in self.buffer.items():
-#            print(f"Actor: {actor} - Actor buffer: {actor_buffer}")
-            for message, counter in actor_buffer.items():
-#                print(f"Message: {message} - Counter: {counter}")
-                if counter > 0:
-                    event = f"{actor}?{message}"
+    def buffer_find_usable_event(self):
+
+        found = None
+        for actor in self.buffer:
+            for message in self.buffer[actor]:
+                event = f"{actor}{message}"
+                for curr in self.buffer[actor][message]:
+                    if not "precondition" in curr or not "knowledge" in curr: 
+                        raise Exception(f"Ill-formed buffer item. Expected item with 'precondition' and 'knowledge'. Found: {curr}")
+
+                    precondition = curr["precondition"]
+                    knowledge = curr["knowledge"]
+                
                     for s in self.curr_states:
-                        if self._nfa.transitions_from(s, event):
-                            found = (actor, message)
-                            return found
-        
+                        if self._nfa.transitions_from(s, event) and self.check_sat(precondition):
+                            return precondition, event, knowledge
+                        
         raise Enforcer.NoMessageFound("No usable message found")
 
-    
     # INTERFACE methods
 
     def add_knowledge(self, knowledge):
@@ -614,7 +718,7 @@ class EngineOffChain(Engine,models.Model):
         if not formula:
             # tautology
             return True
-        breakpoint()
+        #breakpoint()
         # at the moment assume the formula is a single proposition
         m = re.match("^(!)?([a-zA-Z0-9]+)", formula)
         if not m:
@@ -651,14 +755,23 @@ class EngineOffChain(Engine,models.Model):
         
         res = (s in self.curr_states)
         return res
+##
+##    def get_buffer_items(self):
+##        items = []
+##
+##        for actor,actor_buffer in self.buffer.items():
+##            for message,counter in actor_buffer.items():
+##                for i in range(counter):
+##                    items.append((actor, message))
+##        return items
 
     def get_buffer_items(self):
         items = []
+        for actor in self.buffer:
+            for message in self.buffer[actor]:
+                for curr in self.buffer[actor][message]:
+                    items.append((actor, message, curr["precondition"], curr["knowledge"]))
 
-        for actor,actor_buffer in self.buffer.items():
-            for message,counter in actor_buffer.items():
-                for i in range(counter):
-                    items.append((actor, message))
         return items
 
     def get_kb(self):
@@ -672,7 +785,6 @@ class EngineOffChain(Engine,models.Model):
             return False           
 
         m = re.match("^[^?!]+![^!?]+$", event) 
-        self._debug_log(f"(* Condition rule receive send: {event} => {m} *)")
 
         if m is None:
             return False
@@ -681,19 +793,48 @@ class EngineOffChain(Engine,models.Model):
             enabled_transitions = self._nfa.transitions_from(curr, event)
 
             if len(enabled_transitions) > 0:
+
+                self._debug_log(f"(* Condition rule send now: {precondition} -> {event} *)")
                 return True
 
         return False
 
     def condition_rule_send_delayed(self, precondition, event):    
 
-        if not self.check_sat(precondition):
-            return True           
-
         m = re.match("^[^!?]+\![^!?]+$", event) 
-        self._debug_log(f"(* Condition rule send delayed: {event} => {m} *)")
-        return m is not None
+        if not m:
+            return False
 
+#        if self.check_sat(precondition):
+#            return False
+
+
+        # TODO restrict the loop below to only states that are reachable from current one
+        for curr in self._nfa.states:
+            enabled_transitions = self._nfa.transitions_from(curr, event)
+            if len(enabled_transitions) > 0:
+                self._debug_log(f"(* Condition rule receive delayed: {precondition} -> {event} *)")
+                return True
+
+
+        #self._debug_log(f"(* Condition rule send delayed: {precondition} -> {event} *)")
+        #return m is not None
+        return False #True
+
+##    def condition_rule_send_buffered(self, precondition, event):
+##
+##        m = re.match("^[^!?]+\![^!?]+$", event) 
+##        if not m:
+##            return False
+##
+##        if not self.check_sat(precondition):
+##            return False
+##
+##        # TODO check (FS)
+##
+##        self._debug_log(f"(* Condition rule send buffered: {precondition} -> {event} *)")
+##        return True
+##
 
     def condition_rule_receive_now(self, precondition, event):
 
@@ -701,7 +842,6 @@ class EngineOffChain(Engine,models.Model):
             return False
 
         m = re.match("^[^!?]+\?[^!?]+$", event) 
-        self._debug_log(f"(* Condition rule receive now 1st: {event} => {m} *)")
         if m is None:
             return False
 
@@ -709,30 +849,49 @@ class EngineOffChain(Engine,models.Model):
             enabled_transitions = self._nfa.transitions_from(curr, event)
 
             if len(enabled_transitions) > 0:
+
+                self._debug_log(f"(* Condition rule receive now: {precondition} -> {event} *)")
                 return True
 
         return False
 
     def condition_rule_receive_delayed(self, precondition, event):    
-
-        if not self.check_sat(precondition):
-            return True
-
+    
         m = re.match("^[^!?]+\?[^!?]+$", event) 
-        self._debug_log(f"(* Condition rule receive delayed: {event} => {m} *)")
-        return m is not None
-
-    def condition_rule_receive_buffered(self, precondition, event):
-
-        if not self.check_sat(precondition):
+        if not m:
             return False
+    
+#        if self.check_sat(precondition):
+#            return False
 
-        # TODO check (FS)
-        return True
+        # TODO restrict the loop below to only states that are reachable from current one
+        for curr in self._nfa.states:
+            enabled_transitions = self._nfa.transitions_from(curr, event)
+            if len(enabled_transitions) > 0:
+                self._debug_log(f"(* Condition rule receive delayed: {precondition} -> {event} *)")
+                return True
+
+        return False #True
+##
+##    def condition_rule_receive_buffered(self, precondition, event):
+##
+##        m = re.match("^[^!?]+\?[^!?]+$", event) 
+##        if not m:
+##            return False
+##
+##        if not self.check_sat(precondition):
+##            return False
+##
+##        # TODO check (FS)
+##
+##        self._debug_log(f"(* Condition rule receive buffered: {precondition} -> {event} *)")
+##        return True
+##
+
 
     # RULES below
 
-    def rule_send_now(self, event, knowledge):
+    def rule_send_now(self, precondition, event, knowledge):
         reached = set()
         for s in self.curr_states:
 
@@ -744,26 +903,29 @@ class EngineOffChain(Engine,models.Model):
                 reached = reached.union(s_reached)
             
 
-        self.curr_states = reached
+        self.curr_states = list(reached)
 
         self.add_knowledge(knowledge)
         return event
 
-    def rule_send_delayed(self, event, knowledge):
+    def rule_send_delayed(self, precondition, event, knowledge):
         # TODO we should buffer the precondition and knowledge
         actor, message = event.split("!")
-        self._buffer_add(actor, message)
+        self._buffer_add(precondition, actor, "!" + message, knowledge)
         return ""
 
-    def rule_send_buffered(self, actor, message, knowledge):
+    def rule_send_buffered(self, precondition, event, knowledge):
         
-        assert actor in self.buffer and message in self._buffer[actor]
+        _, actor, action, message, _ = self._parse_event(event)
+
+        assert actor in self.buffer and action + message in self.buffer[actor]
         
-        counter = self.buffer[actor][message]
+        #counter = self.buffer[actor][action + message]
 
-        assert counter > 0
+        #assert counter > 0
 
-        event = f"{actor}!{message}"
+        #event = f"{actor}!{message}"
+        event = f"{actor}{action}{message}"
 
         reached = set()
         for s in self.curr_states:
@@ -774,17 +936,17 @@ class EngineOffChain(Engine,models.Model):
             else:
                 reached = reached.union(s_reached)
         
-        self._buffer_remove(actor, message)
+        self._buffer_remove(precondition, actor, action + message, knowledge)
 
         nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
-        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-        self.curr_states = reached
+        #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
+        self.curr_states = list(reached)
 
         self.add_knowledge(knowledge)
         return event
 
 
-    def rule_receive_now(self, event, knowledge):
+    def rule_receive_now(self, precondition, event, knowledge):
 
         reached = set()
         for s in self.curr_states:
@@ -797,27 +959,30 @@ class EngineOffChain(Engine,models.Model):
                 reached = reached.union(s_reached)
             
 
-        self.curr_states = reached
+        self.curr_states = list(reached)
 
         self.add_knowledge(knowledge)
         return event
 
 #    def rule_receive_delayed(self, actor, message):
-    def rule_receive_delayed(self, event, knowledge):
+    def rule_receive_delayed(self, precondition, event, knowledge):
         # TODO we should buffer the precondition and knowledge
         actor, message = event.split("?")
-        self._buffer_add(actor, message)
+        self._buffer_add(precondition, actor, "?" + message, knowledge)
         return ""
 
-    def rule_receive_buffered(self, actor, message, knowledge):
+    def rule_receive_buffered(self, precondition, event, knowledge):
         
-        assert actor in self.buffer and message in self._buffer[actor]
+        _, actor, action, message, _ = self._parse_event(event)
+
+        assert actor in self.buffer and action + message in self.buffer[actor]
         
-        counter = self.buffer[actor][message]
+        #counter = self.buffer[actor][action + message]
 
-        assert counter > 0
+        #assert counter > 0
 
-        event = f"{actor}?{message}"
+        #event = f"{actor}?{message}"
+        event = f"{actor}{action}{message}"
 
         reached = set()
         for s in self.curr_states:
@@ -828,11 +993,11 @@ class EngineOffChain(Engine,models.Model):
             else:
                 reached = reached.union(s_reached)
         
-        self._buffer_remove(actor, message)
+        self._buffer_remove(precondition, actor, action + message, knowledge)
 
         nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
-        self._debug_log(f"(* Non-determism factor: {nd_factor} *)")
-        self.curr_states = reached
+        #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
+        self.curr_states = list(reached)
 
         self.add_knowledge(knowledge)
         return event
@@ -985,6 +1150,16 @@ class EngineOnChain(Engine,models.Model):
             ).functions.getNfaAddress().call()
 
 
+    def get_execution_started(self):
+        logging.warning("The on-chain get_execution_started() method is not implemented yet")
+        return self.execution_started
+
+    def get_execution_ended(self):
+        logging.warning("The on-chain get_execution_ended() method is not implemented yet")
+        return self.execution_ended
+
+
+
     @property
     def w3(self) -> Web3:
         w3 = getattr(self, "_w3", None)
@@ -1044,7 +1219,7 @@ class EngineOnChain(Engine,models.Model):
 
     def __log(self, contractAddress, gasUsed, cost, executionTime, type = None):
         with open(f'log.txt', 'a', encoding="utf-8") as f:
-                f.write(f"{self._runID};{self.chain_id};{datetime.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
+                f.write(f"{self._runID};{self.chain_id};{timezone.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
                 #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
                 #f.write("\n")
     
@@ -1185,6 +1360,7 @@ class EngineOnChain(Engine,models.Model):
 
         for actor in actors:
             for message in messages:
+                # TODO this code should be fixed; the buffer does not contain a counter, anymore
                 counter = enforcer.functions.get_buffer_item(actor, message).call()
                 for i in range(counter):
                     items.append((actor, message))
@@ -1227,6 +1403,8 @@ class EngineOnChain(Engine,models.Model):
         self._debug_log(logs[0].args.debug)
         out = logs[0].args.messageOut
         out = None if out == "None" else out
+
+        self.save()
         return out
  
 
@@ -1257,6 +1435,8 @@ class EngineOnChain(Engine,models.Model):
         out = logs[0].args.messageOut
         out = None if out == "None" else out
 
+
+        self.save()
         return out
 
 
