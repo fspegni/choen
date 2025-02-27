@@ -9,6 +9,7 @@ from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
 from django.db import transaction
+from django.conf import settings
 
 from datetime import datetime
 from generator import SmartContractGenerator
@@ -17,6 +18,7 @@ import nfa
 import rei
 import json
 import time
+import logging
 
 class Configuration(models.Model):
 
@@ -479,6 +481,8 @@ class EngineOffChain(Engine,models.Model):
 
         #breakpoint()
         nfa = ri.choreography.to_nfa()
+        nfa.remove_epsilon_transitions()
+        nfa.remove_unreachable_states()
 
         e._nfa : nfa.NFA = nfa
         e.buffer = {}
@@ -513,30 +517,18 @@ class EngineOffChain(Engine,models.Model):
             "buffer" : buffer}
         )
 
-    def _parse_event(self, text):
-        m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+)([?!])([a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
-
-        if not m:
-            #breakpoint()
-            raise Exception(f"Event has an unrecognized format")
-
-        #breakpoint()
-        _, precondition, actor, action, message, _, knowledge = m.groups()
-
-        if knowledge:
-            knowledge = knowledge.strip("()").split(",")
-
-        return precondition, actor, action, message, knowledge
-
-    def process_input(self, symbol):
+    #def process_input(self, symbol):
+    def process_input(precondition, event, knowledge):
 
         out = None
         #if self._engine.condition_rule_send(event):
         #    out = self._engine.rule_send(event)
 
-        (precondition, actor, action, message, knowledge) = self._parse_event(symbol)
+        #(precondition, actor, action, message, knowledge) = self._parse_event(symbol)
+        (actor, action, message) = self._parse_event(event)
 
-        event = f"{actor}{action}{message}"
+
+        #event = f"{actor}{action}{message}"
         print(f"Precondition: {precondition} - Event: {event} - Knowledge: {knowledge}")
 
         #breakpoint()
@@ -1027,6 +1019,10 @@ class Contract(models.Model):
     def choreography(self):
         return self.running_instance.choreography if self.running_instance else None
 
+    @property
+    def bytecode_size(self):
+        return len(self.bytecode) if self.bytecode else 0
+
 class EngineOnChain(Engine,models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
@@ -1047,11 +1043,26 @@ class EngineOnChain(Engine,models.Model):
         self._debug : bool = True
         self._runID = uuid.uuid4()
 
+    @property
+    def contract_nfa_size(self):
+        return self.contract_nfa.bytecode_size if self.contract_nfa else 0
+
+    @property
+    def contract_enforcer_size(self):
+        return self.contract_enforcer.bytecode_size if self.contract_enforcer else 0
+
+    @property
+    def contracts_size(self):
+        return self.contract_nfa_size + self.contract_enforcer_size
+
 
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
         nfa = ri.choreography.to_nfa()
+        nfa.remove_epsilon_transitions()
+        nfa.remove_unreachable_states()
+
         blockchain_configuration = ri.blockchain_configuration
 #        super().__init__(nfa)
 
@@ -1091,14 +1102,7 @@ class EngineOnChain(Engine,models.Model):
 
         return e
 
-##        self._nfa_address = None
-##        self._nfa_abi = None
-##        self._nfa_bytecode = None
-##
-##        self._enforcer_address = None
-##        self._enforcer_abi = None
-##        self._enforcer_bytecode = None
-##
+
     def load_smart_contracts(self, nfa_address, nfa_abi, enforcer_address, enforcer_abi):
 
         self._nfa_abi = nfa_abi
@@ -1118,9 +1122,29 @@ class EngineOnChain(Engine,models.Model):
         self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "NFA")
         self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
 
-        self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
-        self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
+        len_enforcer = len(self._enforcer_bytecode)
+        len_nfa  = len(self._nfa_bytecode)
 
+        print(f"NFA contract: {len_nfa} bytes")
+        print(f"Enforcer contract: {len_enforcer} bytes")
+        print(f"Total bytecode to deploy: {len_nfa + len_enforcer} bytes")
+
+    
+        breakpoint()
+        # 1. deploy NFA contract
+        self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
+        print(f"NFA contract deployed ...")    
+
+        # 2. init NFA transitions    
+        self.w3.eth.contract(
+                address = self._nfa_address,
+                abi = self._nfa_abi
+            ).functions.initTransitions().call()
+        print(f"NFA transitions initialized ...")
+
+        # 3. deploy Enforcer contract (passing address of NFA contract)
+        self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode, self._nfa_address)
+        print(f"Enforcer contract deployed ...")
 
     def attach_smart_contracts(self, sc_enforcer_address):
 
@@ -1151,14 +1175,19 @@ class EngineOnChain(Engine,models.Model):
 
 
     def get_execution_started(self):
-        logging.warning("The on-chain get_execution_started() method is not implemented yet")
-        return self.execution_started
+        start_time = self.w3.eth.contract(
+                address = self.enforcer_address,
+                abi = self.enforcer_abi
+            ).functions.getStartTime().call()
+        return datetime.fromtimestamp(start_time)
+
 
     def get_execution_ended(self):
-        logging.warning("The on-chain get_execution_ended() method is not implemented yet")
-        return self.execution_ended
-
-
+        end_time = self.w3.eth.contract(
+                address = self.enforcer_address,
+                abi = self.enforcer_abi
+            ).functions.getEndTime().call()    
+        return datetime.fromtimestamp(end_time) if end_time else None
 
     @property
     def w3(self) -> Web3:
@@ -1246,37 +1275,54 @@ class EngineOnChain(Engine,models.Model):
 
         return tx_receipt
 
-    def __deployContract(self, contract_name : str, abi, bytecode, address = None):
+    def __deployContract(self, contract_name : str, abi, bytecode, arguments = None): #address = None):
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
         #nonce =  self.w3.eth.get_transaction_count(self.address)
         nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
+        #nonce = self.w3.get_nonce() # TODO apparently the get_nonce(...) method is not working for me ...
+#        gas_price = self.w3.eth.gas_price
+        gas_price = self.w3.to_wei('10', 'gwei')
+
+        block_gas_limit = self.w3.eth.get_block("latest")["gasLimit"]
+        print(f"Block Gas Limit: {block_gas_limit}")
 
         start_time = time.time()
         # build transaction
-        if (address == None):
+        #if (address == None):
+        tx = {
+            "chainId": self.w3.eth.chain_id, #self.chain_id,
+            "gasPrice": gas_price, #self.w3.eth.gas_price,
+            "gas": int(0.9 * block_gas_limit), #60000000,
+            "from": self.address,
+            "nonce": nonce, 
+            #"maxFeePerGas": int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER),
+            #"maxPriorityFeePerGas": int(gas_price * settings.GAS_PRIORITY_FEE_MULTIPLIER),
+
+        }
+        print(f"Transaction parameters: {tx}")
+        breakpoint()
+        if (arguments == None):
 #            transaction = contract.constructor().buildTransaction(
-            transaction = contract.constructor().build_transaction(
-            {
-                "chainId": self.w3.eth.chain_id, #self.chain_id,
-                "gasPrice": self.w3.eth.gas_price,
-                "from": self.address,
-                "nonce": nonce,
-            }
-        )
+            transaction = contract.constructor().build_transaction(tx)
         else:
 #            transaction = contract.constructor(address).buildTransaction(
-            transaction = contract.constructor(address).build_transaction(
-            {
-                "chainId": self.w3.eth.chain_id, #self.chain_id,
-                "gasPrice": self.w3.eth.gas_price,
-                "from": self.address,
-                "nonce": nonce,
-            }
-        )
+#            transaction = contract.constructor(address).build_transaction(
+            transaction = contract.constructor(*arguments).build_transaction(tx)
+
+        breakpoint()
+        gas = self.w3.eth.estimate_gas(transaction)
+        print(f"Esimated gas: {gas}.")
+#        transaction.update({
+#            "maxFeePerGas": int(gas_prices * settings.GAS_MAX_FEE_MULTIPLIER),
+#            "maxPriorityFeePerGas": int(gas_prices * settings.GAS_PRIORITY_FEE_MULTIPLIER),
+#            #"gas": gas * settings.GAS_MULTIPLIER    
+#        })
+
+
         build_time = time.time() - start_time
-        self._debug_log(f"\nDeploying contract {contract_name} ...")
+        self._debug_log(f"\nDeploying contract {contract_name} (bytecode: {len(bytecode)} bytes) ...")
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Contract Creation")
@@ -1286,10 +1332,11 @@ class EngineOnChain(Engine,models.Model):
 
 
     def deployContractNFA(self, abi, bytecode):
+        #breakpoint()
         return self.__deployContract("NFA", abi, bytecode)
     
     def deployContractEnforcer(self, abi, bytecode, nfa_address : str):
-        return self.__deployContract("Enforcer", abi, bytecode, nfa_address)
+        return self.__deployContract("Enforcer", abi, bytecode, arguments=(nfa_address,))
 
 
     @property
@@ -1376,7 +1423,9 @@ class EngineOnChain(Engine,models.Model):
 
 
     #PROCESSORS
-    def process_input(self, event):
+    #def process_input(self, event):
+
+    def process_input(self, precondition, event, knowledge):
         enforcer = self.w3.eth.contract(
                 address = self.enforcer_address,
                 abi = self.enforcer_abi
@@ -1384,7 +1433,7 @@ class EngineOnChain(Engine,models.Model):
         nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added 'pending' ot solve the nonce too low problem
         start_time = time.time()
 #        transaction = enforcer.functions.process_input(event).buildTransaction({
-        transaction = enforcer.functions.process_input(event).build_transaction({
+        transaction = enforcer.functions.process_input(precondition or "", event, knowledge or []).build_transaction({
                         "chainId": self.w3.eth.chain_id, #self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
@@ -1392,7 +1441,13 @@ class EngineOnChain(Engine,models.Model):
                     })
         build_time = time.time() - start_time
 
-        self._debug_log(f"\nProcess input {event} ...")
+        #event = f"{actor}{action}{message}"
+        #if precondition:
+        #    event = f"{precondition}:{event}"
+        #if knowledge:
+        #    event = f"{event}({knowledge})"
+
+        self._debug_log(f"\nProcess input {precondition}:{event}({knowledge}) ...")
         tx_receipt = self.__sendTransaction(transaction)
         execution_time = time.time() - start_time
         self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")

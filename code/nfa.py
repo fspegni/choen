@@ -25,10 +25,28 @@ class State:
         # immutability of the object
         if not id:
             #id = random_string(8)
-            id = f"state_{State.counter}"
+            id = f"s_{self._encode(State.counter)}"
             State.counter = State.counter + 1
 
         self.__id = id
+
+    @staticmethod
+    def _encode(counter):
+        # TODO this should be amended; it jumps from "Z" -> "BA" (instead of "AA"), and
+        # similarly, it skips from "AZ" -> BB"
+        MAX = 26
+        #breakpoint()
+        suffix = ""
+        while True:
+            reminder = counter % MAX
+            counter = int(counter / MAX)
+            suffix = f"{chr(ord('A')+reminder)}{suffix}"
+            if counter <= 0:
+                break
+            #counter = reminder
+
+        return suffix
+            
 
     def __str__(self):
         return f"State({self.__id})"
@@ -184,6 +202,71 @@ class NFA:
         return f"{len(self.states)} states, {len(self.transitions)} transitions, initial: {self._initial}, {len(self.final)} final states"
 
 
+    def remove_epsilon_transitions(self):
+        # TODO this method can be optimizeda. A LOT! ;-)
+
+        class Continue(Exception):
+            pass
+
+        #breakpoint()
+        idx = 1
+        while True:
+
+            try:
+                print(f"Iteration no. {idx} : # transitions = {len(self.transitions)} ...")
+                #breakpoint()
+                idx = idx + 1
+                for t in self.transitions:
+                    if not t.label and not self.is_initial(t.source) and not self.is_final(t.target):   
+                        to_add_transitions = []
+                        to_remove_transitions = []
+    
+                        # epsilon-transition found (TODO at the moment we do not remove e-transitions from initial/to final states)
+                        e_source = t.source
+                        e_target = t.target
+    
+                        to_remove_transitions.append(t)
+    
+                        incoming = self.transitions_to(e_source)
+                        #if len(incoming) == 0:
+                        #    breakpoint()
+                        for curr in incoming:
+                        
+                            if len(self.transitions_to(e_target)) == 1:
+                                to_remove_transitions.append(curr)          
+    
+                            new_t = Transition(curr.source, e_target, curr.label)
+                            to_add_transitions.append(new_t)
+    
+                        #breakpoint()
+                        for t in to_add_transitions:
+                            self.add_transition(t.source, t.target, t.label)
+                            print(f"Added: {t} ...")
+    
+                        for t in to_remove_transitions:
+                            self.remove_transition(t.source, t.target, t.label)
+                            print(f"Removed: {t} ...")
+
+                        #breakpoint()
+                        raise Continue() # use this special exception in order to continue with the iteration of the other loop
+
+
+                # if it reaches here, no epsilon transition was found in the list of transitions; nothing to do anymore
+                print(f"Iteration no. {idx} : EXIT : # transitions = {len(self.transitions)} ...")
+                breakpoint()
+                return
+    
+            except Continue:
+                pass
+
+    def remove_unreachable_states(self):
+        
+        to_remove = list(map(lambda s: s.id, filter(lambda s: self.is_initial(s) or self.is_final(s) or len(self.transitions_to(s)) > 0, self.states)))
+        print(f"States to be removed: {to_remove}")
+        print(f"States before: # {len(self._states)}")
+        self._states = {k:v for k,v in self._states.items() if k in to_remove}
+        print(f"States after: # {len(self._states)}")
+
     def to_dot(self):
         g = Digraph(name='curr_graph', filename='curr_graph.gv')
         g.graph_attr["rankdir"] = "LR"
@@ -336,7 +419,7 @@ class NFA:
 
         transition_set = self._transitions.get(source, {})
         labeled_transition_set = transition_set.get(label, set([]))
-        labeled_transition_set.add(Transition(source_state, target_state, label))
+        labeled_transition_set.add(Transition(source_state, target_state, label)) # TODO conver this to a dictionary with key the target state id
 
         transition_set[label] = labeled_transition_set
         self._transitions[source] = transition_set
@@ -346,9 +429,55 @@ class NFA:
             self._event_dictionary[label] = new_code
             self._event_dictionary_lookup[new_code] = label
 
+    def remove_transition(self, source, target, label):
+ 
+        if isinstance(source, State):
+            source_state = source
+            source = source.id
+        else:
+            source_state = self._states[source]
+        
+        assert isinstance(source, str)
+        assert isinstance(source_state, State)
+
+        if isinstance(target, State):
+            target_state = target
+            target = target.id
+        else:
+            target_state = self._states[target]
+        
+        assert isinstance(target, str)
+        assert isinstance(target_state, State)
+
+        if source not in self._transitions:
+            raise Exception(f"No such transition: source={source} (label={label}, target={target})")
+
+        if label not in self._transitions[source]:
+            raise Exception(f"No such transition: source={source}, label={label} (target={target})")
+
+        for t in self._transitions[source][label]:
+            if t.target == target_state:
+                # found
+                self._transitions[source][label].remove(t)
+                return
+
+        raise Exception(f"No such transition: source={source}, label={label}, target={target}")
+
+
     def _generate_label_code(self):
-        # TODO note that this works only for limited sets of symbols
-        return chr(ord('A') + len(self._event_dictionary.items())) 
+        # TODO note that this works only for limited sets of symbols (26 * 26)
+
+        pos = len(self._event_dictionary.items())
+
+        if pos > 26**2:
+            raise Exception("At the moment, only {26**2} possible symboles are supported")
+
+        # TODO use logarithm in base 26 if you want to know how many "digits" you need
+        lhs = chr(ord('A') + int(pos/26))
+        rhs = chr(ord('A') + (pos % 26))
+        return lhs + rhs
+
+        #return chr(ord('A') + len(self._event_dictionary.items())) 
 
     """
     Return the states that are actually final states
@@ -732,7 +861,14 @@ def ReiToNFA(rei : REI) -> NFA:
             state_ids.append(automata_state_ids)
             state_ids_initial.append(b.initial.id)
 
+        states_product = []
         for sid_parts in itertools.product(*state_ids):
+            #if "__" in sid_parts[0]:
+            #    breakpoint()
+            states_product.append(sid_parts)
+
+        #breakpoint()
+        for sid_parts in states_product:
             sid_composite = "__".join(sid_parts)
 
             is_final = True
@@ -746,33 +882,55 @@ def ReiToNFA(rei : REI) -> NFA:
                 
             a.add_state(State(sid_composite), is_final=is_final)
 
-        for s in a.states:
-            s_parts = s.id.split("__")
-            
-            for t in a.states:
-                t_parts = t.id.split("__")
+        for sid_parts in states_product:
+        #for sid_parts in itertools.product(*state_ids):
+            for ith,sid in enumerate(sid_parts):
+                #breakpoint()
+                # search outgoing transitions from state of the i-th component
+                transitions = nfa_children[ith].transitions_from(sid_parts[ith])
 
-                # -1 : not found
-                # -2 : too many differences
-                # >= 0 : exactly one difference at the stored position
-                pos_diff = -1
-                for pos, (s_sid, t_sid) in enumerate(zip(s_parts, t_parts)):
-                    # TODO the condition below does not allow to capture/translate loops
-                    if s_sid != t_sid:
-                        if pos_diff >= 0:
-                            pos_diff = -2
-                            break
-                        else:
-                            pos_diff = pos
+                composite_source = "__".join(sid_parts)
 
-                if pos_diff >= 0:
-                    source = s_parts[pos_diff]
-                    target = t_parts[pos_diff]
-                    transitions = nfa_children[pos_diff].transitions_from_to(source, target)    
-                    for tran in transitions:
-                        assert isinstance(tran, Transition)
-                        a.add_transition(s, t, tran.label)
+                for t in transitions:
+                    #breakpoint()
+                    composite_target = list(sid_parts)
+                    composite_target[ith] = t.target.id
+                    composite_target = "__".join(composite_target)
 
+                    a.add_transition(composite_source, composite_target, t.label)
+
+#### The code below does not handle the case of nested Par's operators
+####
+####        for s in a.states:
+####            s_parts = s.id.split("__")
+####            
+####            for t in a.states:
+####                t_parts = t.id.split("__")
+####
+####                # -1 : not found
+####                # -2 : too many differences
+####                # >= 0 : exactly one difference at the stored position
+####                pos_diff = -1
+####                for pos, (s_sid, t_sid) in enumerate(zip(s_parts, t_parts)):
+####                    # TODO the condition below does not allow to capture/translate loops
+####                    if s_sid != t_sid:
+####                        if pos_diff >= 0:
+####                            pos_diff = -2
+####                            break
+####                        else:
+####                            pos_diff = pos
+####
+####                if pos_diff >= 0:
+####                    source = s_parts[pos_diff]
+####                    target = t_parts[pos_diff]
+####                    if len(nfa_children) <= pos_diff:
+####                        breakpoint()
+####                    print(f"{pos_diff} vs {len(nfa_children)} ...")
+####                    transitions = nfa_children[pos_diff].transitions_from_to(source, target)    
+####                    for tran in transitions:
+####                        assert isinstance(tran, Transition)
+####                        a.add_transition(s, t, tran.label)
+####
 
         a.set_initial("__".join(state_ids_initial))
     
@@ -788,8 +946,12 @@ def ReiToNFA(rei : REI) -> NFA:
 
         a.set_initial(i)
 
+
         for curr in rei.items:
             b = ReiToNFA(curr)
+
+            #if len(b.states) > 10:
+            #    breakpoint()
 
             for s in b.states:
                 a.add_state(s)

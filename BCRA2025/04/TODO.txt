@@ -1,2 +1,0 @@
-incident-management.bpmn :  rei ok
-supply-chain.bpmn : rei ok

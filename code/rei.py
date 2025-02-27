@@ -344,6 +344,8 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 
                 rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match)
 
+            #breakpoint()
+
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
@@ -408,10 +410,12 @@ def render_send_receive (cho:Choreography, node:ElementType):
         m_request = messages[1].replace(" ","_")
         m_response = messages[0].replace(" ","_")
         #res = Conc(Symbol(f"{target}?{m_request}"), Symbol(f"{initiator}?{m_response}"))
-        res = Conc(Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}")), Par(Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}")))
+        #res = Conc(Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}")), Par(Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}")))
+        res = Conc(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"), Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}"))
     elif n_messages == 1:
         m_request = messages[0].replace(" ","_")
-        res = Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"))
+        #res = Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"))
+        res = Conc(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"))
     elif n_messages == 0:
         res = Symbol(node.attrib["id"])
     else:

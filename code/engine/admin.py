@@ -6,7 +6,7 @@ from django_object_actions import DjangoObjectActions, action
 # Register your models here.
 from django import forms
 from django.core.exceptions import ValidationError
-from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOffChain
+from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOnChain, EngineOffChain
 
 class ConfigurationForm(forms.ModelForm):
 
@@ -124,7 +124,11 @@ class ContractAdmin(admin.ModelAdmin):
     list_display = [ "label", "contract_address", "running_instance", "choreography" ]
     search_fields = [ "label", "contract_address", ] #"running_instance__configuration__address", ]
 
-    readonly_fields = [ "running_instance", "choreography" ]
+    readonly_fields = [ "running_instance", "choreography", "bytecode_size" ]
+
+    def bytecode_size(self, obj: Contract):
+        return obj.bytecode_size
+    bytecode_size.short_description = _("bytecode size")
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
@@ -139,6 +143,17 @@ class EngineOffChain(admin.ModelAdmin):
     readonly_fields = ["rei",]
 
     def rei(self, obj : EngineOffChain):
+        return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None
+
+
+@admin.register(EngineOnChain)
+class EngineOnChain(admin.ModelAdmin):
+    
+    list_display = [ "running_instance", "running_instance__choreography", ]
+
+    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size" ]
+
+    def rei(self, obj : EngineOnChain):
         return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None
 
 

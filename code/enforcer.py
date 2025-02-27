@@ -90,19 +90,40 @@ class Enforcer:
         return self._engine.ended()
 
 
+    def _parse_event(self, text):
+        #m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+)([?!])([a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
+        #breakpoint()
+        m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+[?!][a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
+
+        if not m:
+            #breakpoint()
+            raise Exception(f"Event has an unrecognized format")
+
+        #breakpoint()
+        #_, precondition, actor, action, message, _, knowledge = m.groups()
+        _, precondition, event, _, knowledge = m.groups()
+
+        if knowledge:
+            knowledge = knowledge.strip("()").split(",")
+
+        #return precondition, actor, action, message, knowledge
+        return precondition, event, knowledge
+
+
     # PROCESSORS
-    def process_input(self, event): #event_stream : str):
+    def process_input(self, symbol): #event_stream : str):
+
+        #precondition, actor, action, message, knowledge = self._parse_event(event)
+        precondition, event, knowledge = self._parse_event(symbol)
 
         num_states_pre = self._engine.get_num_states() #en(self._curr_states)
-        out = self._engine.process_input(event)
+        #out = self._engine.process_input(event)
+        out = self._engine.process_input(precondition, event, knowledge)
         nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
         
         #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
         
         return out
-        
-         
-
 
     def process_check(self):
         out = None
@@ -405,6 +426,8 @@ class CmdBuildContracts(UICommand):
             return
 
         nfa = c.to_nfa()
+        #nfa.remove_epsilon_transitions()
+        #nfa.remove_unreachable_states()
 
         self.compile(nfa)
 
@@ -413,6 +436,7 @@ class CmdBuildContracts(UICommand):
 
         debug = True
         smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
+
         compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
  
 class CmdLoadChoreography(UICommand):
@@ -591,6 +615,8 @@ class CmdStart(UICommand):
 
         #breakpoint()
         automaton = ri.choreography.to_nfa()
+        #automaton.remove_epsilon_transitions()
+        #automaton.remove_unreachable_states()
 
         try:
             engine = ri.engineoffchain
@@ -639,6 +665,8 @@ class CmdStart(UICommand):
         #enforcer = None
  
         automaton = cho.to_nfa()
+        #automaton.remove_epsilon_transitions()
+        #automaton.remove_unreachable_states()
 
         onchain_url = self.ui.get_env("ONCHAIN_URL")
         onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID", 0))
@@ -917,7 +945,15 @@ class CmdDump(UICommand):
             elif args[0] == "nfa":
 
                 c : Choreography = self.ui._model.get_object("choreography")
+                if not c:
+                    print("You must load a choreography, before dumping its rei")
+                    return
+
                 nfa = c.to_nfa()
+
+                if len(args) > 1 and args[1] == "reduced":
+                    nfa.remove_epsilon_transitions()
+                    nfa.remove_unreachable_states()
 
                 print("\nNFA: \n")
 #                g = self.ui._nfa.to_dot()   
@@ -927,6 +963,10 @@ class CmdDump(UICommand):
 #                for k,v in self.ui._nfa.event_dictionary.items():
                 for k,v in nfa.event_dictionary.items():
                     print(f" {k} : {v}")
+
+                print(f"\nNo. states: {len(nfa.states)}\n")
+                print(f"\nNo. transitions: {len(nfa.transitions)}\n")
+                print(f"\nNo. events: {len(nfa.event_dictionary)}\n")
 
                 #breakpoint()
                 filename_prefix = args[1] if len(args) > 1 else "curr_graph"
@@ -1041,6 +1081,11 @@ class CmdSave(UICommand):
                 format = args[3]
                 filename = f"{args[2]}.gv"
                 outfile = f"{args[2]}.{format}"
+
+                #breakpoint()
+                if not self.ui._enforcer:
+                    printF(f"Enforcer not started, yet")
+                    return
 
                 g = self.ui._enforcer._engine._nfa.to_dot()
                 g.render(directory=outdir, filename=filename, outfile=outfile, format=format)

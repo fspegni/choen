@@ -1,2 +1,0 @@
-concrete_casting.bpmn : errore more than one choreography
-manutenzione_ferrovie.bpmn : errore rei, coreografia incompleta 

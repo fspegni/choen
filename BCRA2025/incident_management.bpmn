@@ -15,8 +15,8 @@
   <bpmn2:choreography id="Choreography_1bp5o6k">
     <bpmn2:participant id="Participant_0hpgpwy" name="VIP customer" />
     <bpmn2:participant id="Participant_18ejhc5" name="KAM" />
-    <bpmn2:participant id="Participant_1yfcq7e" name="1st level support" />
-    <bpmn2:participant id="Participant_07mlniv" name="2nd level support" />
+    <bpmn2:participant id="Participant_1yfcq7e" name="first level support" />
+    <bpmn2:participant id="Participant_07mlniv" name="second level support" />
     <bpmn2:participant id="Participant_0avg1dg" name="Developer" />
     <bpmn2:messageFlow id="MessageFlow_10qzefv" sourceRef="Participant_07mlniv" targetRef="Participant_1yfcq7e" messageRef="Message_1a36weu" />
     <bpmn2:messageFlow id="MessageFlow_0vab5g5" sourceRef="Participant_0avg1dg" targetRef="Participant_07mlniv" messageRef="Message_01lxqkp" />

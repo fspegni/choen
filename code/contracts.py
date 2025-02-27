@@ -59,6 +59,15 @@ class Variable(Compileable):
         else:
             return f"{self._type} {self._location} {self._name} = {self._value}"
 
+class Constant(Variable):
+
+
+    def __init__(self, name : str, type : str, value : str = ""):
+        super().__init__(name, type, value=value)
+
+    def compile(self) -> str:
+        return f"{self._type} constant {self._name} = {self._value};"
+
 class Event(Compileable):
     def __init__(self, name: str, variables : list):
         self._name : str = name
@@ -137,6 +146,7 @@ class Contract(Compileable):
         self._name = name
         self._functions : dict = {}
         self._attributes : dict = {}
+        self._structures : dict = {}
         self._constructor : dict = {}
         self._directives = []
         self._events : dict = {}
@@ -155,6 +165,10 @@ class Contract(Compileable):
     @property
     def attributes(self) -> list:
         return self._attributes.items()
+
+    @property
+    def structures(self) -> list:
+        return self._structures.items()
 
     @property
     def functions(self) -> list:
@@ -192,6 +206,12 @@ class Contract(Compileable):
 
         self._attributes[a.name] = a
 
+    def add_structure(self, name : str, text: str):
+        if name in self._structures:
+            raise Exception(f"A structure with name {name} already exists")
+    
+        self._structures[name] = text
+
     def add_constructor(self, c : Constructor):
         if len(self._constructor) > 0:
             raise Exception(f"Constructor already exists in the contract")
@@ -216,7 +236,9 @@ class Contract(Compileable):
         #imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
         #libraries_text = "\n".join(map(lambda l: f"{l}", self._libraries))
         directives_text = "\n".join(map(lambda d: f"{d};", self._directives))
-        
+           
+        #breakpoint()
+        struct_text = "\n".join(self._structures.values())
         attributes_text = "\n".join(map(lambda a: a.compile()+";", self._attributes.values()))
         events_text = "\n".join(map(lambda e: e.compile()+";", self._events.values()))
         functions_text = "\n".join(map(lambda f: f.compile()+"\n", self._functions.values()))
@@ -232,6 +254,8 @@ class Contract(Compileable):
 {directives_text}
 
 {events_text}
+
+{struct_text}
 
 {attributes_text}
 
@@ -297,8 +321,22 @@ class SmartContract(Compileable):
     def __init__(self, version: str):
         self._version = version
         self._imports = []
+        self._functions : list = []
+        self._constants : list = []
         self._libraries : dict = {}
         self._contracts : dict = {}
+        self._verbatim : str = ""
+
+    def add_verbatim(self, verbatim):
+        self._verbatim = verbatim
+
+    @property
+    def constants(self):
+        return self._constants
+
+    @property
+    def functions(self):
+        return self._functions
 
     @property
     def version(self):
@@ -315,6 +353,12 @@ class SmartContract(Compileable):
     @property
     def contracts(self):
         return self._contracts
+
+    def add_function(self, f : Function):
+        self._functions.append(f)
+
+    def add_constant(self, c : Constant):
+        self._constants.append(c)
 
     def add_import(self, i : str):
         self._imports.append(i)
@@ -343,14 +387,24 @@ class SmartContract(Compileable):
 
         imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
         libraries_text = "\n".join(map(lambda l: l+"\n", self.libraries.values()))
+        functions_text = "\n".join(map(lambda f: f.compile()+"\n", self.functions)) 
+        constants_text = "\n".join(map(lambda c: c.compile()+"\n", self.constants)) 
         contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
-        
+    
+        verbatim = self._verbatim       
         smart_contract_text = f"""
 // SPDX-Licence-Identiier: CC-BY-NC-4.0	
 
 pragma solidity >= {self._version};
 pragma abicoder v2;
+
+{verbatim}
+
 {imports_text}
+
+{constants_text}
+
+{functions_text}
 
 {libraries_text}
 
