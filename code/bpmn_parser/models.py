@@ -240,15 +240,16 @@ class Choreography(models.Model):
 
     
 
-    def next(self, node:ET.Element, connections=None) -> set:
+    def next(self, node:ET.Element, limit_node:ET.Element=None) -> set: #connections=None) -> set:
 
         res = []
 
         if (node):
-            if connections is None:
-                connections = self.outgoing(node) #node.findall(".//bpmn2:outgoing", NS)
-            elif isinstance(connections, ET.Element):
-                connections = [ connections ]
+            #if connections is None:
+            #    connections = self.outgoing(node) #node.findall(".//bpmn2:outgoing", NS)
+            #elif isinstance(connections, ET.Element):
+            #    connections = [ connections ]
+            connections = self.outgoing(node)
 
             assert all(isinstance(element, ET.Element) for element in connections)
 
@@ -268,22 +269,27 @@ class Choreography(models.Model):
                 target_node = self.root.find(".//*[@id='%s']" % target_id, NS)
                 if target_node == None:
                     raise Exception("Target node (%s) cannot be found" % target_id)
-
+                elif limit_node and target_node == limit_node:
+                    #print(f"NEXT: reached limit node: {limit_node}")
+                    continue
+                
                 res.append(target_node)
 
+        #print(f"NEXT: {node.attrib['id']} -> {','.join(map(lambda c: c.attrib['id'], res))}")
         return res
 
 
-    def prev(self, node:ET.Element, connections=None) -> set:
+    def prev(self, node:ET.Element) -> set: #, connections=None) -> set:
 
         res = []
 
         if (node):
-            if connections is None:
-                # incoming = node.findall(".//bpmn2:incoming", NS)
-                connections = self.incoming(node)
-            elif isinstance(connections, ET.Element):
-                connections = [ connections ]
+            #if connections is None:
+            #    # incoming = node.findall(".//bpmn2:incoming", NS)
+            #    connections = self.incoming(node)
+            #elif isinstance(connections, ET.Element):
+            #    connections = [ connections ]
+            connections = self.incoming(node)
             
             assert all(isinstance(element, ET.Element) for element in connections)
             # for curr in incoming:
@@ -302,35 +308,71 @@ class Choreography(models.Model):
                 source_node = self.root.find(".//*[@id='%s']" % source_id, NS)
                 if source_node == None:
                     raise Exception("Source node (%s) cannot be found" % source_id)
-
+                
                 res.append(source_node)
 
         return res
 
 
-    def star(self, start:ET.Element, op) -> set:
-        items = set([ start ])
-        visited = set([])    
-        
-        
-        while visited != items:
+    def plus(self, start:ET.Element, op, limit_node:ET.Element=None) -> set:
+
+        if start == limit_node:
+            return set([])
+
+        len_items_prev = 0
+        items = set(op(start))
+        visited = set([ start ])
+
+        while len(items) > len_items_prev:
+            len_items_prev = len(items)
             for curr in items:
-                if curr not in visited:
+                if curr == limit_node:
+                    print(f"PLUS: reached limit node: {limit_node} ...")
+                elif curr not in visited:
                     found = op(curr)
-                    
-                    # print("VISIT: %s |-> %s" % (curr, found))
+                    visited.add(curr)
+                    items = items.union(found) # cannot use items.update(...) otherwise I get an error for changing the set size while iterating
+                    if limit_node:
+                        items.discard(limit_node) # remove, if present
 
-                    visited = visited.union([ curr ])
-                    items = items.union(found)
-
-        # print("STAR(%s,%s) = %s" % (start, op,items))
         return items
+##?g
+##?g    def plus(self, start:ET.Element, op, limit_node:ET.Element=None) -> set:
+##?g        items = set([ start ])
+##?g        #items = set([])
+##?g        visited = set([])   
+##?g        len_visited_prev = -1 
+##?g        #if limit_node:
+##?g        #    visited.add(limit_node)
+##?g        
+##?g        while len(visited) > len_visited_prev: #visited != items:
+##?g            len_visited_prev = len(visited)
+##?g            for curr in items:
+##?g                if curr == limit_node:
+##?g                    print(f"STAR: reached limit_node: {limit_node}")
+##?g                elif curr not in visited:
+##?g                    found = op(curr)
+##?g                    
+##?g                    # print("VISIT: %s |-> %s" % (curr, found))
+##?g                    visited = visited.union([ curr ])
+##?g                    items = items.union(found)
+##?g
+##?g        # print("STAR(%s,%s) = %s" % (start, op,items))
+##?g        #return items
+##?g        return visited
+##?g
+    def star(self, start:ET.Element, op, limit_node:ET.Element=None) -> set:
+        return plus(start, op, limit_node).union([ start ])
 
-    def reachable(self, start:ET.Element) -> set:
-        return self.star(start, self.next)
+    def reachable(self, start:ET.Element, limit_node:ET.Element=None) -> set:
+        return self.plus(start, self.next, limit_node)
+
+    def ancestors(self, start:ET.Element, limit_node:ET.Element=None) -> set:
+        return self.plus(start, self.prev, limit_node)
 
 
-    def node_type(self, node:ET.Element) -> str:
+    def node_type(self, node:ET.Element, limit_node=None) -> str:
+        #breakpoint()
         if node is None:
             # print(f">>> {node} -> None type")
             return None
@@ -349,9 +391,19 @@ class Choreography(models.Model):
             outgoing = self.outgoing(node)
 
             if len(incoming) == 1 and len(outgoing) > 1:
-                res = "GW_EX_OPEN"
+
+                ancestors = self.ancestors(node, limit_node)
+                if node in ancestors:
+                    res = "GW_EX_LOOP_CLOSE"
+                else:
+                    res = "GW_EX_OPEN"
             elif len(incoming) > 1 and len(outgoing) == 1:
-                res = "GW_EX_CLOSE"
+
+                reachable = self.reachable(node, limit_node)
+                if node in reachable:
+                    res = "GW_EX_LOOP_OPEN"
+                else:
+                    res = "GW_EX_CLOSE"
             else:
                 res = f"GW_EX({len(incoming)},{len(outgoing)})"
 

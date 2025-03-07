@@ -1,12 +1,12 @@
 from bpmn_parser.models import Choreography, ElementType
 # import re
 
-def expect_node_type(cho:Choreography, node:ElementType, ntypes):
+def expect_node_type(cho:Choreography, node:ElementType, ntypes, limit_node=None):
 
     if isinstance(ntypes, str):
         ntypes = [ ntypes] 
 
-    real_ntype = cho.node_type(node)
+    real_ntype = cho.node_type(node, limit_node)
     assert real_ntype in ntypes, f"Expected node of type '{ntypes}'. Found: Node: {node} - Type: {real_ntype}"
 
 
@@ -202,9 +202,10 @@ Return a pair (rei, closure) denoting:
 - closure : the "most recent" opening gateway (that must be "closed"), in order to have
             a well-balanced BPMN choreography diagram
 """
-def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:ElementType=None):
+def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:ElementType=None, limit_node:ElementType=None):
     import rei
 
+    #breakpoint()
     atoms = {}
 
     if node is None:
@@ -213,18 +214,18 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
         assert len(cho.startEvents) == 1
         node = cho.startEvents[0]
 
-        expect_node_type(cho, node, "START")
+        expect_node_type(cho, node, "START", limit_node)
 
         cho_start = cho.startEvents[0]
-        cho_next = cho.next(cho_start)
+        cho_next = cho.next(cho_start, limit_node)
 
         rei_rest = None
-        closure = None
+        closure = limit_node # was: None
 
         if len(cho_next) == 0:
             rei_rest = rei.End()
         elif len(cho_next) == 1:
-            rei_rest, closure = ChoToRei(cho, handle_task, cho_next[0], match)
+            rei_rest, closure = ChoToRei(cho, handle_task, cho_next[0], match, limit_node)
         else:
             raise Exception(f"Too many successors: {cho_next}. Expected zero or one.")
 
@@ -234,25 +235,25 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             return rei_head, closure
     
     else:
-        node_type = cho.node_type(node)
+        node_type = cho.node_type(node, limit_node)
 
         if node_type == "END":
-            return rei.End(), None
+            return rei.End(), limit_node # was: None
 
         elif node_type == "TASK":
             if handle_task is None:
                 handle_task = lambda cho,node: rei.Symbol(node.attrib["name"])
 
             rei_head = handle_task(cho,node)
-            cho_next = cho.next(node)
+            cho_next = cho.next(node, limit_node)
 
             rei_rest = None
-            closure = None
+            closure = limit_node # was: None
 
             if len(cho_next) == 0:
                 rei_rest = rei.End()
             elif len(cho_next) == 1:
-                rei_rest, closure = ChoToRei(cho, handle_task, cho_next[0], match)
+                rei_rest, closure = ChoToRei(cho, handle_task, cho_next[0], match, limit_node)
             else:
                 raise Exception(f"Too many successors: {cho_next}. Expected zero or one.")
 
@@ -262,13 +263,14 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
                 return rei_head, closure
 
         elif node_type == "GW_EX_OPEN":
+            #breakpoint()
             branches = []
-            cho_next = cho.next(node)
+            cho_next = cho.next(node, limit_node)
 
             gw_closure = None
             for curr in cho_next:
-                rei_branch, closure = ChoToRei(cho, handle_task, curr, node)
-                expect_node_type(cho, closure, [ None, "GW_EX_CLOSE" ])
+                rei_branch, closure = ChoToRei(cho, handle_task, curr, node, limit_node)
+                expect_node_type(cho, closure, [ None, "GW_EX_CLOSE" ], limit_node)
                 assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
     
@@ -278,25 +280,76 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             rei_head = rei.Union(*branches)
 
             rei_rest = None
-            match_rest = None
+            match_rest = limit_node # was: None
 
             if gw_closure:
-                assert len(cho.next(gw_closure)) == 1
-                rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match)
+                gw_closure_next = cho.next(gw_closure, limit_node)
+                #assert len(cho.next(gw_closure, limit_node)) == 1
+                assert len(gw_closure_next) == 1
+                #rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match, limit_node)
+                rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
 
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
                 return rei_head, match_rest
 
-        elif node_type == "GW_PAR_OPEN":
+        elif node_type == "GW_EX_LOOP_OPEN":
+            #breakpoint()
+            #raise Exception("I'm going to deal with it in a short while")
             branches = []
-            cho_next = cho.next(node)
+            cho_next = cho.next(node, limit_node)
+
+            # put in new_limit_node the closing exclusive gateway for this loop
+            reachable_from_node = cho.reachable(node, limit_node)
+            new_limit_node = None
+            for curr in cho.prev(node):
+                if curr in reachable_from_node:
+                    new_limit_node = curr
+                    break
+            assert new_limit_node is not None
 
             gw_closure = None
             for curr in cho_next:
-                rei_branch, closure = ChoToRei(cho, handle_task, curr, node)
-                expect_node_type(cho, closure, ["GW_PAR_CLOSE",None])
+                rei_branch, closure = ChoToRei(cho, handle_task, curr, node, new_limit_node) # NOTE: the current node (of type GW_EX_LOOP_OPEN) becomes the limit_node for the ChoToRei translation applied on the ecurrent branch
+
+                #print(f"CHOTOREI: {node.attrib['id']} : branch: {str(rei_branch)} : closure = {closure}")
+                #expect_node_type(cho, closure, [ "GW_EX_LOOP_CLOSE" ], new_limit_node)
+                assert closure == new_limit_node # this replaces the expect_node_type 
+                assert gw_closure is None or gw_closure == closure
+                gw_closure = closure
+    
+                if rei_branch:
+                    branches.append(rei_branch)
+
+            rei_head = rei.Star(rei.Union(*branches))
+
+            rei_rest = None
+            match_rest = limit_node # was: None
+
+            if gw_closure:
+                gw_closure_next = cho.next(gw_closure, limit_node)
+                gw_closure_next.remove(node) # in the case of a loop, the gw_closure points back to the beginning of the loop, thus we have to remove it
+                assert len(gw_closure_next) == 1
+                #assert len(cho.next(gw_closure)) == 1
+                #rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match, limit_node)
+                rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
+            #if rei_rest:
+            #    return rei.Conc(rei_head, rei_rest), match_rest
+            #else:
+            #    return rei_head, match_rest
+
+            assert rei_rest != None
+            return rei.Conc(rei_head, rei_rest), match_rest
+
+        elif node_type == "GW_PAR_OPEN":
+            branches = []
+            cho_next = cho.next(node, limit_node)
+
+            gw_closure = None
+            for curr in cho_next:
+                rei_branch, closure = ChoToRei(cho, handle_task, curr, node, limit_node)
+                expect_node_type(cho, closure, ["GW_PAR_CLOSE",None], limit_node)
                 assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
                 
@@ -307,12 +360,15 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             rei_head = rei.Par(*branches)
             
             rei_rest = None
-            match_rest = None
+            match_rest = limit_node # was: None
 
             if gw_closure:
-                assert len(cho.next(gw_closure)) == 1
+                gw_closure_next = cho.next(gw_closure, limit_node)
+                assert len(gw_closure_next) == 1
+                #assert len(cho.next(gw_closure)) == 1
 
-                rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match)
+                #rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match, limit_node)
+                rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
 
             if rei_rest:
                 return rei.Conc(rei_head, rei_rest), match_rest
@@ -321,12 +377,12 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 
         elif node_type == "GW_INC_OPEN":
             branches = []
-            cho_next = cho.next(node)
+            cho_next = cho.next(node, limit_node)
 
             gw_closure = None
             for curr in cho_next:
-                rei_branch, closure = ChoToRei(cho, handle_task, curr, node)
-                expect_node_type(cho, closure, ["GW_INC_CLOSE",None])
+                rei_branch, closure = ChoToRei(cho, handle_task, curr, node, limit_node)
+                expect_node_type(cho, closure, ["GW_INC_CLOSE",None], limit_node)
                 assert gw_closure is None or gw_closure == closure
                 gw_closure = closure
                 
@@ -337,12 +393,15 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 
             rei_head = rei.Par(*branches) 
             rei_rest = None
-            match_rest = None
+            match_rest = limit_node # was: None
 
             if gw_closure:
-                assert len(cho.next(gw_closure)) == 1
+                gw_closure_next = cho.next(gw_closure, limit_node)
+                assert len(gw_closure_next) == 1
+                #assert len(cho.next(gw_closure)) == 1
 
-                rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match)
+                #rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match, limit_node)
+                rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
 
             #breakpoint()
 
@@ -351,8 +410,7 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             else:
                 return rei_head, match_rest
 
-
-        elif node_type in [ "GW_PAR_CLOSE", "GW_EX_CLOSE", "GW_INC_CLOSE" ]:
+        elif node_type in [ "GW_PAR_CLOSE", "GW_EX_CLOSE", "GW_EX_LOOP_CLOSE", "GW_INC_CLOSE" ]:
             return None, node
 
         else:

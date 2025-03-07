@@ -7,7 +7,7 @@ class ChoreographySerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = Choreography
-        fields = [ "name", "resource" ]
+        fields = [ "id", "name", "resource" ]
 
 class ChoreographyViewSet(viewsets.ModelViewSet):
 

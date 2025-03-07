@@ -487,6 +487,7 @@ class CmdLoadChoreography(UICommand):
         try:
             c.to_nfa()
         except Exception as err:
+            traceback.print_exc()
             print(f"KO Choreography {cho_name} : error extracting NFA ({err}), cannot import ...")
             return
 
