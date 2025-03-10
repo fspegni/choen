@@ -31,7 +31,7 @@ class NFAContractGenerator(Generator):
 
     def __create_attributes(self, contract : Contract):
 
-        #contract.add_attribute(Variable("states","string[]","",list(map(lambda s: s.id, self.nfa.states))))
+        contract.add_attribute(Variable("states","string[]","",list(map(lambda s: s.id, self.nfa.states))))
         contract.add_attribute(Variable("tmpStates","string[]"))
         contract.add_attribute(Variable("initialState", "string","",'"'+str(self.nfa.initial.id)+'"'))
         contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
@@ -59,13 +59,14 @@ class NFAContractGenerator(Generator):
         for key in transitionsDict:
             #breakpoint()
             key = key.split(".")
-            symbol = key[1].replace("!","__S__").replace("?","__R__") if key[1] else "EPSILON"
+            symbol = key[1].replace("!","__S__").replace("?","__R__").replace(",","___") if key[1] else "EPSILON"
             #constructorBody += f"transitions['{key[0]}']['{key[1]}'] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
             #constructorBody += f"transitions['{key[0]}'][{symbol}] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
             initTransitionsBody += f"transitions['{key[0]}'][{symbol}] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
 
 #        constructorBody += """
         constructorBody = """
+initTransitions();
 delete tmpStates;
 tmpStates.push(initialState);
 currentStates = e_closure(tmpStates);
@@ -178,12 +179,12 @@ return tmpStates;""",
 
 
 
-##        contract.add_function(Function("getStates",
-##                                [],
-##                                "return states;",
-##                                "public view",
-##                                "string[] memory"))
-##        
+        contract.add_function(Function("getStates",
+                                [],
+                                "return states;",
+                                "public view",
+                                "string[] memory"))
+        
         contract.add_function(Function("getCurrentStates",
                                 [],
                                 "return currentStates;",
@@ -657,7 +658,7 @@ class SmartContractGenerator:
             if t.label and t.label not in transitions_labels:
                 #breakpoint()
                 transitions_labels.add(t.label)
-                constant_name = t.label.replace("!","__S__").replace("?","__R__")
+                constant_name = t.label.replace("!","__S__").replace("?","__R__").replace(",","___")
                 self.contract.add_constant(Constant(constant_name, "uint", constant_value))
                 #init_constants.append(f"uint constant {constant_name} = {constant_value};")
                 init_encode.append((t.label, constant_name))
@@ -779,7 +780,7 @@ return false;""",
                             "pure", 
                             "bool"))
     
-        breakpoint()
+        #breakpoint()
         self.contract.add_function(Function("encodeEvent",
                             [Variable("symbol", "string", "memory")],
 

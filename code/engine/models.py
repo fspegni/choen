@@ -337,7 +337,7 @@ class RunningInstance(models.Model):
         if self.execution_ended:
             raise Exception("Cannot stop the running instance: its execution has been stopped")
 
-        self.execution_ended = timezone.now()
+        #self.execution_ended = timezone.now()
         self.running = False
         self.save()
 
@@ -517,8 +517,14 @@ class EngineOffChain(Engine,models.Model):
             "buffer" : buffer}
         )
 
+    def _parse_event(self, symbol):
+    
+        m = re.match("^([^!?]+)([!?])([^!?]+)$", symbol)
+
+        return m.groups() if m else (None, None, None)
+    
     #def process_input(self, symbol):
-    def process_input(precondition, event, knowledge):
+    def process_input(self, precondition, event, knowledge):
 
         out = None
         #if self._engine.condition_rule_send(event):
@@ -1130,7 +1136,7 @@ class EngineOnChain(Engine,models.Model):
         print(f"Total bytecode to deploy: {len_nfa + len_enforcer} bytes")
 
     
-        breakpoint()
+        #breakpoint()
         # 1. deploy NFA contract
         self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
         print(f"NFA contract deployed ...")    
@@ -1302,7 +1308,7 @@ class EngineOnChain(Engine,models.Model):
 
         }
         print(f"Transaction parameters: {tx}")
-        breakpoint()
+        #breakpoint()
         if (arguments == None):
 #            transaction = contract.constructor().buildTransaction(
             transaction = contract.constructor().build_transaction(tx)
@@ -1311,7 +1317,7 @@ class EngineOnChain(Engine,models.Model):
 #            transaction = contract.constructor(address).build_transaction(
             transaction = contract.constructor(*arguments).build_transaction(tx)
 
-        breakpoint()
+        #breakpoint()
         gas = self.w3.eth.estimate_gas(transaction)
         print(f"Esimated gas: {gas}.")
 #        transaction.update({

@@ -204,6 +204,29 @@ class CmdInit(UICommand):
                 print(f"Choreography {name} already exists ...")
 
 
+class CmdScript(UICommand):
+
+    def execute(self, *args, **kwargs):
+
+
+        ri = self.ui._model.get_object("ri")
+        if not ri:
+            raise Exception("This command is applicable only after starting a running instance")            
+
+        path = args[0] if len(args) > 0 else None
+
+        if not path:
+            raise Exception("Script not passed")
+
+        if not os.path.exists(path):
+            raise Exception(f"Script path does not exist")
+
+        with open(path, "r") as the_script:
+            for line in the_script:
+                ri.enforcer.process_input(line.strip())
+
+   
+
 class CmdDebug(UICommand):
 
     def get_completions(self):
@@ -1151,6 +1174,7 @@ class UI:
             "stop"  : CmdStop(self), #self.cmd_stop,
             "pause"  : CmdPause(self), #self.cmd_stop,
             "debug" : CmdDebug(self), #self.cmd_debug,
+            "script" : CmdScript(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
             "dump"  : CmdDump(self), #self.cmd_dump,
             "random"  : CmdRandom(self), #self.cmd_dump,

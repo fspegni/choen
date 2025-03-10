@@ -253,7 +253,7 @@ class NFA:
 
                 # if it reaches here, no epsilon transition was found in the list of transitions; nothing to do anymore
                 print(f"Iteration no. {idx} : EXIT : # transitions = {len(self.transitions)} ...")
-                breakpoint()
+                #breakpoint()
                 return
     
             except Continue:
