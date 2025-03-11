@@ -535,7 +535,7 @@ class EngineOffChain(Engine,models.Model):
 
 
         #event = f"{actor}{action}{message}"
-        print(f"Precondition: {precondition} - Event: {event} - Knowledge: {knowledge}")
+        print(f"Process: {precondition or 'T'} -> {event}({knowledge or 'nil'})")
 
         #breakpoint()
         if self.condition_rule_send_now(precondition, event):
@@ -554,6 +554,8 @@ class EngineOffChain(Engine,models.Model):
                 # without this check, it does not make sense to implement the rule "Cannot receive" 
         #    out = self._engine.rule_receive_delayed(event)
         elif self.condition_rule_receive_delayed(precondition, event):
+
+            #breakpoint()
             out = self.rule_receive_delayed(precondition, event, knowledge)
         else:
             self._debug_log("(* No matching condition *)")        
@@ -792,7 +794,7 @@ class EngineOffChain(Engine,models.Model):
 
             if len(enabled_transitions) > 0:
 
-                self._debug_log(f"(* Condition rule send now: {precondition} -> {event} *)")
+                self._debug_log(f"(* Condition rule send now *)") #: {precondition or 'T'} -> {event} *)")
                 return True
 
         return False
@@ -811,7 +813,7 @@ class EngineOffChain(Engine,models.Model):
         for curr in self._nfa.states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
             if len(enabled_transitions) > 0:
-                self._debug_log(f"(* Condition rule receive delayed: {precondition} -> {event} *)")
+                self._debug_log(f"(* Condition rule receive delayed *)") #: {precondition or 'T'} -> {event} *)")
                 return True
 
 
@@ -848,7 +850,7 @@ class EngineOffChain(Engine,models.Model):
 
             if len(enabled_transitions) > 0:
 
-                self._debug_log(f"(* Condition rule receive now: {precondition} -> {event} *)")
+                self._debug_log(f"(* Condition rule receive now *)") #: {precondition or 'T'} -> {event} *)")
                 return True
 
         return False
@@ -866,7 +868,7 @@ class EngineOffChain(Engine,models.Model):
         for curr in self._nfa.states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
             if len(enabled_transitions) > 0:
-                self._debug_log(f"(* Condition rule receive delayed: {precondition} -> {event} *)")
+                self._debug_log(f"(* Condition rule receive delayed *)") #: {precondition or 'T'} -> {event} *)")
                 return True
 
         return False #True

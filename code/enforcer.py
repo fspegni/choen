@@ -114,6 +114,7 @@ class Enforcer:
     def process_input(self, symbol): #event_stream : str):
 
         #precondition, actor, action, message, knowledge = self._parse_event(event)
+        #breakpoint()
         precondition, event, knowledge = self._parse_event(symbol)
 
         num_states_pre = self._engine.get_num_states() #en(self._curr_states)
@@ -147,8 +148,12 @@ class Model:
     def __init__(self):
         self._store = {}
 
-    def add_object(self, name, obj):
+    def set_object(self, name, obj):
         self._store[name] = obj
+    
+#    # deprecated
+#    def add_object(self, name, obj):
+#        return self.set_object(name, obj)
 
     def get_object(self, name):
         return self._store.get(name, None)
@@ -204,16 +209,66 @@ class CmdInit(UICommand):
                 print(f"Choreography {name} already exists ...")
 
 
-class CmdScript(UICommand):
+class CmdStep(UICommand):
 
     def execute(self, *args, **kwargs):
 
+        steps = int(args[0]) if len(args) > 0 else None
+
+        if steps and int(steps) <= 0:
+            raise Exception("You must specify a positive number")
+
+        self.execute_steps(steps)
+
+    def execute_steps(self, num_steps):
+        # num_steps == None : execute all the steps of the script
+
+        #breakpoint()
+        if num_steps is not None and num_steps <= 0:
+            raise Exception(f"Expected at least one step to execute. Pass: {num_steps}")
 
         ri = self.ui._model.get_object("ri")
+
         if not ri:
             raise Exception("This command is applicable only after starting a running instance")            
 
+        the_script = self.ui._model.get_object("script")
+
+        script_position = self.ui._model.get_object("script_position")
+
+        if not the_script or script_position is None:
+            raise Exception("This command is applicable only after loading a script")            
+
+        if script_position < 0:
+            raise Exception(f"The position should always be zero or positive. Read: {script_position}")
+
+        script_len = len(the_script)
+
+        while script_position < script_len and (num_steps is None or num_steps > 0):
+
+            line = the_script[script_position].strip()
+            if line[0] == "#":
+                # this is a comment
+                continue
+            try:             
+                ri.enforcer.process_input(line)
+                script_position = script_position + 1
+                num_steps = num_steps - 1 if num_steps is not None else None
+                self.ui._model.set_object("script_position", script_position)
+
+            except Exception as err:
+                print(f"Error executing script: {err}")
+                traceback.print_exc()
+                return
+ 
+
+class CmdScript(CmdStep):
+
+    def execute(self, *args, **kwargs):
+
         path = args[0] if len(args) > 0 else None
+
+        steps = int(args[1]) if len(args) > 1 else None
 
         if not path:
             raise Exception("Script not passed")
@@ -222,10 +277,13 @@ class CmdScript(UICommand):
             raise Exception(f"Script path does not exist")
 
         with open(path, "r") as the_script:
-            for line in the_script:
-                ri.enforcer.process_input(line.strip())
 
-   
+            lines = the_script.readlines()
+            self.ui._model.set_object("script", lines)
+            self.ui._model.set_object("script_position", 0)
+
+        self.execute_steps(steps)
+      
 
 class CmdDebug(UICommand):
 
@@ -483,7 +541,7 @@ class CmdLoadChoreography(UICommand):
 
         try:
             c : Choreography = Choreography.objects.get(name=name)
-            self.ui._model.add_object("choreography", c)
+            self.ui._model.set_object("choreography", c)
             print(f"Choreography '{name}' loaded ...")
         except Choreography.DoesNotExist as e:
             #breakpoint()
@@ -514,7 +572,7 @@ class CmdLoadChoreography(UICommand):
             print(f"KO Choreography {cho_name} : error extracting NFA ({err}), cannot import ...")
             return
 
-        self.ui._model.add_object("choreography", c)
+        self.ui._model.set_object("choreography", c)
         if created:
             print(f"OK Choreography {cho_name} : imported and loaded ...")
         else:
@@ -542,7 +600,7 @@ class CmdPause(UICommand):
         if not ri:
             raise Exception("No running instance to pause")
 
-        self.ui._model.add_object("ri", None)
+        self.ui._model.set_object("ri", None)
 
 class CmdStart(UICommand):
 
@@ -728,7 +786,7 @@ class CmdStart(UICommand):
             ri.save()
             ri = self.setup_offchain_running_instance(ri) #, automaton)
    
-        self.ui._model.add_object("ri", ri)
+        self.ui._model.set_object("ri", ri)
 
 ##        # TODO refactor the following
 ##
@@ -848,7 +906,7 @@ class CmdLoadInstance(CmdStart):
                 # 3. call the setup_onchain/offchain_engine
 
                 # 4. set the running instance
-                self.ui._model.add_object("ri", ri)
+                self.ui._model.set_object("ri", ri)
                 
             except RunningInstance.DoesNotExist as e:
                 print(f"Cannot find running instance {ri_id}")
@@ -951,8 +1009,8 @@ class CmdDump(UICommand):
                     print("You must start the enforcer, before dumping its buffer")
                     return
 
-                for actor,message in self.ui._enforcer.engine.get_buffer_items():
-                    msg = f"* {actor}{message}"
+                for actor,message,precondition,knowledge in self.ui._enforcer.engine.get_buffer_items():
+                    msg = f"* {precondition or 'T'} -> {actor}{message}({knowledge or 'nil'})"
                     print(msg)
             
             elif args[0] == "rei":
@@ -993,17 +1051,19 @@ class CmdDump(UICommand):
                 print(f"\nNo. events: {len(nfa.event_dictionary)}\n")
 
                 #breakpoint()
-                filename_prefix = args[1] if len(args) > 1 else "curr_graph"
+                filename_prefix = args[1] if len(args) > 1 else "dump_nfa_" + c.name
 
                 filename_dot = filename_prefix + ".dot"
                 filename_png = filename_dot + ".png"
             
                 counter = 1
                 while os.path.exists(filename_dot) or os.path.exists(filename_png):
-                    filename_prefix = f"{filename_prefix}_{counter}"
+                    #filename_prefix = f"{filename_prefix}_{counter}"
+                    filename_dot = f"{filename_prefix}_{counter}.dot"
+                    filename_png = f"{filename_prefix}_{counter}.png"
                     counter = counter + 1
-                    filename_dot = filename_prefix + ".dot"
-                    filename_png = filename_dot + ".png"
+                    #filename_dot = filename_prefix + ".dot"
+                    #filename_png = filename_dot + ".png"
         
                 #g.save(filename_dot)
                 g.render(filename_dot, format="png", view=True)
@@ -1175,6 +1235,7 @@ class UI:
             "pause"  : CmdPause(self), #self.cmd_stop,
             "debug" : CmdDebug(self), #self.cmd_debug,
             "script" : CmdScript(self), #self.cmd_debug,
+            "step" : CmdStep(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
             "dump"  : CmdDump(self), #self.cmd_dump,
             "random"  : CmdRandom(self), #self.cmd_dump,
@@ -1317,6 +1378,7 @@ class UI:
         #self._debug_log(f"(* Consume user input: '{userin}' *)")
 #        if not self._enforcer or userin[0] == "/":
 
+        assert len(userin) > 0
         if not self._running or userin[0] == "/":
             if userin[0] == "/":
                 userin = userin[1:]
@@ -1403,7 +1465,9 @@ def cli(*args, **kwargs):
 
         while True:
             try:
-                userin = ui.prompt()
+                userin = ui.prompt().strip()
+                if not userin:  
+                    continue
                 ui.consume(userin)
             except (EOFError, KeyboardInterrupt):
                 break

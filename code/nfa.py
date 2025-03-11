@@ -271,10 +271,10 @@ class NFA:
         g = Digraph(name='curr_graph', filename='curr_graph.gv')
         g.graph_attr["rankdir"] = "LR"
         #g.graph_attr["beautify"] = "true"
-        g.attr("node", shape="point") #, width="0.1")
+        g.attr("node", shape="plain") #, width="0.1")
         for k,s in self._states.items():
 #            print(f"Add node: {s.id} ...")
-            g.node(s.id, label="")
+            g.node(s.id, label=s.id)
 
         g.attr("edge", arrowsize="0.5")
         for source,tr_dict in self._transitions.items():
