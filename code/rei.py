@@ -23,7 +23,14 @@ class REI:
     def latex(self):
         return ""
 
+    def contains(self, rei):
+        return self == rei
 
+    def rtrim(self):
+        return self
+
+    def ltrim(self):
+        return self
 
 
 class Symbol(REI):
@@ -42,6 +49,10 @@ class Symbol(REI):
     @property
     def latex(self):
         return f"\\textit{{{self.symbol}}}"
+
+    def contains(self, rei):
+        return isinstance(rei, Symbol) and rei.symbol == self.symbol
+
 
 class Epsilon(Symbol):
 
@@ -62,6 +73,10 @@ class Start(Symbol):
     def latex(self):
         return "\\hat{}"
 
+    def contains(self, rei):
+        return isinstance(rei, Start) or (isinstance(rei, type) and rei == Start)
+
+
 class End(Symbol):
 
     def __init__(self):
@@ -70,6 +85,10 @@ class End(Symbol):
     @property
     def latex(self):
         return f"\\$"        
+
+    def contains(self, rei):
+        return isinstance(rei, End) or (isinstance(rei, type) and rei == End)
+
 
 class Star(REI):
 
@@ -89,6 +108,13 @@ class Star(REI):
         else:
             return f"({self.rei})^\star"
 
+    def contains(self, rei):
+
+        if isinstance(rei, Star) and self.rei == rei.rei:
+            return True
+        else:
+            return self.rei.contains(rei)
+    
 
 class Conc(REI):
 
@@ -104,10 +130,9 @@ class Conc(REI):
             else:
                 if isinstance(curr, str):
                     curr = Symbol(curr)
-
+    
                 self.items.append(curr)
-
-        # self.items = list(items)
+        
 
     def __str__(self):
         text = ""
@@ -128,6 +153,28 @@ class Conc(REI):
     def latex(self):
         return " \\cdot ".join(map(lambda curr: str(curr.latex) if curr else "", self.items))
 
+    def contains(self, rei):
+        #breakpoint()
+        if not self.items:
+            return False
+
+        if isinstance(rei, Conc) and self.items == rei.items:
+            return True
+        else:
+            for curr in self.items:
+                if curr.contains(rei):
+                    return True
+
+            return False
+
+    def ltrim(self):
+        if isinstance(self.items[0], Start):
+            self.items = self.items[1:]
+
+    def rtrim(self):
+        if isinstance(self.items[-1], End):
+            self.items.pop()
+
 
 class Par(REI):
 
@@ -141,6 +188,17 @@ class Par(REI):
     def latex(self):
         return "(" + " \& ".join(map(lambda curr: curr.latex if curr else "", self.items)) + ")"
 
+    def contains(self, rei):
+
+        if isinstance(rei, Par) and self.items == rei.items:
+            return True
+        else:
+            for curr in self.items:
+                if curr.contains(rei):
+                    return True
+
+            return False
+
 
 class Union(REI):
 
@@ -153,6 +211,18 @@ class Union(REI):
     @property
     def latex(self):
         return "(" + " \\vert ".join(map(lambda curr: curr.latex if curr else "", self.items)) + ")"
+
+    def contains(self, rei):
+
+        if isinstance(rei, Union) and self.items == rei.items:
+            return True
+        else:
+            for curr in self.items:
+                if curr.contains(rei):
+                    return True
+
+            return False
+
 
 
 class NFA:
@@ -230,6 +300,8 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             raise Exception(f"Too many successors: {cho_next}. Expected zero or one.")
 
         if rei_rest:
+            rei_head.rtrim()
+            rei_rest.ltrim()
             return rei.Conc(rei_head, rei_rest), closure
         else:
             return rei_head, closure
@@ -258,6 +330,8 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
                 raise Exception(f"Too many successors: {cho_next}. Expected zero or one.")
 
             if rei_rest:
+                rei_head.rtrim()
+                rei_rest.ltrim()
                 return rei.Conc(rei_head, rei_rest), closure
             else:
                 return rei_head, closure
@@ -290,6 +364,9 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
                 rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
 
             if rei_rest:
+                rei_head.rtrim()
+                rei_rest.ltrim()
+
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
                 return rei_head, match_rest
@@ -322,7 +399,13 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
                 if rei_branch:
                     branches.append(rei_branch)
 
-            rei_head = rei.Star(rei.Union(*branches))
+            if len(branches) == 1:
+                branches[0].rtrim()
+                rei_head = rei.Star(branches[0])
+            else:
+                for b in branches:
+                    b.rtrim()
+                rei_head = rei.Star(rei.Union(*branches))
 
             rei_rest = None
             match_rest = limit_node # was: None
@@ -340,6 +423,10 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             #    return rei_head, match_rest
 
             assert rei_rest != None
+
+            rei_head.rtrim()
+            rei_rest.ltrim()
+
             return rei.Conc(rei_head, rei_rest), match_rest
 
         elif node_type == "GW_PAR_OPEN":
@@ -371,6 +458,10 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
                 rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
 
             if rei_rest:
+
+                rei_head.rtrim()
+                rei_rest.ltrim()
+
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
                 return rei_head, match_rest
@@ -406,6 +497,10 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             #breakpoint()
 
             if rei_rest:
+
+                rei_head.rtrim()
+                rei_rest.ltrim()
+
                 return rei.Conc(rei_head, rei_rest), match_rest
             else:
                 return rei_head, match_rest
