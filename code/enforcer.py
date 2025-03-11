@@ -160,9 +160,15 @@ class Model:
 
 class UICommand:
 
+    _description = ""
+
     def __init__(self, ui):
         assert isinstance(ui, UI)
         self._ui = ui
+
+    @property
+    def description(self):
+        return self._description or ""
 
     @property
     def ui(self):
@@ -211,6 +217,8 @@ class CmdInit(UICommand):
 
 class CmdStep(UICommand):
 
+    _description = "Execute a given number of steps of the already loaded script"
+
     def execute(self, *args, **kwargs):
 
         steps = int(args[0]) if len(args) > 0 else None
@@ -250,8 +258,11 @@ class CmdStep(UICommand):
             if line[0] == "#":
                 # this is a comment
                 continue
-            try:             
-                ri.enforcer.process_input(line)
+            try: 
+                ri.append_input(line)            
+                out = ri.enforcer.process_input(line)
+                if out:
+                    ri.append_output(out)
                 script_position = script_position + 1
                 num_steps = num_steps - 1 if num_steps is not None else None
                 self.ui._model.set_object("script_position", script_position)
@@ -261,8 +272,29 @@ class CmdStep(UICommand):
                 traceback.print_exc()
                 return
  
+class CmdReplay(UICommand):
+
+    _description = "Save the sequence of input events on the running instance on a script file"
+
+    def execute(self, *args, **kwargs):
+
+        path = args[0] if len(args) > 0 else None
+        if not path:
+            raise Exception("Script not passed")
+
+        if os.path.exists(path):
+            raise Exception("Path already exists: {path}. Cannot overwrite at the moment")
+
+        with open(path, "w+") as the_script:
+            for line in self.ui.ri.output_events:
+                the_script.write("line")
+
+        print(f"Script file saved at position: {path}")
+
 
 class CmdScript(CmdStep):
+
+    _description = "Load a script from file (require a running instance already loaded)"
 
     def execute(self, *args, **kwargs):
 
@@ -287,6 +319,8 @@ class CmdScript(CmdStep):
 
 class CmdDebug(UICommand):
 
+    _description = "Activate/deactivate debug mode"
+
     def get_completions(self):
 
         return { "on" : None, "off": None }
@@ -310,24 +344,30 @@ class CmdDebug(UICommand):
 
 class CmdQuit(UICommand):
 
+    _description = "Exit the command line interpreter"
+
     def execute(self, *args, **kwargs):
         raise KeyboardInterrupt()
 
 
 class CmdHelp(UICommand):
+    
+    _description = "Print this help page"
+
     def execute(self, *args, **kwargs):
         print("Available commands: ")
-        print(", ".join(sorted(self.ui._registry.keys())))
 
+        max_len = max(map(lambda name: len(name), self.ui._registry.keys()))
 
-##class CmdEnv(UICommand):
-##
-##    def execute(self, *args, **kwargs):
-##        for k,v in self.ui.env:
-##            print(f"{k} = {v}")
-##
+        for name, cmd in self.ui._registry.items():
+            label = name.ljust(max_len + 2, ".")
+            print(f"/{label} : {cmd.description}")
+        #print(", ".join(sorted(self.ui._registry.keys())))
+
 
 class CmdListInstances(UICommand):
+
+    _description = "List all the running instances loaded in the database"
 
     def execute(self, *args, **kwargs):
 
@@ -340,6 +380,8 @@ class CmdListInstances(UICommand):
                 print(f" * {ri.id} : {ri}")
 
 class CmdListChoreographies(UICommand):
+
+    _description = "List all choreographies loaded in the database"
 
     def execute(self, *args, **kwargs):
 
@@ -360,6 +402,8 @@ class CmdListChoreographies(UICommand):
 
 
 class CmdClear(UICommand):
+
+    _description = "Remove all choreographies"
 
     def execute(self, *args, **kwargs):
 
@@ -391,9 +435,9 @@ class CmdClear(UICommand):
                 break
 
 
-
-
 class CmdRemove(UICommand):
+
+    _description = "Remove the choreography with the given name"
     
     def get_completions(self):
 
@@ -415,6 +459,8 @@ class CmdRemove(UICommand):
                 print(f"Operation interrupted by the user")
 
 class CmdLoadConfiguration(UICommand):
+
+    _description = "Load an existing blockchain configuration from database"
 
     def get_completions(self):
 
@@ -456,6 +502,7 @@ class CmdLoadConfiguration(UICommand):
 
 class CmdGetBalance(UICommand):
 
+    _description = "Return the balance of the wallet address currently configured in the environment"
 
     def get_completions(self):
 
@@ -498,6 +545,8 @@ class CmdGetBalance(UICommand):
 
 class CmdBuildContracts(UICommand):
 
+    _description = "Compile smart contracts from the current choreography"
+    
     def execute(self, name=None, *args, **kwargs):
 
         c : Choreography = self.ui._model.get_object("choreography")
@@ -521,6 +570,8 @@ class CmdBuildContracts(UICommand):
         compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
  
 class CmdLoadChoreography(UICommand):
+
+    _description = "Load a choreography from database"
 
     def get_completions(self):
  
@@ -581,6 +632,8 @@ class CmdLoadChoreography(UICommand):
  
 
 class CmdStop(UICommand):
+
+    _description = "Stop the running instance that is executing right now"
     
     def execute(self, *args, **kwargs):
 
@@ -593,6 +646,8 @@ class CmdStop(UICommand):
  
 class CmdPause(UICommand):
   
+    _description = "Exit from the run-time prompt, without stopping the running instance"
+
     def execute(self, *args, **kwargs):
 
         ri : RunningInstance = self.ui._model.get_object("ri")
@@ -603,6 +658,8 @@ class CmdPause(UICommand):
         self.ui._model.set_object("ri", None)
 
 class CmdStart(UICommand):
+
+    _description = "Create a running instance from the currently loaded choreography"
 
     def setup_onchain_running_instance(self, ri, contract_address): #automaton, contract_address, conf): #onchain_url, onchain_chain_id, onchain_address, onchain_private_key):
         # detect whether a configuration exists with given parameters, otherwise save it
@@ -849,6 +906,8 @@ class CmdStart(UICommand):
 #class CmdLoadInstance(UICommand):   
 class CmdLoadInstance(CmdStart):
 
+    _description = "Load a running instance previously paused and prepare to intereact with it throug the command line"
+
     def get_completions(self):
         d = {}
 
@@ -915,6 +974,8 @@ class CmdLoadInstance(CmdStart):
 
 class CmdRandom(UICommand):
 
+    _description = "Generate random input and pass it to the currently loaded running instance"
+
     def execute(self, *args, **kwargs):
 
         ri = self.ui._model.get_object("ri")
@@ -925,9 +986,15 @@ class CmdRandom(UICommand):
             msg = random_string(10)
             action = random.choice(["?","!"])
             random_event = f"{actor}{action}{msg}"
-            ri.enforcer.process_input(random_event)
+
+            ri.append_input(random_event)
+            out = ri.enforcer.process_input(random_event)
+            if out:
+                ri.append_output(out)
 
 class CmdDump(UICommand):
+
+    _description = "Print information of the currently loaded configuration or the currently running instance"
 
     def get_completions(self):
         d = {
@@ -1110,6 +1177,8 @@ class CmdDump(UICommand):
 
 class CmdStats(UICommand):
 
+    _description = "Print statistics collected during execution"
+
     def execute(self, *args, **kwargs):
         if self.ui._enforcer is None:
             print("You must start the enforcer, before getting statistics")
@@ -1181,6 +1250,8 @@ class CmdSave(UICommand):
 
 class CmdEnv(UICommand):
 
+    _description = "Get/Set/List the environment variables"
+
     def get_completions(self):
         d = {}
         for k,v in self.ui.env:
@@ -1236,6 +1307,7 @@ class UI:
             "debug" : CmdDebug(self), #self.cmd_debug,
             "script" : CmdScript(self), #self.cmd_debug,
             "step" : CmdStep(self), #self.cmd_debug,
+            "replay" : CmdReplay(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
             "dump"  : CmdDump(self), #self.cmd_dump,
             "random"  : CmdRandom(self), #self.cmd_dump,
