@@ -287,7 +287,7 @@ class CmdReplay(UICommand):
 
         with open(path, "w+") as the_script:
             for line in self.ui.ri.output_events:
-                the_script.write("line")
+                the_script.write(line + "\n")
 
         print(f"Script file saved at position: {path}")
 
