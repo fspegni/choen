@@ -125,3 +125,79 @@ class MPSTTestCase(TestCase):
         str(me3)       
 
 
+    def test_global_type_with_no_transforms(self):
+
+        v1 = StateVar("v1")
+        g = GlobalType(v1)
+
+        self.assertTrue(isinstance(g.transforms, list))
+        self.assertEqual(len(g.transforms), 0)
+
+
+    def test_global_type_with_initial_transforms(self):
+
+        v1 = StateVar("v1")
+        v2 = StateVar("v2")
+        v3 = StateVar("v3")
+
+        me1 = MsgExc("a", "b", "foo", str)
+        me2 = MsgExc("a", "b", "fie", bool)
+
+        c1 = Concat(me1, v2)
+        c2 = Concat(me2, v3)
+
+        v4 = StateVar("v4")
+
+        f = Fork(c1,c2)
+        j = Join(v2,v3)
+
+        t_f = Transform(v1, f)
+        t_j = Transform(j, v4)
+
+        g = GlobalType(v1, [t_f, t_j])
+
+        self.assertTrue(isinstance(g.transforms, list))
+        self.assertEqual(len(g.transforms), 2)
+
+
+    def test_global_types_examples(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+
+        m1 = MsgExc("Alice", "Bob", "Msg", (int, bool))
+
+        t1 = Transform(x0, Concat(m1, x1))
+
+        #breakpoint()
+        t2 = Transform(x1, End())
+        
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2])
+        str(g)
+
+    def test_globa_types_json_export(self):
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+
+        m1 = MsgExc("Alice", "Bob", "Msg", (int, bool))
+
+        t1 = Transform(x0, Concat(m1, x1))
+
+        #breakpoint()
+        t2 = Transform(x1, End())
+        
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2])
+        j = g.to_json()
+
+        self.assertTrue(isinstance(j, dict))
+
+        self.assertTrue("type" in j)
+        self.assertTrue(j["type"] == "GlobalType")
+
+        self.assertTrue("initial" in j)
+        self.assertTrue(j["initial"] == x0.to_json())
+
+        self.assertTrue("transforms" in j)
+        self.assertEqual(len(j["transforms"]), 2)

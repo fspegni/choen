@@ -16,6 +16,10 @@ class StateVar:
     def participants(self):
         return set([])
 
+    def to_json(self):
+
+        return str(self._identifier)
+
 
 class Composition:
 
@@ -38,29 +42,32 @@ class Composition:
         #breakpoint()
         return set(reduce(lambda a,b: a.participants.union(b.participants), self._arguments))
 
+    def to_json(self):
+        return { "type": self.__class__.__name__, "op": self._op, "arguments": list(map(lambda c: c.to_json(), self._arguments)) }
+
 
 class Fork(Composition):
 
     def __init__(self, *arguments):
-        super().__init__("*", *arguments)
+        super().__init__("|{", *arguments)
 
 
 class Join(Composition):
 
     def __init__(self, *arguments):
-        super().__init__("%", *arguments)
+        super().__init__("}|", *arguments)
 
 
 class Choice(Composition):
 
     def __init__(self, *arguments):
-        super().__init__("+", *arguments)
+        super().__init__("+{", *arguments)
 
 
 class Merge(Composition):
 
     def __init__(self, *arguments):
-        super().__init__("-", *arguments)
+        super().__init__("}+", *arguments)
 
 
 class MsgExc:
@@ -76,7 +83,6 @@ class MsgExc:
                     raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
         elif not isinstance(payload, type):
             raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
-
         self._sender = sender
         self._receiver = receiver
         self._label = label
@@ -84,11 +90,28 @@ class MsgExc:
         #self._continuation = continuation
 
     def __str__(self):
-        return f"{self._sender} -> {self._receiver} : {self._label} <{self._payload}>"
+        payload = "N/N"
 
-    @property
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+    
+        return f"{self._sender} -> {self._receiver} : {self._label} <{payload}>"
+
+    @property 
     def participants(self):
         return set([self._sender, self._receiver])
+
+    def to_json(self):
+        payload = ""
+
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+
+        return { "type": self.__class__.__name__, "sender": self._sender, "receiver": self._receiver, "label": self._label, "payload": payload }
 
 
 class Concat(Composition):
@@ -98,7 +121,16 @@ class Concat(Composition):
 
     def __str__(self):
 
-        return ";".join(map(str, self._arguments))
+        return "; ".join(map(str, self._arguments))
+
+
+class End:
+
+    def __str__(self):
+        return "end"
+
+    def to_json(self):
+        return "end"
 
 
 class Transform:
@@ -124,13 +156,40 @@ class Transform:
         return self._lhs.participants.union(self._rhs.participants)
 
 
+    def to_json(self):
+
+        return { "type": self.__class__.__name__, "lhs": self._lhs.to_json(), "rhs": self._rhs.to_json() }
+
+
+
 class GlobalType:
 
-    def __init__(self, initial : StateVar, transforms):
+    def __init__(self, initial : StateVar, transforms : list = []):
         self._initial = initial
+
+        if transforms:
+            for curr in transforms:
+                if not isinstance(curr, Transform):
+                    raise Exception(f"Expected list of transformations. Received: {transforms}")
+            
         self._transforms = transforms
     
     @property
     def participants(self):
         return set(map(lambda c: c.participants, self._transforms))
 
+    @property
+    def transforms(self):
+        return self._transforms
+
+    def add_transform(self, t : Transform):
+        self._transforms.append(t)
+
+
+    def __str__(self):
+
+        return "def { " + "; ".join(map(lambda c: f"[{c}]", self._transforms)) +  " }  in {self._initial}" 
+
+    def to_json(self):
+        
+        return { "type": self.__class__.__name__, "initial": self._initial.to_json(), "transforms": list(map(lambda c: c.to_json(), self._transforms))  } 
