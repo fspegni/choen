@@ -668,6 +668,8 @@ class CmdStart(UICommand):
         if not ri.blockchain_configuration:
             raise Exception("The running instance is supposed to have a non-null blockchain configuration at this stage")
 
+
+
         try:
             engine = ri.engineonchain
     
@@ -679,6 +681,16 @@ class CmdStart(UICommand):
 
         except Exception:
             engine = EngineOnChain.create_engine(ri) #automaton, conf)
+
+        assert engine is not None
+
+        log_file = self.ui.get_env("LOG_FILE", None)
+        if log_file:
+            if not os.path.exists(log_file):
+                with open(log_file, 'w', encoding="utf-8") as f:
+                    f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
+
+            engine.set_log_file(log_file)
 
         #breakpoint()
         if contract_address:
@@ -769,6 +781,12 @@ class CmdStart(UICommand):
         except Exception:
             engine = EngineOffChain.create_engine(ri) #automaton)
 
+        assert engine is not None
+        
+        log_file = self.ui.get_env("LOG_FILE", None)
+        if log_file:
+            engine.set_log_file(log_file)
+
         enforcer = Enforcer(engine)
         ri.set_enforcer(enforcer)
         ri.save()
@@ -787,9 +805,6 @@ class CmdStart(UICommand):
         if not cho:
             raise Exception("You must load a choreography or start a choreography")
 
-        if not os.path.exists("log.txt"):
-            with open(f'log.txt', 'w', encoding="utf-8") as f:
-                f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
     
         #breakpoint()
 
@@ -902,6 +917,19 @@ class CmdStart(UICommand):
 ##
 ##
 
+class CmdLogOnOff(UICommand):
+
+    _description = "Activate/deactivate writing operations on log file"
+
+    def execute(self, on_off=None, log_file=None, *args, **kwargs):
+        if on_off is None:
+            print(f"LOG_FILE: {self.ui.get_env('LOG_FILE', '')}")
+        elif on_off == "on":
+            self.ui.set_env("LOG_FILE", log_file or "choen.log")
+        elif on_off == "off":
+            self.ui.set_env("LOG_FILE", None)
+        else:
+            print(f"Value not recognized: {on_off}")
 
 #class CmdLoadInstance(UICommand):   
 class CmdLoadInstance(CmdStart):
@@ -1258,28 +1286,44 @@ class CmdEnv(UICommand):
             d[k] = None
         return d
 
-    def execute(self, *args, **kwargs):
+    def execute(self, *args, rest=""): #**kwargs):
 
         n_args = len(args)
         
         if n_args == 0:
 #            print(f"Please, specify an argument: {self.get_completions().keys()}")
+
+
+            #breakpoint()
+            max_len = max(map(len, self.ui.env_keys)) + 3
             for k,v in self.ui.env:
-                if "PRIVATE" in k and v is not None:
-                    v = "*" * len(v) # hide private variables
+                v = self.ui.display_env(k)
+                print(f"{k.ljust(max_len,'.')} = {v}")
 
-                print(f"{k} = {v}")
+#        elif self.ui.has_env(args[0]):
+#            if len(args) > 1:
+#                self.ui.set_env(args[0], args[1])
+#            else:
+#                v = self.ui.get_env(args[0])
+#                if "PRIVATE" in args[0]:
+#                    v = "*" * len(v)
+#                print(f"{args[0]} = {v}")
+#        else:
+        elif n_args == 1:
+            k = args[0]
+            v = self.ui.get_env(k, default=None)
+            print(f"{k} = {v}")
 
-        elif self.ui.has_env(args[0]):
-            if len(args) > 1:
-                self.ui.set_env(args[0], args[1])
-            else:
-                v = self.ui.get_env(args[0])
-                if "PRIVATE" in args[0]:
-                    v = "*" * len(v)
-                print(f"{args[0]} = {v}")
-        else:
-            print(f"Attribute not recognized ({args[0]}). Available attributes: {', '.join(self.get_completions().keys())}")
+        elif n_args > 1:
+
+            k = args[0]
+            if not rest:
+                raise Exception(f"Unexpected command: missing value for key: {k}")
+
+            value = rest.replace(k, "").strip()
+
+            self.ui.set_env(k, value)
+#            print(f"Attribute not recognized ({args[0]}). Available attributes: {', '.join(self.get_completions().keys())}")
 
 
 class UI:
@@ -1301,6 +1345,7 @@ class UI:
 #            "load"  : CmdLoadChoreography(self), #self.cmd_load,
             "load_choreography"  : CmdLoadChoreography(self), #self.cmd_load, # FS redundant but more familiar name
             "load_instance": CmdLoadInstance(self),
+            "log" : CmdLogOnOff(self), # self.cmd_start,
             "start" : CmdStart(self), # self.cmd_start,
             "stop"  : CmdStop(self), #self.cmd_stop,
             "pause"  : CmdPause(self), #self.cmd_stop,
@@ -1376,12 +1421,38 @@ class UI:
     def env(self):
         return self._env.items()
 
+    @property
+    def env_keys(self):
+        return self._env.keys()
+
+    def _expand(self, text):
+
+        if not isinstance(text, str):
+            return text
+
+        ctx = { k : str(v) for k,v in self._env.items() }
+        ctx["NOW"] = datetime.now().isoformat()
+    
+        #breakpoint()
+        text = re.sub(r'{([^}]+)}', lambda k: ctx.get(k.group(1).upper(), "")  ,text) #str(ctx[v]), text)
+        return text       
+
+    def display_env(self, key, default=None):
+
+        v = self.get_env(key, default)
+        if "PRIVATE" in key and v is not None:
+            v = "*" * len(v) # hide private variables
+
+        return v
+
     def get_env(self, key, default=None):
         #breakpoint()
-        return self._env.get(key, default)
+        value = self._env.get(key.upper(), default)
+
+        return self._expand(value)
 
     def set_env(self, key, value):
-        self._env[key] = value
+        self._env[key.upper()] = self._expand(value)
 
     def has_env(self, key):
         return key in self._env
@@ -1461,15 +1532,24 @@ class UI:
 
     def _consume_command(self, userin : str):
 
-        userin_parts = userin.split(" ")
+        #userin_parts = userin.split(" ")
+        userin_parts = userin.split(" ", 1) # split only the first item
+
         cmd = userin_parts[0]
-        cmd_args = userin_parts[1:]
+        #cmd_args = userin_parts[1:]
+
+        rest = None
+        cmd_args = []
+
+        if len(userin_parts) > 1:
+            rest = userin_parts[1] 
+            cmd_args = rest.split(" ")
 
         #print(f"Execute: {cmd}")
         handler = self._registry.get(cmd, None)
 
         if handler:
-            handler.execute(*cmd_args)
+            handler.execute(*cmd_args, rest=rest)
         else:
             print(f"ERROR: Command not recognized: {cmd} {' ' .join(cmd_args)}")
 

@@ -19,7 +19,7 @@ class StateVar:
 
 class Composition:
 
-    def __init__(self, op : str, arguments):
+    def __init__(self, op : str, *arguments):
         self._op = op
         self._arguments = arguments
 
@@ -41,34 +41,41 @@ class Composition:
 
 class Fork(Composition):
 
-    def __init__(self, arguments):
-        super().__init__("*", arguments)
+    def __init__(self, *arguments):
+        super().__init__("*", *arguments)
 
 
 class Join(Composition):
 
-    def __init__(self, arguments):
-        super().__init__("%", arguments)
+    def __init__(self, *arguments):
+        super().__init__("%", *arguments)
 
 
 class Choice(Composition):
 
-    def __init__(self, arguments):
-        super().__init__("+", arguments)
+    def __init__(self, *arguments):
+        super().__init__("+", *arguments)
 
 
 class Merge(Composition):
 
-    def __init__(self, arguments):
-        super().__init__("-", arguments)
+    def __init__(self, *arguments):
+        super().__init__("-", *arguments)
 
 
 class MsgExc:
 
-    def __init__(self, sender: str, receiver: str, label: str, payload): #, continuation : StateVar):
+    def __init__(self, sender: str, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
 
         if sender == receiver:
             raise Exception("Sender and receiver cannot be the same. Passed: {sender}")
+
+        if isinstance(payload, (list,tuple)):
+            for curr in payload:
+                if not isinstance(curr, type):
+                    raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+        elif not isinstance(payload, type):
+            raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
 
         self._sender = sender
         self._receiver = receiver
@@ -86,8 +93,12 @@ class MsgExc:
 
 class Concat(Composition):
 
-    def __init__(self, lhs : MsgExc, rhs):
-        super().__init__(";", [ lhs, rhs ])
+    def __init__(self, *args): #lhs : MsgExc, rhs):
+        super().__init__(";", *args) #[ lhs, rhs ])
+
+    def __str__(self):
+
+        return ";".join(map(str, self._arguments))
 
 
 class Transform:

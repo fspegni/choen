@@ -355,6 +355,16 @@ class Engine:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._nfa = None
+        self._log_file = None
+
+
+    @property
+    def log_file(self):
+        return self._log_file
+
+    def set_log_file(self, log_file):
+        self._log_file = log_file
+        
 
     @property
     def nfa(self):
@@ -1255,10 +1265,11 @@ class EngineOnChain(Engine,models.Model):
         return abi, bytecode
 
     def __log(self, contractAddress, gasUsed, cost, executionTime, type = None):
-        with open(f'log.txt', 'a', encoding="utf-8") as f:
-                f.write(f"{self._runID};{self.chain_id};{timezone.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
-                #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
-                #f.write("\n")
+        if self.log_file:
+            with open(self.log_file, 'a', encoding="utf-8") as f:
+                    f.write(f"{self._runID};{self.chain_id};{timezone.now()};{type};{contractAddress};{gasUsed};{cost};{executionTime}\n")
+                    #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
+                    #f.write("\n")
     
     def __add_statistics(self, contractAddress, gasUsed, cost, executionTime, type = None):
         #breakpoint()
@@ -1291,7 +1302,7 @@ class EngineOnChain(Engine,models.Model):
         nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
         #nonce = self.w3.get_nonce() # TODO apparently the get_nonce(...) method is not working for me ...
 #        gas_price = self.w3.eth.gas_price
-        gas_price = self.w3.to_wei('10', 'gwei')
+        gas_price = self.w3.to_wei('30', 'gwei') # TODO was: 10 gwei
 
         block_gas_limit = self.w3.eth.get_block("latest")["gasLimit"]
         print(f"Block Gas Limit: {block_gas_limit}")
