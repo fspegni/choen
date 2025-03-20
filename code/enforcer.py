@@ -141,7 +141,7 @@ class Enforcer:
 
 from enforcer import *
 from bpmn_parser.models import *
-
+from mpst.models import MPST
 
 class Model:
 
@@ -569,6 +569,59 @@ class CmdBuildContracts(UICommand):
 
         compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
  
+class CmdLoadMPST(UICommand):
+
+    _description = "Load a Multi-Party Session Type from database"
+
+    def execute(self, name=None, *args, **kwargs):
+
+        if not name:
+            print("Please, specify a MPST to load. Available MPSTs:")
+            #available = "\n".join(map(lambda c: f"* {c.name}", Choreography.objects.all()))
+            available = "TODO" # TODO
+            print(available)
+            return
+
+        try:
+            c : MPST = MPST.objects.get(name=name)
+            self.ui._model.set_object("choreography", c)
+            print(f"MPST '{name}' loaded ...")
+        except Exception as e: # MPST.DoesNotExist as e:
+            #breakpoint()
+            if os.path.exists(name):
+                if os.path.isfile(name):
+                    self.import_file(name)
+                else:
+                    # recursively scan directory
+                    for filename in glob.iglob(name + '/**/*.mpst', recursive=True):
+                        self.import_file(filename)
+
+            else:
+                print(f"Cannot find MPST {name}")
+
+    def import_file(self, name):
+        #breakpoint()
+        mpst_name = os.path.basename(name).rsplit(".",1)[0]
+        attribs = {
+            "name": mpst_name,
+            "resource": File(open(name)),
+        }
+        c, created = MPST.objects.get_or_create(name=mpst_name, defaults=attribs)
+
+        try:
+            c.to_nfa()
+        except Exception as err:
+            traceback.print_exc()
+            print(f"KO MPST {mpst_name} : error extracting NFA ({err}), cannot import ...")
+            return
+
+        self.ui._model.set_object("choreography", c)
+        if created:
+            print(f"OK MPST {mpst_name} : imported and loaded ...")
+        else:
+            print(f"OK MPST {mpst_name} : already exists and has been loaded ...")
+ 
+
 class CmdLoadChoreography(UICommand):
 
     _description = "Load a choreography from database"
@@ -1343,6 +1396,7 @@ class UI:
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
 #            "load"  : CmdLoadChoreography(self), #self.cmd_load,
+            "load_mpst"  : CmdLoadMPST(self), #self.cmd_load, # FS redundant but more familiar name
             "load_choreography"  : CmdLoadChoreography(self), #self.cmd_load, # FS redundant but more familiar name
             "load_instance": CmdLoadInstance(self),
             "log" : CmdLogOnOff(self), # self.cmd_start,

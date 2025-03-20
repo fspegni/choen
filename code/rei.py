@@ -1,5 +1,5 @@
 from bpmn_parser.models import Choreography, ElementType
-# import re
+from mpst.models import MPST, GlobalType
 
 def expect_node_type(cho:Choreography, node:ElementType, ntypes, limit_node=None):
 
@@ -590,3 +590,10 @@ def render_send_receive (cho:Choreography, node:ElementType):
 ##
 ##    return Symbol(symbol)
         
+def MPSTToRei(mpst:MPST, handle_task=None, node: dict = None):
+    import rei
+
+    if not node:
+
+        print(mpst.root)
+            

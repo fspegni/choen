@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'corsheaders',
     
     'bpmn_parser', 
+    'mpst',
     'engine',
 ]
 

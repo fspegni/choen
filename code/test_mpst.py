@@ -160,7 +160,7 @@ class MPSTTestCase(TestCase):
         self.assertEqual(len(g.transforms), 2)
 
 
-    def test_global_types_examples(self):
+    def test_global_types_example_1(self):
 
         x0 = StateVar("x0")
         x1 = StateVar("x1")
@@ -175,6 +175,30 @@ class MPSTTestCase(TestCase):
         #breakpoint()
         g = GlobalType(x0, [t1, t2])
         str(g)
+
+    def test_global_types_example_2(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4, t5])
+        str(g)
+
+
 
     def test_globa_types_json_export(self):
         x0 = StateVar("x0")
@@ -201,3 +225,7 @@ class MPSTTestCase(TestCase):
 
         self.assertTrue("transforms" in j)
         self.assertEqual(len(j["transforms"]), 2)
+
+        # to_json() can be serialized
+        import json
+        self.assertTrue(isinstance(json.dumps(j), str))
