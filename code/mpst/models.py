@@ -20,6 +20,9 @@ class StateVar:
         else:
             return False
 
+    def __contains__(self, other):
+        return self.__eq__(other)
+
     @property
     def identifier(self):
         return self._identifier
@@ -68,7 +71,7 @@ class Composition(object):
 
     def __contains__(self, other):
     
-        print(f"{other} vs. {self} ...")
+        #print(f"{other} vs. {self} ...")
         if other is None:
             return False
         
@@ -370,7 +373,7 @@ class GlobalType:
 
         while True:
             try:
-                found = next(t for t in self._transforms if t.lhs == state_var)
+                found = next(t for t in self._transforms if t.lhs == state_var or state_var in t.lhs)
             except StopIteration:
                 # no matching item found at the end of the iteration
                 break

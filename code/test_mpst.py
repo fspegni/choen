@@ -280,4 +280,33 @@ class MPSTTestCase(TestCase):
         self.assertEqual(len(g.get_thread(x3)), 1)
         self.assertEqual(len(g.get_thread(x4)), 0)
 
-        
+ 
+    def test_get_threads_with_structure(self):
+ 
+        # prepare more complex structure, from example 2
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4, t5])
+      
+        # assert properties of threads
+
+        self.assertEqual(len(g.get_thread(x0)), 1)
+        #breakpoint()
+        self.assertEqual(len(g.get_thread(x1)), 2)
+        self.assertEqual(len(g.get_thread(x2)), 2)
+        self.assertEqual(len(g.get_thread(x5)), 1)
