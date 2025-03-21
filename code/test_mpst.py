@@ -1,5 +1,5 @@
 from django.test import TestCase
-from mpst import *
+from mpst.models import *
 
 class MPSTTestCase(TestCase):
 
@@ -229,3 +229,55 @@ class MPSTTestCase(TestCase):
         # to_json() can be serialized
         import json
         self.assertTrue(isinstance(json.dumps(j), str))
+
+
+    def test_compute_participants(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+
+        m1 = MsgExc("Alice", "Bob", "Msg", (int, bool))
+        m2 = MsgExc("Bob", "Charlie", "Msg", (int, bool))
+        m3 = MsgExc("Charlie", "Dan", "Msg", (int, bool))
+
+        t1 = Transform(x0, Concat(m1, x1))
+        t2 = Transform(x1, Concat(m2, x2))
+        t3 = Transform(x2, Concat(m3, x3))
+        t4 = Transform(x3, End())
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4])
+ 
+        self.assertEqual(g.participants, set(["Alice", "Bob", "Charlie", "Dan"]))
+
+
+    def test_get_threads_simple(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+
+        m1 = MsgExc("Alice", "Bob", "Msg", (int, bool))
+        m2 = MsgExc("Bob", "Charlie", "Msg", (int, bool))
+        m3 = MsgExc("Charlie", "Dan", "Msg", (int, bool))
+
+        t1 = Transform(x0, Concat(m1, x1))
+        t2 = Transform(x1, Concat(m2, x2))
+        t3 = Transform(x2, Concat(m3, x3))
+        t4 = Transform(x3, End())
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4])
+ 
+        #breakpoint()
+        self.assertEqual(len(g.get_thread(x0)), 4)
+        self.assertEqual(len(g.get_thread("x0")), 4)
+        self.assertEqual(len(g.get_thread(x3)), 1)
+        self.assertEqual(len(g.get_thread(x4)), 0)
+
+        
