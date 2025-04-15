@@ -310,3 +310,65 @@ class MPSTTestCase(TestCase):
         self.assertEqual(len(g.get_thread(x1)), 2)
         self.assertEqual(len(g.get_thread(x2)), 2)
         self.assertEqual(len(g.get_thread(x5)), 1)
+
+
+    def test_state_vars_simple(self):
+
+        # prepare more complex structure, from example 2
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        self.assertEqual(t1.lhs_vars, set([x0]))
+        self.assertEqual(t1.rhs_vars, set([x1,x2]))
+
+        self.assertEqual(t2.lhs_vars, set([x1]))
+        self.assertEqual(t2.rhs_vars, set([x3]))
+
+        self.assertEqual(t3.lhs_vars, set([x2]))
+        self.assertEqual(t3.rhs_vars, set([x4]))
+
+        self.assertEqual(t4.lhs_vars, set([x3,x4]))
+        self.assertEqual(t4.rhs_vars, set([x5]))
+
+        self.assertEqual(t5.lhs_vars, set([x5]))
+        self.assertEqual(t5.rhs_vars, set([]))
+
+
+
+    def test_well_formedness(self):
+
+        # prepare more complex structure, from example 2
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4, t5])
+ 
+        g.check_wellformed()
+

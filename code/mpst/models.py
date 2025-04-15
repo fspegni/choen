@@ -20,6 +20,9 @@ class StateVar:
         else:
             return False
 
+    def __hash__(self):
+        return hash(self._identifier)
+
     def __contains__(self, other):
         return self.__eq__(other)
 
@@ -123,6 +126,21 @@ class Composition(object):
 
     def to_json(self):
         return { "type": self.__class__.__name__, "op": self._op, "arguments": list(map(lambda c: c.to_json(), self._arguments)) }
+
+    @property
+    def state_vars(self):
+        res = []
+        for idx, curr in enumerate(self._arguments):
+            if isinstance(curr, StateVar):
+                res.append(curr)
+            elif isinstance(curr, Composition):
+                res.extend(curr.state_vars)
+            elif isinstance(curr, MsgExc):
+                pass
+            else:
+                raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
+
+        return set(res)
 
     @staticmethod
     def parse(obj):
@@ -249,6 +267,10 @@ class End:
     def participants(self):
         return set([])
 
+    @property
+    def state_vars(self):
+        return set()
+
 
 class Transform:
 
@@ -271,6 +293,21 @@ class Transform:
     @property
     def participants(self):
         return self._lhs.participants.union(self._rhs.participants)
+
+    @property
+    def lhs_vars(self):
+        if isinstance(self._lhs, StateVar):
+            return set([ self._lhs ])
+        else:
+            return self._lhs.state_vars
+
+    @property
+    def rhs_vars(self):
+        if isinstance(self._rhs, StateVar):
+            return set([ self._rhs ])
+        else:
+            return self._rhs.state_vars
+
 
 
     def to_json(self):
@@ -328,6 +365,59 @@ class GlobalType:
     @property
     def transforms(self):
         return self._transforms
+
+    def check_wellformed(self):
+
+        num_ends = 0
+        num_initials = 0
+        num_state_vars_in_lhs = {}
+        num_state_vars_in_rhs = {}
+
+        for t in self._transforms:
+
+            if isinstance(t.lhs, Composition):      
+                for a in t.lhs.arguments:
+                    if isinstance(a, End):
+                        raise Exception(f"End is not expected in lhs of a composition. Found: {t}")
+
+            if isinstance(t.rhs, Composition):
+                for a in t.rhs.arguments:
+                    if isinstance(a, End):
+                        num_ends = num_ends + 1
+            elif isinstance(t.rhs, End):
+                num_ends = num_ends + 1
+
+            for v in t.lhs_vars:
+                num_in_lhs = num_state_vars_in_lhs.get(v.identifier, 0)
+                num_state_vars_in_lhs[v.identifier] = num_in_lhs + 1
+
+                if v == self._initial:
+                    num_initials = num_initials + 1
+
+            for v in t.rhs_vars:
+                num_in_rhs = num_state_vars_in_rhs.get(v.identifier, 0)
+                num_state_vars_in_rhs[v.identifier] = num_in_rhs + 1
+
+        # unambiguity
+        for v, num_occurrences in num_state_vars_in_lhs.items():
+            if num_occurrences != 1:
+                raise Exception(f"State variable is ambiguous (total occurrences: {num_occurrences})")
+
+        for v, num_occurrences in num_state_vars_in_rhs.items():
+            if num_occurrences != 1:
+                raise Exception(f"State variable is ambiguous (total occurrences: {num_occurrences})")
+
+        # unique start
+        if num_initials != 1:
+            raise Exception(f"Non unique start for initial variable: {self._initial} (total occurrences: {num_initials})")
+
+        # unique end
+        if num_ends != 1:
+            raise Exception(f"Non unique end found (total occurrences: {num_ends})")
+
+        # thread correctness
+        pass # TODO the last part is more complex, see Appendix 2 
+
 
     def add_transform(self, t : Transform):
         self._transforms.append(t)
