@@ -352,6 +352,10 @@ class Transform:
         return f"{self._lhs} = {self._rhs}"
 
     @property
+    def is_end(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, End)
+
+    @property
     def is_passthrough(self):
         return isinstance(self._lhs, StateVar) and isinstance(self._rhs, StateVar)
 
@@ -712,7 +716,7 @@ class GlobalType:
                     x3 = t.rhs
 
                     t1 = g1.find_transform(lhs=x3, such_that=lambda t: t.is_merge)
-                    if t1 is not None:
+                    if t1 is not None and t1 != t: # NB t1 != t is an additional criterium I've added, double-check
                         # [merge-comm] TODO not tested
                         y3, y4 = t1.lhs.arguments
                         y5 = t1.rhs
@@ -785,12 +789,22 @@ class GlobalType:
 
         # thread correctness
         g1 = self.simplify()
-        if len(g1.transforms) > 1:
-            raise Exception(f"Threads do not meet correctness criteria after simplification: multual recursion in state variable definitions")
-        elif len(g1.transforms) == 0:
+        #if len(g1.transforms) > 1:
+        #    raise Exception(f"Threads do not meet correctness criteria after simplification: mutual recursion in state variable definitions")
+        if len(g1.transforms) == 0:
             raise Exception(f"Threads do not meet correctness criteria: no transforms after simplification")
-        elif g1.transforms[0].lhs != g1.initial:
-            raise Exception(f"The end state is not reachable from the initial state")
+        
+        #elif g1.transforms[0].lhs != g1.initial:
+        #    raise Exception(f"The end state is not reachable from the initial state")
+        
+        if len(g1.transforms) == 1 and g1.transforms[0].is_end and g1.transforms[0].lhs == g1.initial:
+            # basic form: { x0 = end }
+            pass
+        else:
+            # mutually recursive form, e.g. { x1 + x2 = x3 ; x3 + x4 = x5 ; ... ; x_n + x_n+1 = x1 }
+            for t in g1.transforms:
+                if not t.is_merge:
+                    raise Exception(f"Expected mutually recursive choices. Found: {g1}")
 
 
     def add_transform(self, t : Transform):

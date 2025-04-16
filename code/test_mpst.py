@@ -663,7 +663,7 @@ class MPSTTestCase(TestCase):
         g = GlobalType(x0, [t1, t2 ])
 
         g.set_debug(True)
-        breakpoint()
+        #breakpoint()
         g.check_wellformed()
 
        
