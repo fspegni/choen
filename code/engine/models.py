@@ -1201,11 +1201,17 @@ class EngineOnChain(Engine,models.Model):
 
 
     def get_execution_ended(self):
-        end_time = self.w3.eth.contract(
-                address = self.enforcer_address,
-                abi = self.enforcer_abi
-            ).functions.getEndTime().call()    
-        return datetime.fromtimestamp(end_time) if end_time else None
+        try:
+            end_time = self.w3.eth.contract(
+                    address = self.enforcer_address,
+                    abi = self.enforcer_abi
+                ).functions.getEndTime().call()    
+        
+            return datetime.fromtimestamp(end_time) if end_time else None
+        except Exception:
+            print(f"Error invoking smart contract function:")
+            traceback.print_exc()
+            return None
 
     @property
     def w3(self) -> Web3:

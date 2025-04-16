@@ -140,6 +140,26 @@ class Constructor(Function):
 }}
 """
 
+class Enum(Compileable):
+
+    def __init__(self, name : str, values : list):
+        self._name = name
+        self._values = values
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def values(self):
+        return self._values
+
+    def compile(self):
+        #breakpoint()
+        enum_body = ",\n    ".join(map(str, self.values))
+        text = "enum " + self.name + " {\n    " + enum_body + "\n}\n"
+        return str(text)
+
 class Contract(Compileable):
 
     def __init__(self, name):#, version):
@@ -211,6 +231,9 @@ class Contract(Compileable):
             raise Exception(f"A structure with name {name} already exists")
     
         self._structures[name] = text
+
+    def add_enum(self, c : Enum): 
+        self._enums.append(c)
 
     def add_constructor(self, c : Constructor):
         if len(self._constructor) > 0:
@@ -326,9 +349,17 @@ class SmartContract(Compileable):
         self._libraries : dict = {}
         self._contracts : dict = {}
         self._verbatim : str = ""
+        self._enums : list = []
 
     def add_verbatim(self, verbatim):
         self._verbatim = verbatim
+
+    def add_enum(self, enum : Enum):
+        self._enums.append(enum)
+
+    @property
+    def enumerations(self):
+        return self._enums
 
     @property
     def constants(self):
@@ -390,7 +421,10 @@ class SmartContract(Compileable):
         functions_text = "\n".join(map(lambda f: f.compile()+"\n", self.functions)) 
         constants_text = "\n".join(map(lambda c: c.compile()+"\n", self.constants)) 
         contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
-    
+        #breakpoint()
+        enums_text = "\n".join(map(lambda c: c.compile()+"\n", self.enumerations))    
+
+
         verbatim = self._verbatim       
         smart_contract_text = f"""
 // SPDX-Licence-Identiier: CC-BY-NC-4.0	
@@ -401,6 +435,8 @@ pragma abicoder v2;
 {verbatim}
 
 {imports_text}
+
+{enums_text}
 
 {constants_text}
 

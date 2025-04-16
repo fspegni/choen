@@ -4,7 +4,7 @@ from functools import reduce
 import json
 from django.conf import settings
 from collections import defaultdict
-
+import copy
 
 
 class StateVar:
@@ -70,7 +70,10 @@ class Composition(object):
 
     def __init__(self, op : str, *arguments):
         self._op = op
-        self._arguments = arguments
+        self._arguments = list(arguments)
+
+        if len(self._arguments) < 2:
+            raise Exception("At least two arguments are expected for any instance of Composition")
 
     def __contains__(self, other):
     
@@ -141,6 +144,36 @@ class Composition(object):
                 raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
 
         return set(res)
+
+    def reduce(self, pos):
+        # return a reduced version of itself by removing the argument at the given position; 
+        # if the original composition has only one argument, throws an exception
+        # if the reduced version has only one argument, return it directly (not the original Composition instance)
+        if len(self._arguments) <= 1:
+            raise Exception("An instance of Composition is expected to have two or more arguments")
+        elif pos >= len(self._arguments):
+            raise Exception("The passed position argument is outside the list of arguments")
+
+        if len(self._arguments) == 2:
+            return self._arguments[1-pos] # just return the _other_ argument in the list
+        else:
+            self._arguments.pop(pos)
+            return self
+            
+
+    def replace_var(self, var : StateVar, var1: StateVar):
+
+        new_arguments = []
+        for curr in self._arguments:
+            if isinstance(curr, StateVar) and curr == var:
+                new_arguments.append(var1)
+            elif isinstance(curr, Composition):
+                curr.replace_var(var, var1)
+                new_arguments.append(curr)
+            else:
+                new_arguments.append(curr)
+
+        self._arguments = new_arguments
 
     @staticmethod
     def parse(obj):
@@ -248,6 +281,14 @@ class MsgExc:
 class Concat(Composition):
 
     def __init__(self, *args): #lhs : MsgExc, rhs):
+
+        for curr in args[:-1]:
+            if not isinstance(curr, MsgExc):
+                raise Exception(f"All but the last argument of a Concat should be MsgExc")
+
+        if not isinstance(args[-1], StateVar):
+            raise Exception("The last argument of a Concat should be a StateVar")
+
         super().__init__(";", *args) #[ lhs, rhs ])
 
     def __str__(self):
@@ -287,8 +328,38 @@ class Transform:
     def rhs(self):
         return self._rhs
 
+    def set_lhs(self, lhs : Composition | StateVar):
+        self._lhs = lhs
+
+    def set_rhs(self, rhs : Composition | StateVar | End):
+        self._rhs = rhs
+
     def __str__(self):
         return f"{self._lhs} = {self._rhs}"
+
+    @property
+    def is_passthrough(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, StateVar)
+
+    @property
+    def is_concat(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, Concat)
+
+    @property
+    def is_fork(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, Fork)
+
+    @property
+    def is_join(self):
+        return isinstance(self._lhs, Join) and isinstance(self._rhs, StateVar)
+
+    @property
+    def is_choice(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, Choice)
+
+    @property
+    def is_merge(self):
+        return isinstance(self._lhs, Merge) and isinstance(self._rhs, StateVar)
 
     @property
     def participants(self):
@@ -309,6 +380,20 @@ class Transform:
             return self._rhs.state_vars
 
 
+    def replace_var(self, var : StateVar, var1 : StateVar):
+
+        if isinstance(self._lhs, Composition):
+            self._lhs.replace_var(var, var1)
+        else:
+            assert isinstance(self._lhs, StateVar)
+            if self._lhs == var:
+                raise Exception(f"Cannot replace state variable ({var}) in the same transform defining it ({self})")
+
+        if isinstance(self._rhs, Composition):
+            self._rhs.replace_var(var, var1)
+        else:
+            if isinstance(self._rhs, StateVar) and self._rhs == var:
+                self._rhs = var1
 
     def to_json(self):
 
@@ -346,14 +431,26 @@ class GlobalType:
 
         self._initial = initial
         self._participants = None
+        self._transforms = []
 
         if transforms:
             for curr in transforms:
                 if not isinstance(curr, Transform):
                     raise Exception(f"Expected list of transformations. Received: {transforms}")
-            
-        self._transforms = transforms
-    
+
+                self._transforms.append(curr)
+ 
+    @property
+    def initial(self):
+        return self._initial
+
+    def set_initial(self, initial : str | StateVar):
+        #breakpoint()
+        if isinstance(initial, str):
+            initial = StateVar(initial)
+
+        self._initial = initial
+   
     @property
     def participants(self):
         if not self._participants:
@@ -362,9 +459,117 @@ class GlobalType:
 
         return self._participants
 
+    def find_transform(self, lhs : StateVar = None, rhs : StateVar = None):
+        if lhs is None and rhs is None:
+            raise Exception("You must specify a non-null lhs or rhs StateVar to search for")
+        elif lhs is not None and rhs is not None:
+            raise Exception("Cannot search in lhs and rhs at the same time")
+
+        for t in self._transforms:
+            if lhs:
+                if isinstance(t._lhs, StateVar) and t._lhs == lhs:
+                    return t
+                elif not isinstance(t._lhs, StateVar) and lhs in t._lhs.state_vars:
+                    return t
+
+            else:
+                assert rhs != None
+
+                if isinstance(t._rhs, StateVar) and t._rhs == rhs:
+                    return t
+                elif not isinstance(t._rhs, StateVar) and rhs in t._rhs.state_vars:
+                    return t
+
+
+        return None
+
+
     @property
     def transforms(self):
         return self._transforms
+
+    def simplify(self):
+        # credits : Fig. 21, Appendix B.2, "Multiparty Session Types Meet Communicating Automata", Danielou and Yoshida
+    
+        #breakpoint()
+
+        g1 = GlobalType(self._initial)
+
+        for t in self._transforms:   
+            g1.add_transform(t)
+        
+        dirty = True
+
+        while dirty:
+    
+            dirty = False
+            for t in g1.transforms:
+                # [sub]
+#                if isinstance(t.lhs, StateVar) and isinstance(t.rhs, StateVar):
+                if t.is_passthrough:
+                    dirty = True
+                    for t1 in g1.transforms:
+                        if t1 != t:
+                            t1.replace_var(t.lhs, t.rhs)
+                            if g1.initial == t.lhs:
+                                g1.set_initial(t.rhs)
+
+                    g1.transforms.remove(t)
+                    
+
+                # [trans]
+#                if isinstance(t.lhs, StateVar) and isinstance(t.rhs, Concat) and isinstance(t.rhs.arguments[0], MsgExc):
+                if t.is_concat and isinstance(t.rhs.arguments[0], MsgExc):
+                    dirty = True
+                    rhs_reduced = t.rhs.reduce(0) # remove 
+                    t.set_rhs(rhs_reduced)
+                    #if len(t.rhs.arguments) > 2:
+                    #    t.rhs.arguments.pop(0)
+                    #elif len(t.rhs.arguments) > 1:  
+                    #    t.set_rhs(t.rhs.arguments[1])
+                
+                # [par-1]/[par-2]
+#                if isinstance(t.lhs, StateVar) and isinstance(t.rhs, Fork):
+                if t.is_fork:
+                    # x1 = x2 | x3 [par-1], first condition
+                    #breakpoint()
+                    x2, x3 = t.rhs.arguments
+                    x1 = t.lhs
+                    t1 = g1.find_transform(lhs=x3)
+                    #if t1 is None or not isinstance(t1.lhs, Join):
+                    if t1 is None or not t1.is_join:
+                        # [par-1] (swap x2 <-> x3), first condition, commutativity
+                        t1 = g1.find_transform(lhs=x2)
+                        _temp = x3
+                        x3 = x2
+                        x2 = _temp
+                        
+                    #if t1 is not None and isinstance(t1.lhs, Join):
+                    if t1 is not None and t1.is_join:
+                        # y3 | y4 = y5 [par-1], second condition
+                        y3, y4 = t1.lhs.arguments
+                        y5 = t1.rhs
+                        if x3 == y4:
+                            # [par-1], second condition, commutativity
+                            _temp = y4
+                            y4 = y3
+                            y3 = _temp
+                            
+                        assert x3 == y3
+
+                        dirty = True
+                        for t2 in g1.transforms:
+                            if t2 != t and t2 != t1:    
+                                g1.add_transform(t2)
+    
+                        g1.add_transform(Transform(x1, x2))
+                        g1.add_transform(Transform(y4, y5))
+                        g1.transforms.remove(t)
+                        g1.transforms.remove(t1)
+                        
+
+        return g1
+
 
     def check_wellformed(self):
 
@@ -416,12 +621,29 @@ class GlobalType:
             raise Exception(f"Non unique end found (total occurrences: {num_ends})")
 
         # thread correctness
-        pass # TODO the last part is more complex, see Appendix 2 
+        g1 = self.simplify()
+        if len(g1.transforms) > 1:
+            raise Exception(f"Threads do not meet correctness criteria after simplification: multual recursion in state variable definitions")
+        elif len(g1.transforms) == 0:
+            raise Exception(f"Threads do not meet correctness criteria: no transforms after simplification")
 
 
     def add_transform(self, t : Transform):
-        self._transforms.append(t)
-        self._participants = self._participants.union(t.participants)
+
+        if t not in self._transforms:
+            self._transforms.append(t)
+            if self._participants is None:
+                self._participants = t.participants
+            else:
+                self._participants = self._participants.union(t.participants)
+
+    def remove_transform(self, t : Transform):
+
+        if t in self._transforms:
+            self._transforms.remove(t)
+
+            self._participants = None # this forgets the cached property value; the actual participants will be re-computed next time the participants property is accessed
+
 
     def apply_transform(self, lhs):
 
@@ -472,13 +694,13 @@ class GlobalType:
 #                break
 
             thread.append(found)
-            if not isinstance(found.rhs, Concat) or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
+#            if not isinstance(found.rhs, Concat) or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
+            if not found.is_concat or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
                 # we met a branch in the rhs, thus the thread ended
                 break
 
             # if you reach this point, we can continue following the "linear" structure of the thread
             state_var = found.rhs.arguments[-1]
-
 
         return thread
             
@@ -530,7 +752,6 @@ class MPST(models.Model):
     @property
     def initial(self):
         return StateVar(self.root["initial"])
-
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

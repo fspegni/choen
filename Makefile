@@ -17,4 +17,6 @@ migrate:
 cli:
 	${DC} cli
 
-
+.PHONY: test
+test:
+	${DC} test test_mpst

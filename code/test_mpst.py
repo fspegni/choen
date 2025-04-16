@@ -127,10 +127,12 @@ class MPSTTestCase(TestCase):
 
     def test_global_type_with_no_transforms(self):
 
+        #breakpoint()
         v1 = StateVar("v1")
         g = GlobalType(v1)
 
         self.assertTrue(isinstance(g.transforms, list))
+
         self.assertEqual(len(g.transforms), 0)
 
 
@@ -347,8 +349,7 @@ class MPSTTestCase(TestCase):
         self.assertEqual(t5.rhs_vars, set([]))
 
 
-
-    def test_well_formedness(self):
+    def test_replace_existing_var(self):
 
         # prepare more complex structure, from example 2
         x0 = StateVar("x0")
@@ -370,5 +371,277 @@ class MPSTTestCase(TestCase):
         #breakpoint()
         g = GlobalType(x0, [t1, t2, t3, t4, t5])
  
+
+        # t1
+        self.assertTrue(x4 not in t1.rhs_vars)
+        self.assertTrue(x2 in t1.rhs_vars)
+        t1.replace_var(x2, x4)
+        self.assertTrue(x4 in t1.rhs_vars)
+        self.assertTrue(x2 not in t1.rhs_vars)
+
+        # t2
+        self.assertTrue(x4 not in t2.rhs_vars)
+        self.assertTrue(x3 in t2.rhs_vars)
+        t2.replace_var(x3, x4)
+        self.assertTrue(x4 in t2.rhs_vars)
+        self.assertTrue(x3 not in t2.rhs_vars)
+
+        # t3
+        self.assertTrue(x2 not in t3.rhs_vars)
+        self.assertTrue(x4 in t3.rhs_vars)
+        t3.replace_var(x4, x2)
+        self.assertTrue(x2 in t3.rhs_vars)
+        self.assertTrue(x4 not in t3.rhs_vars)
+
+        # t4
+        self.assertTrue(x2 not in t4.rhs_vars)
+        self.assertTrue(x5 in t4.rhs_vars)
+        t4.replace_var(x5, x2)
+        self.assertTrue(x2 in t4.rhs_vars)
+        self.assertTrue(x5 not in t4.rhs_vars)
+
+        # t5 : no state variable to replace
+        self.assertTrue(x2 not in t5.rhs_vars)
+        t5.replace_var(x2, x4)
+        self.assertTrue(x2 not in t5.rhs_vars)
+
+
+    def test_example_2_is_well_formed(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4, t5])
+
+        #breakpoint()
         g.check_wellformed()
 
+    def test_simplify_linear(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Concat(m1, x1))
+        t2 = Transform(x1, Concat(m2, x2))
+        t3 = Transform(x2, End())
+
+        g = GlobalType(x0, [t1, t2, t3 ])
+
+        #breakpoint()
+        g1 = g.simplify()
+
+        self.assertEqual(g1.initial, x2)
+        self.assertEqual(len(g1.transforms), 1)
+        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+        self.assertEqual(g1.transforms[0].lhs, x2)
+
+
+    def test_simplify_join_fork_par_1(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        #breakpoint()
+        g1 = g.simplify()
+
+        self.assertEqual(g1.initial, x5)
+        self.assertEqual(len(g1.transforms), 1)
+        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+        self.assertEqual(g1.transforms[0].lhs, x5)
+
+
+    def test_simplify_join_fork_par_1_commutativity_1(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Fork(x2, x1)) # NB changed order her
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        #breakpoint()
+        g1 = g.simplify()
+
+        self.assertEqual(g1.initial, x5)
+        self.assertEqual(len(g1.transforms), 1)
+        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+        self.assertEqual(g1.transforms[0].lhs, x5)
+
+
+    def test_simplify_join_fork_par_1_commutativity_2(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Fork(x2, x1)) # NB changed order here
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x4, x3), x5) # NB changed order here
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        #breakpoint()
+        g1 = g.simplify()
+
+        self.assertEqual(g1.initial, x5)
+        self.assertEqual(len(g1.transforms), 1)
+        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+        self.assertEqual(g1.transforms[0].lhs, x5)
+
+
+    def test_simplify_join_fork_par_1_commutativity_2(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x4, x3), x5) # NB changed order here
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        #breakpoint()
+        g1 = g.simplify()
+
+        self.assertEqual(g1.initial, x5)
+        self.assertEqual(len(g1.transforms), 1)
+        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+        self.assertEqual(g1.transforms[0].lhs, x5)
+
+
+
+    def test_simplify_join_fork_par_1_many_messages(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film1", str)
+        m3 = MsgExc("Alice", "Bob", "Film2", str)
+        m4 = MsgExc("Alice", "Bob", "Film3", str)
+        m5 = MsgExc("Alice", "Bob", "Film4", str)
+        m6 = MsgExc("Alice", "Bob", "Film5", str)
+        m7 = MsgExc("Alice", "Bob", "Film6", str)
+        m8 = MsgExc("Alice", "Bob", "Film7", str)
+        m9 = MsgExc("Alice", "Bob", "Film8", str)
+        m10 = MsgExc("Alice", "Bob", "Film9", str)
+        m11 = MsgExc("Alice", "Bob", "Film10", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, m2, m3, m4, x3))
+        t3 = Transform(x2, Concat(m5, m5, m7, m8, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, Concat(m9, m10, m11, x6))
+        t6 = Transform(x6, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6 ])
+
+        #breakpoint()
+        g1 = g.simplify()
+
+        self.assertEqual(g1.initial, x6)
+        self.assertEqual(len(g1.transforms), 1)
+        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+        self.assertEqual(g1.transforms[0].lhs, x6)
+
+
+## 
+##    def test_cannot_simplify_join_fork_par_1(self):
+##
+##        x0 = StateVar("x0")
+##        x1 = StateVar("x1")
+##        x2 = StateVar("x2")
+##        x3 = StateVar("x3")
+##        x4 = StateVar("x4")
+##        x5 = StateVar("x5")
+##
+##        m1 = MsgExc("Alice", "Bob", "Book", str)
+##        m2 = MsgExc("Alice", "Bob", "Film", str)
+##
+##        t1 = Transform(x0, Fork(x1, x2))
+##        t2 = Transform(x1, Concat(m1, x3))
+##        t3 = Transform(x2, Concat(m2, x4))
+##        t4 = Transform(Join(x3, x4), x5)
+##        t5 = Transform(x5, End())
+##
+##        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+##
+##        #breakpoint()
+##        g1 = g.simplify()
+##
+##        self.assertEqual(g1.initial, x5)
+##        self.assertEqual(len(g1.transforms), 1)
+##        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
+##        self.assertEqual(g1.transforms[0].lhs, x5)
+##
+##
+##               
