@@ -5,7 +5,21 @@ import json
 from django.conf import settings
 from collections import defaultdict
 import copy
+import logging
 
+##
+## example configuration for printing debug output of rules
+##
+logging.basicConfig(
+    level=logging.WARNING, # logger.DEBUG
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        #logging.FileHandler("debug.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger()
 
 class StateVar:
 
@@ -424,7 +438,7 @@ class Transform:
 
 class GlobalType:
 
-    def __init__(self, initial : str | StateVar, transforms : list = []):
+    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
 
         if isinstance(initial, str):
             initial = StateVar(initial)
@@ -433,6 +447,9 @@ class GlobalType:
         self._participants = None
         self._transforms = []
 
+        self._logger = logging.getLogger()
+        self.set_debug(debug)
+
         if transforms:
             for curr in transforms:
                 if not isinstance(curr, Transform):
@@ -440,6 +457,21 @@ class GlobalType:
 
                 self._transforms.append(curr)
  
+    @property
+    def logger(self):
+        return self._logger
+
+    @property
+    def debug(self):
+        return self._logger.level == logging.DEBUG
+
+    def set_debug(self, debug : bool):
+
+        if debug:
+            self._logger.setLevel(logging.DEBUG)
+        else:
+            self._logger.setLevel(logging.WARNING)
+
     @property
     def initial(self):
         return self._initial
@@ -459,30 +491,50 @@ class GlobalType:
 
         return self._participants
 
-    def find_transform(self, lhs : StateVar = None, rhs : StateVar = None):
+    def find_transform(self, lhs : StateVar = None, rhs : StateVar = None, such_that = None):
         if lhs is None and rhs is None:
             raise Exception("You must specify a non-null lhs or rhs StateVar to search for")
-        elif lhs is not None and rhs is not None:
-            raise Exception("Cannot search in lhs and rhs at the same time")
 
         for t in self._transforms:
+            if such_that:
+                if such_that(t):
+                    pass
+                else:
+                    continue
+
             if lhs:
                 if isinstance(t._lhs, StateVar) and t._lhs == lhs:
-                    return t
+                    pass
+                    #return t
                 elif not isinstance(t._lhs, StateVar) and lhs in t._lhs.state_vars:
-                    return t
+                    pass
+                    #return t
+                else:
+                    continue
 
-            else:
-                assert rhs != None
+            if rhs:
 
                 if isinstance(t._rhs, StateVar) and t._rhs == rhs:
-                    return t
+                    pass
+                    #return t
                 elif not isinstance(t._rhs, StateVar) and rhs in t._rhs.state_vars:
-                    return t
+                    pass
+                    #return t
+                else:
+                    continue
+
+            # curr transitions passed all the checks: it is the searched one
+            return t
 
 
         return None
 
+    def replace_var(self, var : StateVar, var1: StateVar):
+
+        for t in self._transforms:
+            t.replace_var(var, var1)
+            if self._initial == var:
+                self.set_initial(var1)
 
     @property
     def transforms(self):
@@ -493,81 +545,192 @@ class GlobalType:
     
         #breakpoint()
 
-        g1 = GlobalType(self._initial)
+
+        g1 = GlobalType(self._initial, debug=self.debug)
 
         for t in self._transforms:   
             g1.add_transform(t)
-        
+ 
+       
+        self.logger.debug(f"Simplify: {self}")
+
         dirty = True
 
+        counter = 0
         while dirty:
     
+            self.logger.debug(f"# {counter} : {g1}")
+            counter = counter + 1
             dirty = False
+            
             for t in g1.transforms:
                 # [sub]
 #                if isinstance(t.lhs, StateVar) and isinstance(t.rhs, StateVar):
                 if t.is_passthrough:
                     dirty = True
-                    for t1 in g1.transforms:
-                        if t1 != t:
-                            t1.replace_var(t.lhs, t.rhs)
-                            if g1.initial == t.lhs:
-                                g1.set_initial(t.rhs)
+#                    for t1 in g1.transforms:
+#                        if t1 != t:
+#                            t1.replace_var(t.lhs, t.rhs)
+#                            if g1.initial == t.lhs:
+#                                g1.set_initial(t.rhs)
 
-                    g1.transforms.remove(t)
+                    
+                    self.logger.debug(f"[sub.......] G,{t} => G[{t.lhs}/{t.rhs}]")
+                    g1.remove_transform(t)
+                    g1.replace_var(t.lhs, t.rhs)
                     
 
                 # [trans]
 #                if isinstance(t.lhs, StateVar) and isinstance(t.rhs, Concat) and isinstance(t.rhs.arguments[0], MsgExc):
                 if t.is_concat and isinstance(t.rhs.arguments[0], MsgExc):
                     dirty = True
+                    t_pre = str(t)
                     rhs_reduced = t.rhs.reduce(0) # remove 
                     t.set_rhs(rhs_reduced)
+
+
+                    self.logger.debug(f"[trans.....] G, {t_pre} => {t}")
                     #if len(t.rhs.arguments) > 2:
                     #    t.rhs.arguments.pop(0)
                     #elif len(t.rhs.arguments) > 1:  
                     #    t.set_rhs(t.rhs.arguments[1])
                 
-                # [par-1]/[par-2]
 #                if isinstance(t.lhs, StateVar) and isinstance(t.rhs, Fork):
                 if t.is_fork:
+                    # [par-1] or [par-2] or nothing
+
                     # x1 = x2 | x3 [par-1], first condition
                     #breakpoint()
                     x2, x3 = t.rhs.arguments
                     x1 = t.lhs
-                    t1 = g1.find_transform(lhs=x3)
+                    t1 = g1.find_transform(lhs=x3, such_that=lambda t: t.is_join)
                     #if t1 is None or not isinstance(t1.lhs, Join):
-                    if t1 is None or not t1.is_join:
+                    if t1 is None: # or not t1.is_join:
                         # [par-1] (swap x2 <-> x3), first condition, commutativity
-                        t1 = g1.find_transform(lhs=x2)
-                        _temp = x3
-                        x3 = x2
-                        x2 = _temp
+
+                        t1 = g1.find_transform(lhs=x2, such_that=lambda t: t.is_join)
+                        x2, x3 = x3, x2
                         
                     #if t1 is not None and isinstance(t1.lhs, Join):
-                    if t1 is not None and t1.is_join:
+                    if t1 is not None: # and t1.is_join:
                         # y3 | y4 = y5 [par-1], second condition
                         y3, y4 = t1.lhs.arguments
                         y5 = t1.rhs
                         if x3 == y4:
                             # [par-1], second condition, commutativity
-                            _temp = y4
-                            y4 = y3
-                            y3 = _temp
+                            y3, y4 = y4, y3
                             
                         assert x3 == y3
 
                         dirty = True
-                        for t2 in g1.transforms:
-                            if t2 != t and t2 != t1:    
-                                g1.add_transform(t2)
+                        #for t2 in g1.transforms:
+                        #    if t2 != t and t2 != t1:    
+                        #        g1.add_transform(t2)
     
+
+                        self.logger.debug(f"[par-1.....] G, {x1} = {x2} | {x3}, {y3} | {y4} = {y5} => G, {x1} = {x2}, {y4} = {y5}")
                         g1.add_transform(Transform(x1, x2))
                         g1.add_transform(Transform(y4, y5))
-                        g1.transforms.remove(t)
-                        g1.transforms.remove(t1)
+                        g1.remove_transform(t)
+                        g1.remove_transform(t1)
                         
+                    else:
+    
+                        t1 = g1.find_transform(rhs=x1, such_that=lambda t: t.is_join)
+                        if t1 is not None: # and t1.is_join:
+                            # [par-2] TODO not tested
+                            y4, y5 = t1.lhs.arguments
+                            y1 = y1.rhs
+                            assert x1 == y1
 
+                            #for t2 in g1.transforms:
+                            #    if t2 != t and t2 != t1:
+                            #        g1.add_transform(t2)
+
+
+                            self.logger.debug(f"[par-2.....] G, {x1} = {x2} | {x3}, {y4} | {y5} = {y1} => G, {y4} = {x2}, {y5} = {x3}")
+
+                            g1.add_transform(Transform(y4,x2))
+                            g1.add_transform(Transform(y5,x3))
+                            g1.remove_transform(t)
+                            g1.remove_transform(t1)
+
+                if t.is_choice:
+                    # [bra-1] or [bra-2] or nothing # TODO not tested
+
+                    x2, x3 = t.rhs.arguments
+                    x1 = t.lhs
+
+                    t1 = g1.find_transform(lhs=x2, such_that=lambda t: t.is_merge)
+                    if t1 is not None: # and t1.is_merge:
+
+                        if t1.rhs == x1:
+                            # [bra-2]
+
+                            y2,y4 = t1.lhs.arguments
+                            y1 = t1.rhs
+
+                            # ensure that x2 == y2 by swapping lhs and rhs components
+                            if x2 == y2:
+                                pass
+                            elif x2 == y4:
+                                y2, y4 = y4, y2
+                            elif x3 == y2:
+                                x2, x3 = x3, x2
+                            elif x3 == y4:
+                                x2, x3 = x3, x2
+                                y2, y4 = y4, y2
+
+                            #for t2 in g1.transforms:
+                            #    if t2 != t and t2 != t1:
+                            #        g1.add_transform(t2)
+
+                            self.logger.debug(f"[bra-2.....] G, {x1} = {x2} + {x3}, {y2} + {y4} = {y1} => G, {y4} = {x3}")
+                            g1.add_transform(Transform(y4, x3))
+                            g1.remove_transform(t)
+                            g1.remove_transform(t1)
+    
+                        else:
+    
+                            y2, y3 = t1.lhs.arguments
+                            y4 = t1.rhs
+    
+                            if (x2 == y2 and x3 == y3) or (x2 == y3 and x3 == y2):
+                                # [bra-1]
+                                #for t2 in g1.transforms:
+                                #    if t2 != t and t2 != t1:
+                                #        g1.add_transform(t2)
+    
+                                self.logger.debug(f"[bra-1.....] G, {x1} = {x2} + {x3}, {y2} + {y3} = {y4} => G, {x1} = {y4}")
+                                g1.add_transform(Transform(x1, y4))    
+                                g1.remove_transform(t)
+                                g1.remove_transform(t1)
+
+
+                if t.is_merge:
+                    x1,x2 = t.lhs.arguments
+                    x3 = t.rhs
+
+                    t1 = g1.find_transform(lhs=x3, such_that=lambda t: t.is_merge)
+                    if t1 is not None:
+                        # [merge-comm] TODO not tested
+                        y3, y4 = t1.lhs.arguments
+                        y5 = t1.rhs
+
+                        if x3 == y4:
+                            # [merge-comm] second condition, commutativity (swap)
+                            y3, y4 = y4, y3
+
+                        assert x3 == y3
+
+                        self.logger.debug(f"[merge-comm] G, {x1} + {x2} = {x3}, {y3} + {y4} = {y5} => G, {x1} + {x3} = {y5}, {x2} + {y4} = {x3}")
+
+                        g1.add_transform(Transform(Choice(x1,x3), y5))
+                        g1.add_transform(Transform(Choice(x2,y4), x3))
+                        g1.remove_transform(t)
+                        g1.remove_transform(t1)
+
+        self.logger.debug(f"Final: {g1}")
         return g1
 
 
@@ -617,7 +780,7 @@ class GlobalType:
             raise Exception(f"Non unique start for initial variable: {self._initial} (total occurrences: {num_initials})")
 
         # unique end
-        if num_ends != 1:
+        if num_ends > 1:
             raise Exception(f"Non unique end found (total occurrences: {num_ends})")
 
         # thread correctness
@@ -626,6 +789,8 @@ class GlobalType:
             raise Exception(f"Threads do not meet correctness criteria after simplification: multual recursion in state variable definitions")
         elif len(g1.transforms) == 0:
             raise Exception(f"Threads do not meet correctness criteria: no transforms after simplification")
+        elif g1.transforms[0].lhs != g1.initial:
+            raise Exception(f"The end state is not reachable from the initial state")
 
 
     def add_transform(self, t : Transform):

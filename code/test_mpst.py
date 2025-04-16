@@ -1,6 +1,7 @@
 from django.test import TestCase
 from mpst.models import *
 
+
 class MPSTTestCase(TestCase):
 
     def test_create_operators(self):
@@ -430,6 +431,40 @@ class MPSTTestCase(TestCase):
         #breakpoint()
         g.check_wellformed()
 
+
+
+    def test_dead_end_is_not_well_formed(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x6) # NB here we go to a dead end
+        t5 = Transform(x5, End()) # NB this is never reached
+
+        #breakpoint()
+        g = GlobalType(x0, [t1, t2, t3, t4, t5])
+
+        #breakpoint()
+
+        with self.assertRaises(Exception) as context:
+            # an exception is expected, because rules do not allow to reach the end state
+            g.check_wellformed()
+
+        self.assertTrue("end state is not reachable" in str(context.exception))
+
+
+
     def test_simplify_linear(self):
 
         x0 = StateVar("x0")
@@ -614,6 +649,24 @@ class MPSTTestCase(TestCase):
         self.assertEqual(g1.transforms[0].lhs, x6)
 
 
+    def test_recursive_mpst_is_well_formed(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+
+        m1 = MsgExc("Alice", "Bob", "Msg", str)
+
+        t1 = Transform(Merge(x0, x2), x1)
+        t2 = Transform(x1, Concat(m1, x2))
+
+        g = GlobalType(x0, [t1, t2 ])
+
+        g.set_debug(True)
+        breakpoint()
+        g.check_wellformed()
+
+       
 ## 
 ##    def test_cannot_simplify_join_fork_par_1(self):
 ##
