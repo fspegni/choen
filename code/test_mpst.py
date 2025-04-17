@@ -730,34 +730,32 @@ class MPSTTestCase(TestCase):
 
         g.check_wellformed()
        
-## 
-##    def test_cannot_simplify_join_fork_par_1(self):
-##
-##        x0 = StateVar("x0")
-##        x1 = StateVar("x1")
-##        x2 = StateVar("x2")
-##        x3 = StateVar("x3")
-##        x4 = StateVar("x4")
-##        x5 = StateVar("x5")
-##
-##        m1 = MsgExc("Alice", "Bob", "Book", str)
-##        m2 = MsgExc("Alice", "Bob", "Film", str)
-##
-##        t1 = Transform(x0, Fork(x1, x2))
-##        t2 = Transform(x1, Concat(m1, x3))
-##        t3 = Transform(x2, Concat(m2, x4))
-##        t4 = Transform(Join(x3, x4), x5)
-##        t5 = Transform(x5, End())
-##
-##        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
-##
-##        #breakpoint()
-##        g1 = g.simplify()
-##
-##        self.assertEqual(g1.initial, x5)
-##        self.assertEqual(len(g1.transforms), 1)
-##        self.assertTrue(isinstance(g1.transforms[0].rhs, End))
-##        self.assertEqual(g1.transforms[0].lhs, x5)
-##
-##
-##               
+ 
+    def test_incorrect_global_type_fig5(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+        m3 = MsgExc("Alice", "Bob", "Price", int)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, Concat(m3, x6))
+        t6 = Transform(x6, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6 ])
+
+        with self.assertRaises(Exception) as context:
+            g.check_wellformed()
+
+        self.assertTrue("end state is not reachable" in str(context.exception))
+

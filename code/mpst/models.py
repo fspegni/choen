@@ -774,11 +774,11 @@ class GlobalType:
         # unambiguity
         for v, num_occurrences in num_state_vars_in_lhs.items():
             if num_occurrences != 1:
-                raise Exception(f"State variable is ambiguous (total occurrences: {num_occurrences})")
+                raise Exception(f"State variable is ambiguous in lhs ({v}, total occurrences: {num_occurrences})")
 
         for v, num_occurrences in num_state_vars_in_rhs.items():
             if num_occurrences != 1:
-                raise Exception(f"State variable is ambiguous (total occurrences: {num_occurrences})")
+                raise Exception(f"State variable is ambiguous in rhs ({v}, total occurrences: {num_occurrences})")
 
         # unique start
         if num_initials != 1:
@@ -801,7 +801,7 @@ class GlobalType:
         if num_ends == 1:
             t = g1.find_transform(lhs=g1.initial, such_that=lambda t: t.is_end)
             if not t:
-                raise Exception("Invalid end choreography: end state is not reachable. Simplified global type: {g1}")
+                raise Exception(f"Invalid end choreography: end state is not reachable. Simplified global type: {g1}")
         else:
             # num_ends == 0, all the merges should be recursive, e.g. { x1 + x2 = x3 ; x3 + x4 = x5 ; ... ; x_n + x_n+1 = x1 }
             for t in g1.transforms:
