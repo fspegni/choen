@@ -442,6 +442,7 @@ class Transform:
 
 class GlobalType:
 
+
     def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
 
         if isinstance(initial, str):
@@ -797,14 +798,19 @@ class GlobalType:
         #elif g1.transforms[0].lhs != g1.initial:
         #    raise Exception(f"The end state is not reachable from the initial state")
         
-        if len(g1.transforms) == 1 and g1.transforms[0].is_end and g1.transforms[0].lhs == g1.initial:
-            # basic form: { x0 = end }
-            pass
+        if num_ends == 1:
+            t = g1.find_transform(lhs=g1.initial, such_that=lambda t: t.is_end)
+            if not t:
+                raise Exception("Invalid end choreography: end state is not reachable. Simplified global type: {g1}")
         else:
-            # mutually recursive form, e.g. { x1 + x2 = x3 ; x3 + x4 = x5 ; ... ; x_n + x_n+1 = x1 }
+            # num_ends == 0, all the merges should be recursive, e.g. { x1 + x2 = x3 ; x3 + x4 = x5 ; ... ; x_n + x_n+1 = x1 }
             for t in g1.transforms:
-                if not t.is_merge:
-                    raise Exception(f"Expected mutually recursive choices. Found: {g1}")
+                assert not t.is_end
+                if t.is_merge:
+                    assert isinstance(t.rhs, StateVar)
+                    assert isinstance(t.lhs, Merge)      
+                    if t.rhs not in t.lhs.state_vars:
+                        raise Exception(f"Expected mutually recursive merges. Found: {t}. Simplified global type: {g1}")
 
 
     def add_transform(self, t : Transform):

@@ -649,8 +649,9 @@ class MPSTTestCase(TestCase):
         self.assertEqual(g1.transforms[0].lhs, x6)
 
 
-    def test_recursive_mpst_is_well_formed(self):
+    def test_ex_B1_1_recursive(self):
 
+        # example 1 in Example B.1 of appendix B.2
         x0 = StateVar("x0")
         x1 = StateVar("x1")
         x2 = StateVar("x2")
@@ -662,10 +663,72 @@ class MPSTTestCase(TestCase):
 
         g = GlobalType(x0, [t1, t2 ])
 
-        g.set_debug(True)
+        #g.set_debug(True)
         #breakpoint()
         g.check_wellformed()
 
+    def test_ex_B1_2_ending(self):
+
+        # example 2 of example B.1 of appendix B.2
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        g.check_wellformed()
+    
+    def test_ex_B1_3_recurive(self):
+
+        # example 3 of example B.1 of appendix B.2
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+        x7 = StateVar("x7")
+        x8 = StateVar("x8")
+        x9 = StateVar("x9")
+        x10 = StateVar("x10")
+        x11 = StateVar("x11")
+        x12 = StateVar("x12")
+        x13 = StateVar("x13")
+        x14 = StateVar("x14")
+
+        m1 = MsgExc("Alice", "Bob", "Msg1", str)
+        m2 = MsgExc("Alice", "Bob", "Ack1", str)
+        m3 = MsgExc("Alice", "Bob", "Msg2", str)
+        m4 = MsgExc("Alice", "Bob", "Ack2", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(Merge(x1, x3), x4)
+        t3 = Transform(Merge(x2, x5), x6)
+        t4 = Transform(x4, Concat(m1, x7))
+        t5 = Transform(x7, Fork(x8, x9))
+        t6 = Transform(x8, Concat(m2, x10))
+        t7 = Transform(Join(x6, x9), x11)
+        t8 = Transform(x11, Concat(m3, x12))
+        t9 = Transform(x12, Fork(x13, x14))
+        t10 = Transform(x13, Concat(m4, x5))
+        t11 = Transform(Join(x10, x14), x3)
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 ])
+
+        g.check_wellformed()
        
 ## 
 ##    def test_cannot_simplify_join_fork_par_1(self):
