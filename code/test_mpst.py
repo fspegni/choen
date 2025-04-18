@@ -633,7 +633,7 @@ class MPSTTestCase(TestCase):
 
         t1 = Transform(x0, Fork(x1, x2))
         t2 = Transform(x1, Concat(m1, m2, m3, m4, x3))
-        t3 = Transform(x2, Concat(m5, m5, m7, m8, x4))
+        t3 = Transform(x2, Concat(m5, m6, m7, m8, x4))
         t4 = Transform(Join(x3, x4), x5)
         t5 = Transform(x5, Concat(m9, m10, m11, x6))
         t6 = Transform(x6, End())
@@ -759,3 +759,81 @@ class MPSTTestCase(TestCase):
 
         self.assertTrue("end state is not reachable" in str(context.exception))
 
+
+    def test_compute_receivers(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+        g.set_debug(True)
+    
+        #breakpoint()
+        receivers = g.compute_receivers(g.initial)
+
+        self.assertTrue(len(receivers) == 1)
+
+        self.assertTrue("Bob" in receivers)
+        self.assertTrue("Alice" not in receivers)
+
+
+
+    def test_compute_receivers_many_messages(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+
+        m1 = MsgExc("Alice1", "Bob1", "Book", str)
+        m2 = MsgExc("Alice2", "Bob2", "Film1", str)
+        m3 = MsgExc("Alice1", "Bob3", "Film2", str)
+        m4 = MsgExc("Alice2", "Bob4", "Film3", str)
+        m5 = MsgExc("Alice1", "Bob5", "Film4", str)
+        m6 = MsgExc("Alice2", "Bob6", "Film5", str)
+        m7 = MsgExc("Alice1", "Bob7", "Film6", str)
+        m8 = MsgExc("Alice2", "Bob8", "Film7", str)
+        m9 = MsgExc("Alice1", "Bob9", "Film8", str)
+        m10 = MsgExc("Alice", "Bob", "Film9", str)
+        m11 = MsgExc("Alice", "Bob", "Film10", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, m2, m3, m4, x3))
+        t3 = Transform(x2, Concat(m5, m6, m7, m8, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, Concat(m9, m10, m11, x6))
+        t6 = Transform(x6, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6 ])
+        g.set_debug(True)
+        #breakpoint()
+        receivers = g.compute_receivers()
+
+        self.assertTrue("Bob1" in receivers)
+        self.assertTrue("Bob2" in receivers)
+        self.assertTrue("Bob3" in receivers)
+        self.assertTrue("Bob4" in receivers)
+        self.assertTrue("Bob5" in receivers)
+        self.assertTrue("Bob6" in receivers)
+        self.assertTrue("Bob7" in receivers)
+        self.assertTrue("Bob8" in receivers)
+        self.assertTrue("Bob9" in receivers)
+
+        self.assertTrue("Alice1" not in receivers)
+        self.assertTrue("Alice2" not in receivers)

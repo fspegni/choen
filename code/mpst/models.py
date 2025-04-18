@@ -272,6 +272,14 @@ class MsgExc:
     
         return f"{self._sender} -> {self._receiver} : {self._label} <{payload}>"
 
+    @property
+    def sender(self):
+        return self._sender
+
+    @property
+    def receiver(self):
+        return self._receiver
+
     @property 
     def participants(self):
         return set([self._sender, self._receiver])
@@ -544,6 +552,66 @@ class GlobalType:
     @property
     def transforms(self):
         return self._transforms
+
+    def compute_receivers(self, x : StateVar = None, x_set : set = None, p_set : set = None):
+        # this encodes the alg. in Fig. 6
+
+        if not x:
+            x = self._initial
+
+        if x_set is None:
+            x_set = set()
+
+        if p_set is None:
+            p_set = set()
+
+        t = self.find_transform(lhs=x)
+
+        if not t:
+            raise Exception(f"StateVar {x} not found in lhs of transforms")
+
+        self.logger.debug(f"compute_receivers({x}, {x_set}, {p_set}) - t = {t}")
+
+        if t.is_end:
+            return set() # 5th case
+
+        elif t.is_merge:
+            x1, x2 = t.lhs.arguments
+            x3 = t.rhs
+            if x3 in x_set:
+                return set() # 5th case
+            else:
+                return self.compute_receivers(x3, x_set.union([x3]), p_set) # 6th case
+
+        elif t.is_fork or t.is_choice:
+        
+            x1 = t.lhs
+            x2, x3 = t.rhs.arguments            
+
+            res1 = self.compute_receivers(x2, x_set, p_set)
+            res2 = self.compute_receivers(x3, x_set, p_set)
+            return res1 | res2 # 4th case; return the union
+
+        elif t.is_concat:
+            x1 = t.lhs
+            x2 = t.rhs.arguments[-1] # the last argument is a state var
+            
+            assert isinstance(x2, StateVar)
+ 
+            p_set_1 = set(p_set)
+
+            for m in t.rhs.arguments[:-1]: # all the arguments but the last one are MsgExc
+                assert isinstance(m, MsgExc)
+
+                p_set_1.update([ m.receiver ]) # NB duplicates are counted once in set, of course
+    
+            return p_set_1 | self.compute_receivers(x2, x_set, p_set_1) # 2nd, 3rd case 
+
+        elif t.is_join:
+            return self.compute_receivers(t.rhs, x_set, p_set) # 2nd case
+
+        else:
+            raise Exception(f"Case not covered: {t}")
 
     def simplify(self):
         # credits : Fig. 21, Appendix B.2, "Multiparty Session Types Meet Communicating Automata", Danielou and Yoshida
