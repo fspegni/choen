@@ -47,8 +47,13 @@ class IsNotLocalMixin:
 
 class StateVar(IsLocalMixin, IsGlobalMixin):
 
-    def __init__(self, identifier : str):
-        self._identifier = identifier
+    def __init__(self, identifier):
+        if isinstance(identifier, str):
+            self._identifier = identifier
+        elif isinstance(identifier, StateVar):
+            self._identifier = identifier.identifier
+        else:
+            raise Exception(f"Unexpected identifier type: {identifier} ({type(identifier)})")
 
     def __eq__(self, other):
         if isinstance(other, str):
@@ -317,6 +322,13 @@ class MsgSend(IsLocalMixin, IsNotGlobalMixin):
     def sender(self):
         return self._sender
 
+    @property
+    def label(self):
+        return self._label
+
+    @property
+    def payload(self):
+        return self._payload
 
 
 class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
@@ -347,6 +359,16 @@ class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
     @property
     def receiver(self):
         return self._receiver
+
+
+    @property
+    def label(self):
+        return self._label
+
+    @property
+    def payload(self):
+        return self._payload
+
 
 
 class MsgExc(IsGlobalMixin, IsNotLocalMixin):
@@ -385,6 +407,14 @@ class MsgExc(IsGlobalMixin, IsNotLocalMixin):
     @property
     def receiver(self):
         return self._receiver
+
+    @property
+    def label(self):
+        return self._label
+
+    @property
+    def payload(self):
+        return self._payload
 
     @property 
     def participants(self):
@@ -431,8 +461,8 @@ class Concat(Composition):
     def __init__(self, *args): #lhs : MsgExc, rhs):
 
         for curr in args[:-1]:
-            if not isinstance(curr, MsgExc):
-                raise Exception(f"All but the last argument of a Concat should be MsgExc")
+            if not isinstance(curr, (MsgExc, MsgSend, MsgRecv)):
+                raise Exception(f"All but the last argument of a Concat should be MsgExc, MsgSend, or MsgRecv")
 
         if not isinstance(args[-1], StateVar):
             raise Exception("The last argument of a Concat should be a StateVar")
@@ -513,6 +543,14 @@ class Transform:
     @property
     def is_merge(self):
         return isinstance(self._lhs, Merge) and isinstance(self._rhs, StateVar)
+
+    @property
+    def is_internal_choice(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, InternalChoice)
+
+    @property
+    def is_external_choice(self):
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, InternalChoice)
 
     @property
     def participants(self):
@@ -708,6 +746,199 @@ class TypeDef:
         else:
             return set()
         
+    def add_transform(self, t : Transform):
+
+        if t not in self._transforms:
+            self._transforms.append(t)
+            if self._participants is None:
+                self._participants = t.participants
+            else:
+                self._participants = self._participants.union(t.participants)
+
+    def remove_transform(self, t : Transform):
+
+        if t in self._transforms:
+            self._transforms.remove(t)
+
+            self._participants = None # this forgets the cached property value; the actual participants will be re-computed next time the participants property is accessed
+
+
+    def apply_transform(self, lhs):
+
+        if isinstance(lhs, str):
+            lhs = StateVar(lhs)
+
+        for curr in self._transforms:
+            if curr.lhs == lhs:
+                return curr.rhs
+            elif isinstance(curr.lhs, Composition) and lhs in curr.lhs:
+                return curr
+
+        raise Exception(f"Cannot find transform having lhs = {lhs}")
+
+
+    def __str__(self):
+
+        return "def { " + "; ".join(map(lambda c: f"[{c}]", self._transforms)) + " }  in " + str(self._initial)
+
+    def to_json(self):
+        
+        return { "type": self.__class__.__name__, "initial": self._initial.to_json(), "transforms": list(map(lambda c: c.to_json(), self._transforms))  } 
+
+    def get_thread(self, state_var : str | StateVar):
+        #breakpoint()
+        if isinstance(state_var, str):
+            state_var = StateVar(state_var)
+
+        thread = []
+
+        while True:
+            try:
+                found = next(t for t in self._transforms if t.lhs == state_var or state_var in t.lhs)
+            except StopIteration:
+                # no matching item found at the end of the iteration
+                break
+
+#            if not found:
+#                break
+
+            thread.append(found)
+#            if not isinstance(found.rhs, Concat) or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
+            if not found.is_concat or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
+                # we met a branch in the rhs, thus the thread ended
+                break
+
+            # if you reach this point, we can continue following the "linear" structure of the thread
+            state_var = found.rhs.arguments[-1]
+
+        return thread
+            
+
+
+class MPST(models.Model):
+
+    name = models.TextField(max_length=100, null=True, blank=True)
+    resource = models.FileField(upload_to=settings.UPLOAD_ROOT)
+
+    class Meta:
+    
+        verbose_name = _("MPST")
+        verbose_name_plural = _("MPSTs")
+        unique_together = (("name",),)
+
+    def __init__(self, *args, **kwargs):        
+        super().__init__(*args, **kwargs)
+        self._root = None
+
+
+    def __str__(self):
+        return self.name
+
+
+    @property
+    def root(self):
+
+        if self._root is None:
+            with open(self.resource.path, "r") as the_content:
+                obj = json.load(the_content)
+
+                if not isinstance(obj, dict) or not "type" in obj or obj["type"] != "GlobalType":
+                    raise Exception("The parsed representation of MPST is ill-formed")
+
+                if not "transforms" in obj:
+                    obj["transforms"] = []
+                elif not isinstance(obj["transforms"], list):
+                    raise Exception("The parsed representation of MPST contains ill-formed transforms")
+            
+                self._root = GlobalType.parse(obj)
+    
+        return self._root
+
+    @property
+    def transforms(self):
+        return list(map(lambda c: Transform.parse(c), self.root["transforms"]))
+
+    @property
+    def initial(self):
+        return StateVar(self.root["initial"])
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._root = None
+ 
+    def to_rei(self):
+        from rei import MPSTToRei, render_send_receive, render_receive
+        exp = MPSTToRei(self, render_send_receive) #render_receive)
+        #print("REI:", exp)
+        return exp
+
+    def to_nfa(self):
+        from nfa import ReiToNFA
+        rei = self.to_rei()
+        automaton = ReiToNFA(rei)
+        return automaton
+
+class LocalType(TypeDef):
+
+    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
+        for t in transforms:
+            if not t.is_local:
+                raise Exception(f"Passed transform of unexpected type: {t}")
+
+        super().__init__(initial, transforms, debug)
+
+    def add_transform(self, t : Transform):
+        if not t.is_local:
+            raise Exception(f"Passed transform of unexpected type: {t}")
+
+        return super().add_transform(t)
+
+    def apply_transform(self, lhs):
+        if not lhs.is_local:
+            raise Exception(f"Passed lhs of unexpected type: {t}")
+
+        return super().apply_transform(lhs)
+
+    @staticmethod
+    def parse(obj):
+        g = LocalType(obj["initial"])  
+
+        for t in obj["transforms"]:
+            g.add_transform(Transform.parse(t))          
+
+        return g
+
+
+
+class GlobalType(TypeDef):
+
+    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
+        for t in transforms:
+            if not t.is_global:
+                raise Exception(f"Passed transform of unexpected type: {t}")
+
+        super().__init__(initial, transforms, debug)
+
+    def add_transform(self, t : Transform):
+        if not t.is_global:
+            raise Exception(f"Passed transform of unexpected type: {t}")
+
+        return super().add_transform(t)
+
+    def apply_transform(self, lhs):
+        if not lhs.is_global:
+            raise Exception(f"Passed lhs of unexpected type: {t}")
+
+        return super().apply_transform(lhs)
+
+    @staticmethod
+    def parse(obj):
+        g = GlobalType(obj["initial"])  
+
+        for t in obj["transforms"]:
+            g.add_transform(Transform.parse(t))          
+
+        return g
 
     def compute_receivers(self, x : StateVar = None, x_set : set = None, p_set : set = None):
         # this encodes the alg. in Fig. 6
@@ -1047,199 +1278,54 @@ class TypeDef:
                     if curr != senders[0]:
                         raise Exception(f"Senders do not match in arguments of transform: {t}. Computed senders: {senders}")
 
-    def add_transform(self, t : Transform):
 
-        if t not in self._transforms:
-            self._transforms.append(t)
-            if self._participants is None:
-                self._participants = t.participants
+
+    def project(self, p):
+
+        p_transforms = []
+
+        for t in self._transforms:
+            if t.is_end:
+                t1 = Transform(StateVar(t.lhs), End())
+
+            elif t.is_fork:
+                lhs_sv = t.lhs
+                rhs_args = map(lambda a: StateVar(a), t.rhs.arguments)
+                t1 = Transform(StateVar(lhs_sv), Fork(*rhs_args))
+            elif t.is_join:
+                lhs_args = map(lambda a: StateVar(a), t.lhs.arguments)
+                rhs_sv = t.rhs
+                t1 = Transform(Join(*lhs_args), StateVar(rhs_sv))
+            elif t.is_merge:
+                lhs_args = map(lambda a: StateVar(a), t.lhs.arguments)
+                rhs_sv = t.rhs
+                t1 = Transform(Merge(*lhs_args), StateVar(rhs_sv))
+            elif t.is_concat:
+                rhs_messages = t.rhs.arguments[:-1]
+                rhs_sv = t.rhs.arguments[-1]
+                lhs_sv = t.lhs
+
+                rhs_args = []
+
+                for curr in rhs_messages:
+                    if p == curr.sender:
+                        rhs_args.append(MsgSend(curr.sender, curr.label, curr.payload))
+                    elif p == curr.receiver:
+                        rhs_args.append(MsgRecv(curr.receiver, curr.label, curr.payload))
+                    else:
+                        pass
+
+                rhs_args.append(StateVar(rhs_sv))
+                t1 = Transform(StateVar(lhs_sv), Concat(*rhs_args))
+
             else:
-                self._participants = self._participants.union(t.participants)
+                print(f"Unexpected transform type: {t}. Skip it ...")
+                continue
 
-    def remove_transform(self, t : Transform):
+            p_transforms.append(t1)
 
-        if t in self._transforms:
-            self._transforms.remove(t)
+        init = StateVar(self.initial) if isinstance(self.initial, str) else StateVar(self.initial.identifier)
+        lt = LocalType(init, p_transforms)
 
-            self._participants = None # this forgets the cached property value; the actual participants will be re-computed next time the participants property is accessed
-
-
-    def apply_transform(self, lhs):
-
-        if isinstance(lhs, str):
-            lhs = StateVar(lhs)
-
-        for curr in self._transforms:
-            if curr.lhs == lhs:
-                return curr.rhs
-            elif isinstance(curr.lhs, Composition) and lhs in curr.lhs:
-                return curr
-
-        raise Exception(f"Cannot find transform having lhs = {lhs}")
-
-
-    def __str__(self):
-
-        return "def { " + "; ".join(map(lambda c: f"[{c}]", self._transforms)) + " }  in " + str(self._initial)
-
-    def to_json(self):
-        
-        return { "type": self.__class__.__name__, "initial": self._initial.to_json(), "transforms": list(map(lambda c: c.to_json(), self._transforms))  } 
-
-    def get_thread(self, state_var : str | StateVar):
-        #breakpoint()
-        if isinstance(state_var, str):
-            state_var = StateVar(state_var)
-
-        thread = []
-
-        while True:
-            try:
-                found = next(t for t in self._transforms if t.lhs == state_var or state_var in t.lhs)
-            except StopIteration:
-                # no matching item found at the end of the iteration
-                break
-
-#            if not found:
-#                break
-
-            thread.append(found)
-#            if not isinstance(found.rhs, Concat) or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
-            if not found.is_concat or not isinstance(found.rhs.arguments[0], MsgExc): #MsgExc):
-                # we met a branch in the rhs, thus the thread ended
-                break
-
-            # if you reach this point, we can continue following the "linear" structure of the thread
-            state_var = found.rhs.arguments[-1]
-
-        return thread
+        return lt
             
-
-
-class MPST(models.Model):
-
-    name = models.TextField(max_length=100, null=True, blank=True)
-    resource = models.FileField(upload_to=settings.UPLOAD_ROOT)
-
-    class Meta:
-    
-        verbose_name = _("MPST")
-        verbose_name_plural = _("MPSTs")
-        unique_together = (("name",),)
-
-    def __init__(self, *args, **kwargs):        
-        super().__init__(*args, **kwargs)
-        self._root = None
-
-
-    def __str__(self):
-        return self.name
-
-
-    @property
-    def root(self):
-
-        if self._root is None:
-            with open(self.resource.path, "r") as the_content:
-                obj = json.load(the_content)
-
-                if not isinstance(obj, dict) or not "type" in obj or obj["type"] != "GlobalType":
-                    raise Exception("The parsed representation of MPST is ill-formed")
-
-                if not "transforms" in obj:
-                    obj["transforms"] = []
-                elif not isinstance(obj["transforms"], list):
-                    raise Exception("The parsed representation of MPST contains ill-formed transforms")
-            
-                self._root = GlobalType.parse(obj)
-    
-        return self._root
-
-    @property
-    def transforms(self):
-        return list(map(lambda c: Transform.parse(c), self.root["transforms"]))
-
-    @property
-    def initial(self):
-        return StateVar(self.root["initial"])
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        self._root = None
- 
-    def to_rei(self):
-        from rei import MPSTToRei, render_send_receive, render_receive
-        exp = MPSTToRei(self, render_send_receive) #render_receive)
-        #print("REI:", exp)
-        return exp
-
-    def to_nfa(self):
-        from nfa import ReiToNFA
-        rei = self.to_rei()
-        automaton = ReiToNFA(rei)
-        return automaton
-
-class LocalType(TypeDef):
-
-    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
-        for t in transforms:
-            if not t.is_local:
-                raise Exception(f"Passed transform of unexpected type: {t}")
-
-        super(self, initial, transforms, debug)
-
-    def add_transform(self, t : Transform):
-        if not t.is_local:
-            raise Exception(f"Passed transform of unexpected type: {t}")
-
-        return super().add_transform(t)
-
-    def apply_transform(self, lhs):
-        if not lhs.is_local:
-            raise Exception(f"Passed lhs of unexpected type: {t}")
-
-        return super().apply_transform(lhs)
-
-    @staticmethod
-    def parse(obj):
-        g = LocalType(obj["initial"])  
-
-        for t in obj["transforms"]:
-            g.add_transform(Transform.parse(t))          
-
-        return g
-
-
-
-class GlobalType(TypeDef):
-
-    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
-        for t in transforms:
-            if not t.is_global:
-                raise Exception(f"Passed transform of unexpected type: {t}")
-
-        super().__init__(initial, transforms, debug)
-
-    def add_transform(self, t : Transform):
-        if not t.is_global:
-            raise Exception(f"Passed transform of unexpected type: {t}")
-
-        return super().add_transform(t)
-
-    def apply_transform(self, lhs):
-        if not lhs.is_global:
-            raise Exception(f"Passed lhs of unexpected type: {t}")
-
-        return super().apply_transform(lhs)
-
-    @staticmethod
-    def parse(obj):
-        g = GlobalType(obj["initial"])  
-
-        for t in obj["transforms"]:
-            g.add_transform(Transform.parse(t))          
-
-        return g
-
-
-

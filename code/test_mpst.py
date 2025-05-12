@@ -979,3 +979,33 @@ class MPSTTestCase(TestCase):
         t1 = Transform(s1, s2)
         self.assertTrue(t1.is_local)
 
+    def test_project(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Bob", "Alice", "Film", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        #breakpoint()
+    
+        l_alice = g.project("Alice")
+        l_bob = g.project("Bob")
+
+        self.assertEqual(g.initial, l_alice.initial)
+        self.assertEqual(g.initial, l_bob.initial)
+
+        self.assertEqual(len(g.transforms), len(l_alice.transforms))
+        self.assertEqual(len(g.transforms), len(l_bob.transforms))
