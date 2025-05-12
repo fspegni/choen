@@ -429,7 +429,7 @@ class MPSTTestCase(TestCase):
         g = GlobalType(x0, [t1, t2, t3, t4, t5])
 
         #breakpoint()
-        g.check_wellformed()
+        g.check_well_formed()
 
 
 
@@ -459,7 +459,7 @@ class MPSTTestCase(TestCase):
 
         with self.assertRaises(Exception) as context:
             # an exception is expected, because rules do not allow to reach the end state
-            g.check_wellformed()
+            g.check_well_formed()
 
         self.assertTrue("end state is not reachable" in str(context.exception))
 
@@ -665,7 +665,7 @@ class MPSTTestCase(TestCase):
 
         #g.set_debug(True)
         #breakpoint()
-        g.check_wellformed()
+        g.check_well_formed()
 
     def test_ex_B1_2_ending(self):
 
@@ -688,7 +688,7 @@ class MPSTTestCase(TestCase):
 
         g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
 
-        g.check_wellformed()
+        g.check_well_formed()
     
     def test_ex_B1_3_recurive(self):
 
@@ -728,7 +728,7 @@ class MPSTTestCase(TestCase):
 
         g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 ])
 
-        g.check_wellformed()
+        g.check_well_formed()
        
  
     def test_incorrect_global_type_fig5(self):
@@ -755,7 +755,7 @@ class MPSTTestCase(TestCase):
         g = GlobalType(x0, [t1, t2, t3, t4, t5, t6 ])
 
         with self.assertRaises(Exception) as context:
-            g.check_wellformed()
+            g.check_well_formed()
 
         self.assertTrue("end state is not reachable" in str(context.exception))
 
@@ -779,7 +779,7 @@ class MPSTTestCase(TestCase):
         t5 = Transform(x5, End())
 
         g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
-        g.set_debug(True)
+        #g.set_debug(True)
     
         #breakpoint()
         receivers = g.compute_receivers(g.initial)
@@ -821,7 +821,7 @@ class MPSTTestCase(TestCase):
         t6 = Transform(x6, End())
 
         g = GlobalType(x0, [t1, t2, t3, t4, t5, t6 ])
-        g.set_debug(True)
+        #g.set_debug(True)
         #breakpoint()
         receivers = g.compute_receivers()
 
@@ -837,3 +837,145 @@ class MPSTTestCase(TestCase):
 
         self.assertTrue("Alice1" not in receivers)
         self.assertTrue("Alice2" not in receivers)
+
+
+    def test_compute_senders(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+        g.set_debug(True)
+    
+        self.assertEqual(g.compute_senders(x5), set())
+        self.assertEqual(g.compute_senders(x1), set(["Alice"]))
+        self.assertEqual(g.compute_senders(x2), set(["Alice"]))
+        self.assertEqual(g.compute_senders(x0), set(["Alice"]))
+        self.assertEqual(g.compute_senders(x3), set())
+        self.assertEqual(g.compute_senders(x4), set())
+    
+    def test_compute_receivers_many_messages(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+
+        m1 = MsgExc("Alice1", "Bob1", "Book", str)
+        m2 = MsgExc("Alice2", "Bob2", "Film1", str)
+        m3 = MsgExc("Alice1", "Bob3", "Film2", str)
+        m4 = MsgExc("Alice2", "Bob4", "Film3", str)
+        m5 = MsgExc("Alice1", "Bob5", "Film4", str)
+        m6 = MsgExc("Alice2", "Bob6", "Film5", str)
+        m7 = MsgExc("Alice1", "Bob7", "Film6", str)
+        m8 = MsgExc("Alice2", "Bob8", "Film7", str)
+        m9 = MsgExc("Alice1", "Bob9", "Film8", str)
+        m10 = MsgExc("Alice", "Bob", "Film9", str)
+        m11 = MsgExc("Alice", "Bob", "Film10", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, m2, m3, m4, x3))
+        t3 = Transform(x2, Concat(m5, m6, m7, m8, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, Concat(m9, m10, m11, x6))
+        t6 = Transform(x6, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6 ])
+
+
+        self.assertEqual(g.compute_senders(), g.compute_senders(g.initial))
+        self.assertEqual(g.compute_senders(x1), set(["Alice1"]))
+        self.assertEqual(g.compute_senders(x3), set())
+        self.assertEqual(g.compute_senders(x4), set())
+        self.assertEqual(g.compute_senders(x5), set(["Alice1"]))
+        self.assertEqual(g.compute_senders(x6), set())
+
+    def test_check_well_branched(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Bob", "Alice", "Film", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Join(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+        #g.set_debug(True)
+ 
+        #breakpoint()
+        g.check_well_branched()   
+
+
+    def test_local_types(self):
+
+        e = End()
+        self.assertTrue(e.is_local)
+
+        s1 = StateVar("x1")
+        self.assertTrue(s1.is_local)
+
+        s2 = StateVar("x2")
+        self.assertTrue(s2.is_local)
+
+
+        send = MsgSend("a", "foo", int) 
+        self.assertTrue(send.is_local)
+
+        recv = MsgRecv("a", "foo", int) 
+        self.assertTrue(recv.is_local)
+
+        ex = MsgExc("a", "b", "foo", int)
+        self.assertFalse(ex.is_local)
+
+        t1 = Transform(s1, s2)
+        self.assertTrue(t1.is_local)
+
+
+    def test_global_types(self):
+
+        e = End()
+        self.assertTrue(e.is_global)
+
+        s1 = StateVar("x1")
+        self.assertTrue(s1.is_global)
+
+        s2 = StateVar("x1")
+        self.assertTrue(s2.is_global)
+
+        send = MsgSend("a", "foo", int) 
+        self.assertFalse(send.is_global)
+
+        recv = MsgRecv("a", "foo", int) 
+        self.assertFalse(recv.is_global)
+
+        ex = MsgExc("a", "b", "foo", int)
+        self.assertTrue(ex.is_global)
+
+        t1 = Transform(s1, s2)
+        self.assertTrue(t1.is_local)
+

@@ -21,7 +21,31 @@ logging.basicConfig(
 
 logger = logging.getLogger()
 
-class StateVar:
+class IsGlobalMixin:
+
+    @property
+    def is_global(self):
+        return True
+
+class IsNotGlobalMixin:
+    
+    @property
+    def is_global(self):
+        return False
+
+class IsLocalMixin:
+
+    @property
+    def is_local(self):
+        return True
+
+class IsNotLocalMixin:
+
+    @property
+    def is_local(self):
+        return False
+
+class StateVar(IsLocalMixin, IsGlobalMixin):
 
     def __init__(self, identifier : str):
         self._identifier = identifier
@@ -80,6 +104,7 @@ def get_subclass(supertype, name):
 
     raise Exception(f"Subclass of {supertype} with name {name} not found")
 
+
 class Composition(object):
 
     def __init__(self, op : str, *arguments):
@@ -130,6 +155,18 @@ class Composition(object):
             return f"{self._arguments[0]} {self._op} {self._arguments[1]}"
         else:
             return f"{self._op}({','.join(map(str, self._arguments))})"
+
+    @property
+    def is_local(self):
+        #breakpoint()
+        #print("compute recursive is_local ...")
+        return all(map(lambda a: a.is_local, self._arguments))
+
+    @property
+    def is_global(self):
+        #breakpoint()
+        #print("compute recursive is_global ...")
+        return all(map(lambda a: a.is_global, self._arguments))
 
     @property
     def arguments(self):
@@ -231,7 +268,17 @@ class Join(Composition):
         super().__init__("|", *arguments)
 
 
-class Choice(Composition):
+class InternalChoice(IsLocalMixin, IsNotGlobalMixin, Composition): # in this way, the Composition.is_local/.is_global is overridden by the two mixins (that are non-recursive)
+    def __init__(self, *arguments):
+        super().__init__("(+)", *arguments)
+
+
+class ExternalChoice(IsLocalMixin, IsNotGlobalMixin, Composition):
+    def __init__(self, *arguments):
+        super().__init__("&", *arguments)
+
+
+class Choice(IsGlobalMixin, IsNotLocalMixin, Composition):
 
     def __init__(self, *arguments):
         super().__init__("+", *arguments)
@@ -242,8 +289,67 @@ class Merge(Composition):
     def __init__(self, *arguments):
         super().__init__("+", *arguments)
 
+class MsgSend(IsLocalMixin, IsNotGlobalMixin):
 
-class MsgExc:
+    def __init__(self, sender: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
+
+        if isinstance(payload, (list,tuple)):
+            for curr in payload:
+                if not isinstance(curr, type):
+                    raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+        elif not isinstance(payload, type):
+            raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+        self._sender = sender
+        self._label = label
+        self._payload = payload
+
+    def __str__(self):
+        payload = "N/N"
+
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+    
+        return f"! <{self._sender} , {self._label} <{payload}> >"
+
+    @property
+    def sender(self):
+        return self._sender
+
+
+
+class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
+
+
+    def __init__(self, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
+
+        if isinstance(payload, (list,tuple)):
+            for curr in payload:
+                if not isinstance(curr, type):
+                    raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+        elif not isinstance(payload, type):
+            raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+        self._receiver = receiver
+        self._label = label
+        self._payload = payload
+
+    def __str__(self):
+        payload = "N/N"
+
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+    
+        return f"? <{self._receiver} , {self._label} <{payload}> >"
+
+    @property
+    def receiver(self):
+        return self._receiver
+
+
+class MsgExc(IsGlobalMixin, IsNotLocalMixin):
 
     def __init__(self, sender: str, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
 
@@ -300,6 +406,26 @@ class MsgExc:
         payload = int # TODO
         return MsgExc(obj["sender"], obj["receiver"], obj["label"], payload)
 
+
+##class LocalConcat(Composition):
+##
+##    def __init__(self, *args): #lhs : MsgExc, rhs):
+##
+##        for curr in args[:-1]:
+##            if not isinstance(curr, MsgExc):
+##                raise Exception(f"All but the last argument of a LocalConcat should be MsgSend or MsgRecv")
+##
+##        if not isinstance(args[-1], StateVar):
+##            raise Exception("The last argument of a LocalConcat should be a StateVar")
+##
+##        super().__init__(";", *args) #[ lhs, rhs ])
+##
+##    def __str__(self):
+##
+##        return "; ".join(map(str, self._arguments))
+##
+
+
 class Concat(Composition):
 
     def __init__(self, *args): #lhs : MsgExc, rhs):
@@ -318,7 +444,8 @@ class Concat(Composition):
         return "; ".join(map(str, self._arguments))
 
 
-class End:
+
+class End(IsGlobalMixin, IsLocalMixin):
 
     def __str__(self):
         return "end"
@@ -447,9 +574,18 @@ class Transform:
     
         return Transform(lhs, rhs)    
     
+    @property
+    def is_local(self):
+        return self._lhs.is_local and self._rhs.is_local
 
-class GlobalType:
+    @property
+    def is_global(self):
+        return self._lhs.is_global and self._rhs.is_global
 
+
+
+#class GlobalType:
+class TypeDef:
 
     def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
 
@@ -552,6 +688,26 @@ class GlobalType:
     @property
     def transforms(self):
         return self._transforms
+
+    def compute_senders(self, x : StateVar = None):
+    
+        if not x:
+            x = self._initial
+
+        t = self.find_transform(lhs=x)
+
+        if t.is_concat:
+            return set([ t.rhs.arguments[0].sender ])
+        elif t.is_choice or t.is_fork:
+            res = set([])
+    
+            for curr in t.rhs.arguments:
+                res = res | self.compute_senders(curr)
+
+            return res
+        else:
+            return set()
+        
 
     def compute_receivers(self, x : StateVar = None, x_set : set = None, p_set : set = None):
         # this encodes the alg. in Fig. 6
@@ -807,7 +963,7 @@ class GlobalType:
         return g1
 
 
-    def check_wellformed(self):
+    def check_well_formed(self):
 
         num_ends = 0
         num_initials = 0
@@ -880,6 +1036,16 @@ class GlobalType:
                     if t.rhs not in t.lhs.state_vars:
                         raise Exception(f"Expected mutually recursive merges. Found: {t}. Simplified global type: {g1}")
 
+    def check_well_branched(self):
+
+        for t in self._transforms:
+            if t.is_choice:
+                senders = []
+                senders = map(lambda a: self.compute_senders(a), t.rhs.arguments)
+
+                for curr in senders[1:]:
+                    if curr != senders[0]:
+                        raise Exception(f"Senders do not match in arguments of transform: {t}. Computed senders: {senders}")
 
     def add_transform(self, t : Transform):
 
@@ -919,15 +1085,6 @@ class GlobalType:
     def to_json(self):
         
         return { "type": self.__class__.__name__, "initial": self._initial.to_json(), "transforms": list(map(lambda c: c.to_json(), self._transforms))  } 
-
-    @staticmethod
-    def parse(obj):
-        g = GlobalType(obj["initial"]) 
-
-        for t in obj["transforms"]:
-            g.add_transform(Transform.parse(t))          
-
-        return g
 
     def get_thread(self, state_var : str | StateVar):
         #breakpoint()
@@ -1021,3 +1178,68 @@ class MPST(models.Model):
         rei = self.to_rei()
         automaton = ReiToNFA(rei)
         return automaton
+
+class LocalType(TypeDef):
+
+    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
+        for t in transforms:
+            if not t.is_local:
+                raise Exception(f"Passed transform of unexpected type: {t}")
+
+        super(self, initial, transforms, debug)
+
+    def add_transform(self, t : Transform):
+        if not t.is_local:
+            raise Exception(f"Passed transform of unexpected type: {t}")
+
+        return super().add_transform(t)
+
+    def apply_transform(self, lhs):
+        if not lhs.is_local:
+            raise Exception(f"Passed lhs of unexpected type: {t}")
+
+        return super().apply_transform(lhs)
+
+    @staticmethod
+    def parse(obj):
+        g = LocalType(obj["initial"])  
+
+        for t in obj["transforms"]:
+            g.add_transform(Transform.parse(t))          
+
+        return g
+
+
+
+class GlobalType(TypeDef):
+
+    def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
+        for t in transforms:
+            if not t.is_global:
+                raise Exception(f"Passed transform of unexpected type: {t}")
+
+        super().__init__(initial, transforms, debug)
+
+    def add_transform(self, t : Transform):
+        if not t.is_global:
+            raise Exception(f"Passed transform of unexpected type: {t}")
+
+        return super().add_transform(t)
+
+    def apply_transform(self, lhs):
+        if not lhs.is_global:
+            raise Exception(f"Passed lhs of unexpected type: {t}")
+
+        return super().apply_transform(lhs)
+
+    @staticmethod
+    def parse(obj):
+        g = GlobalType(obj["initial"])  
+
+        for t in obj["transforms"]:
+            g.add_transform(Transform.parse(t))          
+
+        return g
+
+
+
