@@ -439,8 +439,14 @@ class Choreography(models.Model):
         #print("REI:", exp)
         return exp
 
-    def to_nfa(self):
+    def to_nfa(self, optimize=False):
         from nfa import ReiToNFA
         rei = self.to_rei()
+        #breakpoint()
         automaton = ReiToNFA(rei)
+
+        if optimize:
+            automaton.remove_epsilon_transitions()
+            automaton.remove_unreachable_states()
+
         return automaton

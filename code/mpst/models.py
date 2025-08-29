@@ -21,6 +21,15 @@ logging.basicConfig(
 
 logger = logging.getLogger()
 
+def get_builtin_type(name):
+    if name not in __builtins__:
+        raise ValueError(f"Passed name is not a builtin symbol/type: {name}")
+    t = __builtins__[name] 
+    if isinstance(t, type):
+        return t
+    raise ValueError(f"The passed name is not a builtin type: {name}")
+
+
 class IsGlobalMixin:
 
     @property
@@ -194,7 +203,7 @@ class Composition(object):
                 res.append(curr)
             elif isinstance(curr, Composition):
                 res.extend(curr.state_vars)
-            elif isinstance(curr, MsgExc):
+            elif isinstance(curr, (MsgExc, MsgSend, MsgRecv)):
                 pass
             else:
                 raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
@@ -235,10 +244,10 @@ class Composition(object):
     def parse(obj):
 
         #print(f"Parsing: {obj}")
-        if not isinstance(obj, dict) or "type" not in obj:
+        if not isinstance(obj, dict) or ("type" not in obj and "t" not in obj):
             raise Exception("Ill-formed representation of a composition")
 
-        class_name = obj["type"]
+        class_name = obj["type"] if "type" in obj else obj["t"]
 
         #breakpoint()
         #classes = get_all_subclasses(Composition)
@@ -248,7 +257,8 @@ class Composition(object):
     
         if issubclass(klass, Composition):
             arguments = []
-            for a in obj["arguments"]:
+            obj_arguments = obj["arguments"] if "arguments" in obj else obj["a"] if "a" in obj else []
+            for a in obj_arguments:
                 if isinstance(a, str):
                     arguments.append(StateVar(a))
                 else:
@@ -274,13 +284,23 @@ class Join(Composition):
 
 
 class InternalChoice(IsLocalMixin, IsNotGlobalMixin, Composition): # in this way, the Composition.is_local/.is_global is overridden by the two mixins (that are non-recursive)
-    def __init__(self, *arguments):
+    def __init__(self, active_sender, *arguments):
+        self._active_sender = active_sender
         super().__init__("(+)", *arguments)
+
+    @property
+    def active_sender(self):
+        return self._active_sender
 
 
 class ExternalChoice(IsLocalMixin, IsNotGlobalMixin, Composition):
-    def __init__(self, *arguments):
+    def __init__(self, active_sender, *arguments):
+        self._active_sender = active_sender
         super().__init__("&", *arguments)
+
+    @property
+    def actieve_sender(self):
+        return self._active_sender
 
 
 class Choice(IsGlobalMixin, IsNotLocalMixin, Composition):
@@ -296,7 +316,7 @@ class Merge(Composition):
 
 class MsgSend(IsLocalMixin, IsNotGlobalMixin):
 
-    def __init__(self, sender: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
+    def __init__(self, sender: str, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
 
         if isinstance(payload, (list,tuple)):
             for curr in payload:
@@ -304,44 +324,8 @@ class MsgSend(IsLocalMixin, IsNotGlobalMixin):
                     raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
         elif not isinstance(payload, type):
             raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+
         self._sender = sender
-        self._label = label
-        self._payload = payload
-
-    def __str__(self):
-        payload = "N/N"
-
-        if isinstance(self._payload, type):
-            payload = self._payload.__name__
-        elif isinstance(self._payload, (list, tuple)):
-            payload = ",".join(map(lambda c: c.__name__, self._payload))
-    
-        return f"! <{self._sender} , {self._label} <{payload}> >"
-
-    @property
-    def sender(self):
-        return self._sender
-
-    @property
-    def label(self):
-        return self._label
-
-    @property
-    def payload(self):
-        return self._payload
-
-
-class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
-
-
-    def __init__(self, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
-
-        if isinstance(payload, (list,tuple)):
-            for curr in payload:
-                if not isinstance(curr, type):
-                    raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
-        elif not isinstance(payload, type):
-            raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
         self._receiver = receiver
         self._label = label
         self._payload = payload
@@ -354,12 +338,60 @@ class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
         elif isinstance(self._payload, (list, tuple)):
             payload = ",".join(map(lambda c: c.__name__, self._payload))
     
-        return f"? <{self._receiver} , {self._label} <{payload}> >"
+        return f"{self._sender}!{self._receiver}[{self._label}]({payload})"
 
     @property
     def receiver(self):
         return self._receiver
 
+    @property
+    def sender(self):
+        return self._sender
+
+ 
+    @property
+    def label(self):
+        return self._label
+
+    @property
+    def payload(self):
+        return self._payload
+
+
+class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
+
+
+    def __init__(self, receiver: str, sender: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
+
+        if isinstance(payload, (list,tuple)):
+            for curr in payload:
+                if not isinstance(curr, type):
+                    raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+        elif not isinstance(payload, type):
+            raise Exception(f"Unexpected payload specification: expected types or collections of types. Received: {payload}")
+
+        self._receiver = receiver
+        self._sender = sender
+        self._label = label
+        self._payload = payload
+
+    def __str__(self):
+        payload = "N/N"
+
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+    
+        return f"{self._receiver}?{self._sender}[{self._label}]({payload})"
+
+    @property
+    def sender(self):
+        return self._sender
+
+    @property
+    def receiver(self):
+        return self._receiver
 
     @property
     def label(self):
@@ -376,7 +408,7 @@ class MsgExc(IsGlobalMixin, IsNotLocalMixin):
     def __init__(self, sender: str, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
 
         if sender == receiver:
-            raise Exception("Sender and receiver cannot be the same. Passed: {sender}")
+            raise Exception(f"Sender and receiver cannot be the same. Passed: {sender}")
 
         if isinstance(payload, (list,tuple)):
             for curr in payload:
@@ -433,7 +465,7 @@ class MsgExc(IsGlobalMixin, IsNotLocalMixin):
     @staticmethod
     def parse(obj):
 
-        payload = int # TODO
+        payload = get_builtin_type(obj["payload"]) if "payload" in obj else int
         return MsgExc(obj["sender"], obj["receiver"], obj["label"], payload)
 
 
@@ -499,6 +531,10 @@ class Transform:
         self._lhs = lhs
         self._rhs = rhs
 
+    @staticmethod
+    def clone(t):
+        return Transform(t.lhs, t.rhs)
+
     @property
     def lhs(self):
         return self._lhs
@@ -523,6 +559,10 @@ class Transform:
     @property
     def is_passthrough(self):
         return isinstance(self._lhs, StateVar) and isinstance(self._rhs, StateVar)
+
+    @property
+    def is_indirection(self):
+        return self.is_passthrough
 
     @property
     def is_concat(self):
@@ -550,7 +590,7 @@ class Transform:
 
     @property
     def is_external_choice(self):
-        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, InternalChoice)
+        return isinstance(self._lhs, StateVar) and isinstance(self._rhs, ExternalChoice)
 
     @property
     def participants(self):
@@ -569,6 +609,10 @@ class Transform:
             return set([ self._rhs ])
         else:
             return self._rhs.state_vars
+
+    @property
+    def state_vars(self):
+        return self.lhs_vars.union(self.rhs_vars)
 
 
     def replace_var(self, var : StateVar, var1 : StateVar):
@@ -593,12 +637,12 @@ class Transform:
 
     @staticmethod
     def parse(obj):
-        if "type" not in obj or obj["type"] != "Transform" or "lhs" not in obj or "rhs" not in obj:
+        if "lhs" not in obj or "rhs" not in obj:
             raise Exception("Ill-formed representation of transform.")
 
         lhs = obj["lhs"]
         rhs = obj["rhs"]
-        _type = obj["type"]
+        #_type = obj["type"]
 
         if isinstance(lhs, str):  
             lhs = StateVar(lhs)
@@ -644,6 +688,15 @@ class TypeDef:
 
                 self._transforms.append(curr)
  
+    @property
+    def state_vars(self):
+
+        res = set([])
+        for t in self.transforms:
+            res = res.union(t.state_vars)
+
+        return res
+
     @property
     def logger(self):
         return self._logger
@@ -727,6 +780,9 @@ class TypeDef:
     def transforms(self):
         return self._transforms
 
+    ###
+    ### See Active Sender computation, Fig. 22, Danielou and Yoshida, 
+    ###
     def compute_senders(self, x : StateVar = None):
     
         if not x:
@@ -933,10 +989,14 @@ class GlobalType(TypeDef):
 
     @staticmethod
     def parse(obj):
+        if not "initial" in obj:
+            raise ValueError("Missing initial state variable")
+
         g = GlobalType(obj["initial"])  
 
-        for t in obj["transforms"]:
-            g.add_transform(Transform.parse(t))          
+        if "transforms" in obj:
+            for t in obj["transforms"]:
+                g.add_transform(Transform.parse(t))          
 
         return g
 
@@ -1009,7 +1069,7 @@ class GlobalType(TypeDef):
         g1 = GlobalType(self._initial, debug=self.debug)
 
         for t in self._transforms:   
-            g1.add_transform(t)
+            g1.add_transform(Transform.clone(t))
  
        
         self.logger.debug(f"Simplify: {self}")
@@ -1267,39 +1327,58 @@ class GlobalType(TypeDef):
                     if t.rhs not in t.lhs.state_vars:
                         raise Exception(f"Expected mutually recursive merges. Found: {t}. Simplified global type: {g1}")
 
+
     def check_well_branched(self):
 
         for t in self._transforms:
             if t.is_choice:
-                senders = []
-                senders = map(lambda a: self.compute_senders(a), t.rhs.arguments)
+                #senders = []
+                #senders = map(lambda a: self.compute_senders(a), t.rhs.arguments)
+                senders = set()
+                for a in t.rhs.arguments:
+                    senders = senders.union(self.compute_senders(a))
 
-                for curr in senders[1:]:
-                    if curr != senders[0]:
-                        raise Exception(f"Senders do not match in arguments of transform: {t}. Computed senders: {senders}")
+#                for curr in senders[1:]:
+#                    if curr != senders[0]:
+#                        raise Exception(f"Senders do not match in arguments of transform: {t}. Computed senders: {senders}")
+                if len(senders) == 0:
+                    raise Exception(f"No senders in Choice: {t}")
+                elif len(senders) > 1:
+                    raise Exception(f"Too many senders in Choice: {t}. Senders: {senders}")
 
 
 
     def project(self, p):
 
+        # fig. 9, Danielou and Yoshida, 2012
+
         p_transforms = []
+
+        replaces = []
 
         for t in self._transforms:
             if t.is_end:
                 t1 = Transform(StateVar(t.lhs), End())
 
+            elif t.is_passthrough:
+                t1 = Transform(StateVar(t.lhs), StateVar(t.rhs))
+                replaces.append(t1)
+                
             elif t.is_fork:
                 lhs_sv = t.lhs
                 rhs_args = map(lambda a: StateVar(a), t.rhs.arguments)
                 t1 = Transform(StateVar(lhs_sv), Fork(*rhs_args))
+
             elif t.is_join:
                 lhs_args = map(lambda a: StateVar(a), t.lhs.arguments)
                 rhs_sv = t.rhs
                 t1 = Transform(Join(*lhs_args), StateVar(rhs_sv))
+
             elif t.is_merge:
                 lhs_args = map(lambda a: StateVar(a), t.lhs.arguments)
                 rhs_sv = t.rhs
                 t1 = Transform(Merge(*lhs_args), StateVar(rhs_sv))
+
             elif t.is_concat:
                 rhs_messages = t.rhs.arguments[:-1]
                 rhs_sv = t.rhs.arguments[-1]
@@ -1309,17 +1388,47 @@ class GlobalType(TypeDef):
 
                 for curr in rhs_messages:
                     if p == curr.sender:
-                        rhs_args.append(MsgSend(curr.sender, curr.label, curr.payload))
+                        # p is the sender, the action is to send to the curr.receiver
+                        rhs_args.append(MsgSend(curr.sender, curr.receiver, curr.label, curr.payload))
                     elif p == curr.receiver:
-                        rhs_args.append(MsgRecv(curr.receiver, curr.label, curr.payload))
+                        # p is the receiver, the action is to receive from th ecurr.sender
+                        rhs_args.append(MsgRecv(curr.receiver, curr.sender, curr.label, curr.payload))
                     else:
                         pass
 
-                rhs_args.append(StateVar(rhs_sv))
-                t1 = Transform(StateVar(lhs_sv), Concat(*rhs_args))
+                if len(rhs_args) > 0:
+                    rhs_args.append(StateVar(rhs_sv))
+                    t1 = Transform(StateVar(lhs_sv), Concat(*rhs_args))
+                else:
+                    t1 = Transform(StateVar(lhs_sv), StateVar(rhs_sv))
+                    replaces.append(t1)
 
+            elif t.is_choice:
+                senders = set()
+                for a in t.rhs.arguments:
+                    senders = senders.union(self.compute_senders(a))
+
+                if len(senders) == 0:
+                    raise Exception(f"No senders in Choice: {t}")
+                elif len(senders) > 1:
+                    raise Exception(f"Too many senders in Choice: {t}. Senders: {senders}")
+
+                active_sender = list(senders)[0] # it is just one
+
+                #breakpoint()
+                # if we reach this point, this choice is well-branched, and we can proceed
+                if active_sender == p:
+                    # internal choice
+                    lhs_sv = t.lhs
+                    rhs_args = map(lambda a: StateVar(a), t.rhs.arguments)
+                    t1 = Transform(StateVar(lhs_sv), InternalChoice(active_sender, *rhs_args))
+                else:
+                    # external choice
+                    lhs_sv = t.lhs
+                    rhs_args = map(lambda a: StateVar(a), t.rhs.arguments)
+                    t1 = Transform(StateVar(lhs_sv), ExternalChoice(active_sender, *rhs_args))
             else:
-                print(f"Unexpected transform type: {t}. Skip it ...")
+                print(f"Unexpected transform type: {t} ({type(t)} : {type(t.lhs)} -> {type(t.rhs)}). Skip it ...")
                 continue
 
             p_transforms.append(t1)
@@ -1327,5 +1436,12 @@ class GlobalType(TypeDef):
         init = StateVar(self.initial) if isinstance(self.initial, str) else StateVar(self.initial.identifier)
         lt = LocalType(init, p_transforms)
 
+        for t in replaces:
+            print(f"Replace: {t.lhs}/{t.rhs} ...")
+            #breakpoint()
+            lt.remove_transform(t)
+            lt.replace_var(t.lhs, t.rhs)
+
         return lt
             
+

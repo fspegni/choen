@@ -4,6 +4,7 @@ import string
 import itertools
 from deprecation import deprecated
 from graphviz import Digraph
+import traceback
 
 EPSILON = ""
 
@@ -85,6 +86,9 @@ class Transition:
     @property
     def target(self):
         return self.__target
+
+    def set_target(self, new_target : State):
+        self.__target = new_target
 
     @property
     def label(self):
@@ -203,7 +207,69 @@ class NFA:
 
 
     def remove_epsilon_transitions(self):
-        # TODO this method can be optimizeda. A LOT! ;-)
+
+
+        class Continue(Exception):
+            pass
+
+        idx = 1 
+        dirty = True
+        while dirty:
+
+            dirty = False
+            print(f"Iteration no. {idx} : # transitions = {len(self.transitions)} ...")
+            #breakpoint()
+            idx = idx + 1
+
+            try:
+                remove_transitions = []
+                for t in self.transitions:
+                    if not t.label: # and not self.is_initial(t.source):
+
+                        pre = t.source
+                        post= t.target
+ 
+                        e_outgoing = self.transitions_from(pre, "")
+            
+                        if self.is_initial(pre):
+                            if len(e_outgoing) > 1:
+                                # skip epsilon-transitions from the initial state, if there are more than one
+                                continue
+                            else:
+                                self.set_initial(post)
+
+                        #breakpoint()
+                        dirty = True
+    
+                        remove_transitions.append(t)
+    
+   
+                        incoming = self.transitions_to(pre)
+    
+                        for t1 in incoming:
+                            remove_transitions.append(t1)
+    
+                            #t1.set_target(post)
+                            for t2 in e_outgoing:
+                                self.add_transition(t1.source, t2.target, t1.label)
+                            
+                            
+                        #for t in remove_transitions:
+                        #    self.transitions.remove(t)
+                        no_transitions_before = len(self.transitions)
+            
+                        for t in remove_transitions:    
+                            self.remove_transition(t)
+                
+                        assert len(self.transitions) == no_transitions_before - len(remove_transitions), "Invariant of remove_epsilon_transitions does not hold"       
+                    
+                        raise Continue()
+
+            except Continue:
+                pass   
+
+    def remove_epsilon_transitions_old(self):
+        # TODO this method does not work; need to be fixed!
 
         class Continue(Exception):
             pass
@@ -244,7 +310,8 @@ class NFA:
                             print(f"Added: {t} ...")
     
                         for t in to_remove_transitions:
-                            self.remove_transition(t.source, t.target, t.label)
+                            #self.remove_transition(t.source, t.target, t.label)    
+                            self.remove_transition(t)
                             print(f"Removed: {t} ...")
 
                         #breakpoint()
@@ -261,11 +328,17 @@ class NFA:
 
     def remove_unreachable_states(self):
         
-        to_remove = list(map(lambda s: s.id, filter(lambda s: self.is_initial(s) or self.is_final(s) or len(self.transitions_to(s)) > 0, self.states)))
-        print(f"States to be removed: {to_remove}")
+        #to_remove = list(map(lambda s: s.id, filter(lambda s: self.is_initial(s) or self.is_final(s) or len(self.transitions_to(s)) > 0, self.states)))
+        to_remove = list(map(lambda s: s.id, filter(lambda s: not self.is_initial(s) and len(self.transitions_to(s)) == 0, self.states)))
+        print(f"States to remove: {to_remove} ({len(to_remove)})")
         print(f"States before: # {len(self._states)}")
-        self._states = {k:v for k,v in self._states.items() if k in to_remove}
+        #self._states = {k:v for k,v in self._states.items() if k in to_remove}
+        self._states = {k:v for k,v in self._states.items() if k not in to_remove}
         print(f"States after: # {len(self._states)}")
+
+        for s in to_remove:
+            del self._transitions[s]
+
 
     def to_dot(self):
         g = Digraph(name='curr_graph', filename='curr_graph.gv')
@@ -325,8 +398,8 @@ class NFA:
             for symbol, targets in transitions_set.items():
                 res.extend(targets)
 
-
         return res
+
 
     """
     Return the set of all transitions departing from the passed source state. If a label is 
@@ -429,40 +502,49 @@ class NFA:
             self._event_dictionary[label] = new_code
             self._event_dictionary_lookup[new_code] = label
 
-    def remove_transition(self, source, target, label):
- 
-        if isinstance(source, State):
-            source_state = source
-            source = source.id
-        else:
-            source_state = self._states[source]
-        
-        assert isinstance(source, str)
-        assert isinstance(source_state, State)
+    def remove_transition(self, t:Transition): #source, target, label):
 
-        if isinstance(target, State):
-            target_state = target
-            target = target.id
-        else:
-            target_state = self._states[target]
-        
-        assert isinstance(target, str)
-        assert isinstance(target_state, State)
+        try:
+            current = self._transitions[t.source.id][t.label]
+            current = set([x for x in current if x != t])
+            self._transitions[t.source.id][t.label] = current
 
-        if source not in self._transitions:
-            raise Exception(f"No such transition: source={source} (label={label}, target={target})")
-
-        if label not in self._transitions[source]:
-            raise Exception(f"No such transition: source={source}, label={label} (target={target})")
-
-        for t in self._transitions[source][label]:
-            if t.target == target_state:
-                # found
-                self._transitions[source][label].remove(t)
-                return
-
-        raise Exception(f"No such transition: source={source}, label={label}, target={target}")
-
+        except Exception as err:
+            traceback.print_exc()
+            raise Exception("Error removing transition. Perhaps it does not exist?")
+## 
+##        if isinstance(source, State):
+##            source_state = source
+##            source = source.id
+##        else:
+##            source_state = self._states[source]
+##        
+##        assert isinstance(source, str)
+##        assert isinstance(source_state, State)
+##
+##        if isinstance(target, State):
+##            target_state = target
+##            target = target.id
+##        else:
+##            target_state = self._states[target]
+##        
+##        assert isinstance(target, str)
+##        assert isinstance(target_state, State)
+##
+##        if source not in self._transitions:
+##            raise Exception(f"No such transition: source={source} (label={label}, target={target})")
+##
+##        if label not in self._transitions[source]:
+##            raise Exception(f"No such transition: source={source}, label={label} (target={target})")
+##
+##        for t in self._transitions[source][label]:
+##            if t.target == target_state:
+##                # found
+##                self._transitions[source][label].remove(t)
+##                return
+##
+##        raise Exception(f"No such transition: source={source}, label={label}, target={target}")
+##
 
     def _generate_label_code(self):
         # TODO note that this works only for limited sets of symbols (26 * 26)

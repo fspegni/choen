@@ -9,7 +9,7 @@ import traceback
 import sys
 import os
 import re
-from generator import SmartContractGenerator
+from generator import SmartContractGenerator, MPSTSmartContractGenerator
 import time
 from tabulate import tabulate
 from django.conf import settings
@@ -151,12 +151,17 @@ class Model:
     def set_object(self, name, obj):
         self._store[name] = obj
     
-#    # deprecated
-#    def add_object(self, name, obj):
-#        return self.set_object(name, obj)
-
     def get_object(self, name):
         return self._store.get(name, None)
+
+    def unset_object(self, name):
+        if name in self._store:
+            del self._store[name]
+
+    @property
+    def names(self):
+        return self._store.keys()
+
 
 class UICommand:
 
@@ -550,24 +555,44 @@ class CmdBuildContracts(UICommand):
     def execute(self, name=None, *args, **kwargs):
 
         c : Choreography = self.ui._model.get_object("choreography")
-
-        if not c:
-            print("No choreography loaded, yet. Cannot continue")
-            return
-
-        nfa = c.to_nfa()
-        #nfa.remove_epsilon_transitions()
-        #nfa.remove_unreachable_states()
-
-        self.compile(nfa)
-
-    
-    def compile(self, nfa):
+        m : MPST = self.ui._model.get_object("mpst")
 
         debug = True
-        smartContractGenerator: SmartContractGenerator = SmartContractGenerator(nfa)
 
-        compiled_sol = smartContractGenerator.createSmartContract().compile(debug)
+        if c and m:
+            print(f"Both choreography ({c}) and MPST ({m}) are loaded")
+            return
+
+        if c:
+            #nfa.remove_epsilon_transitions()
+            #nfa.remove_unreachable_states()
+
+            #self.compile(nfa)
+            self.compile_choreography(c, debug=debug)
+        elif m:
+            #scg = MPSTSmartContractGenerator(m.root)
+            #c = scg.createSmartContract()
+            #c.compile(debug=True)
+            self.compile_mpst(m, debug=debug)
+        else:
+            print("No choreography and no MPST loaded, yet. Cannot continue")
+            return
+
+
+    
+    def compile_choreography(self, c : Choreography, debug=False):
+
+        nfa = c.to_nfa(optimize=True)
+        #breakpoint()
+        scg: SmartContractGenerator = SmartContractGenerator(nfa)
+
+        compiled_sol = scg.createSmartContract().compile(debug=debug)
+
+    def compile_mpst(self, m : MPST, debug=False): 
+        scg = MPSTSmartContractGenerator(m.root)
+        c = scg.createSmartContract()
+        c.compile(debug=debug)
+
  
 class CmdLoadMPST(UICommand):
 
@@ -577,14 +602,13 @@ class CmdLoadMPST(UICommand):
 
         if not name:
             print("Please, specify a MPST to load. Available MPSTs:")
-            #available = "\n".join(map(lambda c: f"* {c.name}", Choreography.objects.all()))
-            available = "TODO" # TODO
+            available = "\n".join(map(lambda c: f"* {c.name}", MPST.objects.all()))
             print(available)
             return
 
         try:
             c : MPST = MPST.objects.get(name=name)
-            self.ui._model.set_object("choreography", c)
+            self.ui._model.set_object("mpst", c)
             print(f"MPST '{name}' loaded ...")
         except Exception as e: # MPST.DoesNotExist as e:
             #breakpoint()
@@ -608,14 +632,14 @@ class CmdLoadMPST(UICommand):
         }
         c, created = MPST.objects.get_or_create(name=mpst_name, defaults=attribs)
 
-        try:
-            c.to_nfa()
-        except Exception as err:
-            traceback.print_exc()
-            print(f"KO MPST {mpst_name} : error extracting NFA ({err}), cannot import ...")
-            return
+##        try:
+##            c.to_nfa()
+##        except Exception as err:
+##            traceback.print_exc()
+##            print(f"KO MPST {mpst_name} : error extracting NFA ({err}), cannot import ...")
+##            return
 
-        self.ui._model.set_object("choreography", c)
+        self.ui._model.set_object("mpst", c)
         if created:
             print(f"OK MPST {mpst_name} : imported and loaded ...")
         else:
@@ -1179,11 +1203,9 @@ class CmdDump(UICommand):
                     print("You must load a choreography, before dumping its rei")
                     return
 
-                nfa = c.to_nfa()
-
-                if len(args) > 1 and args[1] == "reduced":
-                    nfa.remove_epsilon_transitions()
-                    nfa.remove_unreachable_states()
+                optimize = len(args) > 1 and args[1] == "reduced"
+                
+                nfa = c.to_nfa(optimize=optimize)
 
                 print("\nNFA: \n")
 #                g = self.ui._nfa.to_dot()   
@@ -1331,12 +1353,16 @@ class CmdSave(UICommand):
 
 class CmdEnv(UICommand):
 
-    _description = "Get/Set/List the environment variables"
+    _description = "Get/Set/List the environment and model variables"
 
     def get_completions(self):
         d = {}
         for k,v in self.ui.env:
             d[k] = None
+
+        for n in self.ui._model.names:
+            d[n] = None
+
         return d
 
     def execute(self, *args, rest=""): #**kwargs):
@@ -1344,27 +1370,21 @@ class CmdEnv(UICommand):
         n_args = len(args)
         
         if n_args == 0:
-#            print(f"Please, specify an argument: {self.get_completions().keys()}")
 
+            all_keys = list(self.ui.env_keys) + list(self.ui._model.names)
 
-            #breakpoint()
-            max_len = max(map(len, self.ui.env_keys)) + 3
+            max_len = max(map(len, all_keys)) + 3
             for k,v in self.ui.env:
                 v = self.ui.display_env(k)
                 print(f"{k.ljust(max_len,'.')} = {v}")
 
-#        elif self.ui.has_env(args[0]):
-#            if len(args) > 1:
-#                self.ui.set_env(args[0], args[1])
-#            else:
-#                v = self.ui.get_env(args[0])
-#                if "PRIVATE" in args[0]:
-#                    v = "*" * len(v)
-#                print(f"{args[0]} = {v}")
-#        else:
+            for n in self.ui._model.names:
+                v = self.ui._model.get_object(n)
+                print(f"{n.ljust(max_len,'.')} = {v}")
+
         elif n_args == 1:
             k = args[0]
-            v = self.ui.get_env(k, default=None)
+            v = self.ui.get_env(k, default=self.ui._model.get_object(k))
             print(f"{k} = {v}")
 
         elif n_args > 1:
@@ -1373,11 +1393,28 @@ class CmdEnv(UICommand):
             if not rest:
                 raise Exception(f"Unexpected command: missing value for key: {k}")
 
+            if k in self.ui._model.names:
+                raise Exception(f"Cannot set value of model variable: {k}. They are managed by the tool")
+
             value = rest.replace(k, "").strip()
 
             self.ui.set_env(k, value)
 #            print(f"Attribute not recognized ({args[0]}). Available attributes: {', '.join(self.get_completions().keys())}")
 
+class CmdEnvUnset(UICommand):
+
+    _description = "Un-set an environment or model variable"
+
+    def execute(self, *args, **kwargs):
+        n_args = len(args)
+        if n_args == 0:
+            raise Exception("Missing the name of the variable to be reset")
+
+        k = args[0]
+        if k in self.ui._model.names:
+            self.ui._model.unset_object(k)
+        else:
+            self.ui.unset_env(k)
 
 class UI:
 
@@ -1416,6 +1453,7 @@ class UI:
             "history": CmdHistory(self),
             "save"  : CmdSave(self),
             "env"   : CmdEnv(self),
+            "env_unset": CmdEnvUnset(self),
             "load_config"   : CmdLoadConfiguration(self),
             "get_balance"   : CmdGetBalance(self),
             "build_contracts"   : CmdBuildContracts(self),
@@ -1505,14 +1543,15 @@ class UI:
 
         return self._expand(value)
 
+    def unset_env(self, key):
+        if key in self._env:
+            del self._env[key]
+
     def set_env(self, key, value):
         self._env[key.upper()] = self._expand(value)
 
     def has_env(self, key):
         return key in self._env
-
-#    def set_running(self, v : bool):
-#        self._running = v
 
 
     def _get_enforcer_completer(self):

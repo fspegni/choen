@@ -491,8 +491,8 @@ class EngineOffChain(Engine,models.Model):
 
         #breakpoint()
         nfa = ri.choreography.to_nfa()
-        nfa.remove_epsilon_transitions()
-        nfa.remove_unreachable_states()
+        #nfa.remove_epsilon_transitions()
+        #nfa.remove_unreachable_states()
 
         e._nfa : nfa.NFA = nfa
         e.buffer = {}

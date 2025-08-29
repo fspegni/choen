@@ -1,6 +1,6 @@
 from django.test import TestCase
 from mpst.models import *
-
+from generator import MPSTSmartContractGenerator
 
 class MPSTTestCase(TestCase):
 
@@ -417,7 +417,7 @@ class MPSTTestCase(TestCase):
         x5 = StateVar("x5")
 
         m1 = MsgExc("Alice", "Bob", "Book", str)
-        m2 = MsgExc("Alice", "Bob", "Film", str)
+        m2 = MsgExc("Bob", "Alice", "Film", str)
 
         t1 = Transform(x0, Choice(x1, x2))
         t2 = Transform(x1, Concat(m1, x3))
@@ -692,7 +692,7 @@ class MPSTTestCase(TestCase):
     
     def test_ex_B1_3_recurive(self):
 
-        # example 3 of example B.1 of appendix B.2
+        # example 3 of example B.1 of appendix B.2; alternating bit protocol
         x0 = StateVar("x0")
         x1 = StateVar("x1")
         x2 = StateVar("x2")
@@ -710,9 +710,9 @@ class MPSTTestCase(TestCase):
         x14 = StateVar("x14")
 
         m1 = MsgExc("Alice", "Bob", "Msg1", str)
-        m2 = MsgExc("Alice", "Bob", "Ack1", str)
+        m2 = MsgExc("Bob", "Alice", "Ack1", str)
         m3 = MsgExc("Alice", "Bob", "Msg2", str)
-        m4 = MsgExc("Alice", "Bob", "Ack2", str)
+        m4 = MsgExc("Bob", "Alice", "Ack2", str)
 
         t1 = Transform(x0, Fork(x1, x2))
         t2 = Transform(Merge(x1, x3), x4)
@@ -906,7 +906,7 @@ class MPSTTestCase(TestCase):
         self.assertEqual(g.compute_senders(x5), set(["Alice1"]))
         self.assertEqual(g.compute_senders(x6), set())
 
-    def test_check_well_branched(self):
+    def test_check_well_branched_fork(self):
 
         x0 = StateVar("x0")
         x1 = StateVar("x1")
@@ -916,7 +916,7 @@ class MPSTTestCase(TestCase):
         x5 = StateVar("x5")
 
         m1 = MsgExc("Alice", "Bob", "Book", str)
-        m2 = MsgExc("Bob", "Alice", "Film", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
 
         t1 = Transform(x0, Fork(x1, x2))
         t2 = Transform(x1, Concat(m1, x3))
@@ -929,6 +929,141 @@ class MPSTTestCase(TestCase):
  
         #breakpoint()
         g.check_well_branched()   
+
+    def test_check_well_branched_choice(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+        #g.set_debug(True)
+ 
+        #breakpoint()
+        g.check_well_branched()   
+
+
+    def test_check_well_branched_choice_with_fork(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+        x7 = StateVar("x7")
+        x8 = StateVar("x8")
+        x9 = StateVar("x9")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+        m3 = MsgExc("Alice", "Bob", "Theatre", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Fork(x3, x4))
+
+        t3 = Transform(x3, Concat(m1, x5))
+        t4 = Transform(x4, Concat(m2, x6))
+
+        t5 = Transform(Merge(x6, x5), x7)
+        t6 = Transform(x2, Concat(m3, x8))
+
+        t7 = Transform(Join(x7, x8), x9)
+        t8 = Transform(x9, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8 ])
+        #g.set_debug(True)
+ 
+        #breakpoint()
+        g.check_well_branched()   
+
+
+
+    def test_check_not_well_branched_choice(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Bob", "Alice", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+ 
+        #breakpoint()
+
+        with self.assertRaises(Exception) as context:
+            g.check_well_branched()   
+
+        self.assertTrue("Too many senders" in str(context.exception))
+        self.assertTrue("Alice" in str(context.exception))
+        self.assertTrue("Bob" in str(context.exception))
+
+
+    def test_check_not_well_branched_choice_with_fork(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+        x7 = StateVar("x7")
+        x8 = StateVar("x8")
+        x9 = StateVar("x9")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Bob", "Alice", "Film", str)
+        m3 = MsgExc("Alice", "Bob", "Theatre", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Fork(x3, x4))
+
+        t3 = Transform(x3, Concat(m1, x5))
+        t4 = Transform(x4, Concat(m2, x6))
+
+        t5 = Transform(Merge(x6, x5), x7)
+        t6 = Transform(x2, Concat(m3, x8))
+
+        t7 = Transform(Join(x7, x8), x9)
+        t8 = Transform(x9, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8 ])
+        #g.set_debug(True)
+ 
+        #breakpoint()
+        with self.assertRaises(Exception) as context:
+            g.check_well_branched()   
+
+        self.assertTrue("Too many senders" in str(context.exception))
+        self.assertTrue("Alice" in str(context.exception))
+        self.assertTrue("Bob" in str(context.exception))
+
+
+
 
 
     def test_local_types(self):
@@ -943,10 +1078,10 @@ class MPSTTestCase(TestCase):
         self.assertTrue(s2.is_local)
 
 
-        send = MsgSend("a", "foo", int) 
+        send = MsgSend("a", "b", "foo", int) 
         self.assertTrue(send.is_local)
 
-        recv = MsgRecv("a", "foo", int) 
+        recv = MsgRecv("b", "a", "foo", int) 
         self.assertTrue(recv.is_local)
 
         ex = MsgExc("a", "b", "foo", int)
@@ -967,10 +1102,10 @@ class MPSTTestCase(TestCase):
         s2 = StateVar("x1")
         self.assertTrue(s2.is_global)
 
-        send = MsgSend("a", "foo", int) 
+        send = MsgSend("a", "b", "foo", int) 
         self.assertFalse(send.is_global)
 
-        recv = MsgRecv("a", "foo", int) 
+        recv = MsgRecv("b", "a", "foo", int) 
         self.assertFalse(recv.is_global)
 
         ex = MsgExc("a", "b", "foo", int)
@@ -1007,8 +1142,44 @@ class MPSTTestCase(TestCase):
         self.assertEqual(g.initial, l_alice.initial)
         self.assertEqual(g.initial, l_bob.initial)
 
+        # alice and bob should have the same number of transforms as the original global type
         self.assertEqual(len(g.transforms), len(l_alice.transforms))
         self.assertEqual(len(g.transforms), len(l_bob.transforms))
+
+        # test alice has 1 send action and 1 receive action
+        alice_n_sends = 0
+        alice_n_receives = 0
+        for t in l_alice.transforms:
+            if t.is_concat:
+                for pos,a in enumerate(t.rhs.arguments[:-1]):
+                    if isinstance(a, MsgSend):
+                        alice_n_sends = alice_n_sends + 1
+                    elif isinstance(a, MsgRecv):
+                        alice_n_receives = alice_n_receives + 1
+                    else:
+                        raise Exception(f"Unexpected argument for Concat transition in local type: {a} ({type(a)}). Position: {pos}. # arguments: {len(t.rhs.arguments)}")
+ 
+        self.assertEqual(alice_n_sends, 1)
+        self.assertEqual(alice_n_receives, 1)
+           
+        # ... same for bob
+        bob_n_sends = 0
+        bob_n_receives = 0
+        for t in l_bob.transforms:
+            if t.is_concat:
+                for pos, a in enumerate(t.rhs.arguments[:-1]):
+                    if isinstance(a, MsgSend):
+                        bob_n_sends = bob_n_sends + 1
+                    elif isinstance(a, MsgRecv):
+                        bob_n_receives = bob_n_receives + 1
+                    else:
+                        raise Exception(f"Unexpected argument for Concat transition in local type: {a} ({type(a)}). Position: {pos}. # arguments: {len(t.rhs.arguments)}")
+ 
+ 
+        self.assertEqual(bob_n_sends, 1)
+        self.assertEqual(bob_n_receives, 1)
+           
+
 
     def test_local_projection_non_participant(self):
 
@@ -1030,11 +1201,412 @@ class MPSTTestCase(TestCase):
 
         g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
 
+        # test that eve has neither send, nor receive, and it has fewer transitions than Alice
+        l_alice = g.project("Alice")
+        l_eve = g.project("Eve")
+
+        self.assertTrue(len(l_eve.transforms) < len(l_alice.transforms))
+        eve_n_sends = 0
+        eve_n_receives = 0
+
+        for t in l_eve.transforms:
+            if t.is_concat:
+                for pos, a in enumerate(t.rhs.arguments):
+                    if isinstance(a, MsgSend):
+                        eve_n_sends = eve_n_sends + 1
+                    elif isinstance(a, MsgRecv):
+                        eve_n_receives = eve_n_receives + 1
+                    else:
+                        raise Exception(f"Unexpected argument for Concat transition in local type: {a} ({type(a)})")
+
+        self.assertEqual(eve_n_sends, 0)
+        self.assertEqual(eve_n_receives, 0)
+ 
+
+    def test_alternating_bit_protocol_projection(self):
+
+        # example 3 of example B.1 of appendix B.2; alternating bit protocol; now we add projection to local type(s)
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+        x7 = StateVar("x7")
+        x8 = StateVar("x8")
+        x9 = StateVar("x9")
+        x10 = StateVar("x10")
+        x11 = StateVar("x11")
+        x12 = StateVar("x12")
+        x13 = StateVar("x13")
+        x14 = StateVar("x14")
+
+        m1 = MsgExc("Alice", "Bob", "Msg1", str)
+        m2 = MsgExc("Bob", "Alice", "Ack1", str)
+        m3 = MsgExc("Alice", "Bob", "Msg2", str)
+        m4 = MsgExc("Bob", "Alice", "Ack2", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(Merge(x1, x3), x4)
+        t3 = Transform(Merge(x2, x5), x6)
+        t4 = Transform(x4, Concat(m1, x7))
+        t5 = Transform(x7, Fork(x8, x9))
+        t6 = Transform(x8, Concat(m2, x10))
+        t7 = Transform(Join(x6, x9), x11)
+        t8 = Transform(x11, Concat(m3, x12))
+        t9 = Transform(x12, Fork(x13, x14))
+        t10 = Transform(x13, Concat(m4, x5))
+        t11 = Transform(Join(x10, x14), x3)
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 ])
+
+        g.check_well_formed()
+
+        t_alice = g.project("Alice")
+        t_bob = g.project("Bob")
+        t_eve = g.project("Eve")
+
+    def test_alternating_bit_protocol_smart_contract_generation(self):
+
+        # example 3 of example B.1 of appendix B.2; alternating bit protocol; now we add projection to local type(s)
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+        x7 = StateVar("x7")
+        x8 = StateVar("x8")
+        x9 = StateVar("x9")
+        x10 = StateVar("x10")
+        x11 = StateVar("x11")
+        x12 = StateVar("x12")
+        x13 = StateVar("x13")
+        x14 = StateVar("x14")
+
+        m1 = MsgExc("Alice", "Bob", "Msg1", str)
+        m2 = MsgExc("Bob", "Alice", "Ack1", str)
+        m3 = MsgExc("Alice", "Bob", "Msg2", str)
+        m4 = MsgExc("Bob", "Alice", "Ack2", str)
+
+        t1 = Transform(x0, Fork(x1, x2))
+        t2 = Transform(Merge(x1, x3), x4)
+        t3 = Transform(Merge(x2, x5), x6)
+        t4 = Transform(x4, Concat(m1, x7))
+        t5 = Transform(x7, Fork(x8, x9))
+        t6 = Transform(x8, Concat(m2, x10))
+        t7 = Transform(Join(x6, x9), x11)
+        t8 = Transform(x11, Concat(m3, x12))
+        t9 = Transform(x12, Fork(x13, x14))
+        t10 = Transform(x13, Concat(m4, x5))
+        t11 = Transform(Join(x10, x14), x3)
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 ])
+
+        scg = MPSTSmartContractGenerator(g)
+
+        self.assertEqual(scg.gt, g)
+        self.assertTrue(len(scg.participants) >= 2)
+
+        self.assertEqual(len(scg.local_types), 2)
+
+        #breakpoint()
+
+        c = scg.createSmartContract()
+        c.compile(prefix="atb", debug=True)
+
+    def test_lottery_protocol_smart_contract_generation_only_choice(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Alice", "Bob", "Film", str)
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x1, Concat(m1, x3))
+        t3 = Transform(x2, Concat(m2, x4))
+        t4 = Transform(Merge(x3, x4), x5)
+        t5 = Transform(x5, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5 ])
+
+        #breakpoint()
+        scg = MPSTSmartContractGenerator(g)
+
+        self.assertEqual(scg.gt, g)
+        self.assertTrue(len(scg.participants) >= 2)
+
+        self.assertEqual(len(scg.local_types), 2)
+
+        #breakpoint()
+
+        c = scg.createSmartContract()
+        c.compile(prefix="lottery_one_choice", debug=True)
+
+    def test_lottery_protocol_with_nested_choice(self):
+
+        x0 = StateVar("x0")
+        x1 = StateVar("x1")
+        x2 = StateVar("x2")
+        x3 = StateVar("x3")
+        x4 = StateVar("x4")
+        x5 = StateVar("x5")
+        x6 = StateVar("x6")
+        x7 = StateVar("x7")
+        x8 = StateVar("x8")
+        x9 = StateVar("x9")
+        x10 = StateVar("x10")
+        x11 = StateVar("x11")
+        x12 = StateVar("x12")
+
+        m1 = MsgExc("Alice", "Bob", "Book", str)
+        m2 = MsgExc("Bob", "Alice", "Ack", str)
+
+        m3 = MsgExc("Alice", "Charlie", "Book", str)
+        m4 = MsgExc("Charlie", "Alice", "Ack", str)
+
+        m5 = MsgExc("Alice", "Dana", "Book", str)
+        m6 = MsgExc("Dana", "Alice", "Ack", str)
+
+
+        t1 = Transform(x0, Choice(x1, x2))
+        t2 = Transform(x2, Choice(x3, x4))
+
+        t3 = Transform(x1, Concat(m1, x5))  # Alice -> Bob(Book)
+        t4 = Transform(x5, Concat(m2, x6))  # Bob -> Alice(Ack)
+
+        t5 = Transform(x3, Concat(m3, x7))  # Alice -> Charlie(Book)
+        t6 = Transform(x7, Concat(m4, x8))  # Charlie -> Alice(Ack)
+
+        t7 = Transform(x4, Concat(m5, x9))  # Alice -> Dana(Book)
+        t8 = Transform(x9, Concat(m6, x10)) # Dana -> Alice(Ack)
+
+        t9 = Transform(Merge(x8, x10), x11)
+        t10 = Transform(Merge(x6, x11), x12)
+
+        t11 = Transform(x12, End())
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 ])
+
+
+        #breakpoint()
+        scg = MPSTSmartContractGenerator(g)
+
+        self.assertEqual(scg.gt, g)
+        self.assertTrue(len(scg.participants) >= 2)
+
+        self.assertEqual(len(scg.local_types), 4)
+
+        #breakpoint()
+
+        c = scg.createSmartContract()
+        c.compile(prefix="lottery_nested_choices", debug=True)
+
+
+    def test_lottery_protocol_with_choices_and_join(self):
+
+        x0 = StateVar("x00")
+        x1 = StateVar("x01")
+        x2 = StateVar("x02")
+        x3 = StateVar("x03")
+        x4 = StateVar("x04")
+        x5 = StateVar("x05")
+        x6 = StateVar("x06")
+        x7 = StateVar("x07")
+        x8 = StateVar("x08")
+        x9 = StateVar("x09")
+        x10 = StateVar("x10")
+        x11 = StateVar("x11")
+        x12 = StateVar("x12")
+        x13 = StateVar("x13")
+        x14 = StateVar("x14")
+        x15 = StateVar("x15")
+        x16 = StateVar("x16")
+        x17 = StateVar("x17")
+        x18 = StateVar("x18")
+
+        m1 = MsgExc("Alice", "Charlie", "cwin", str)
+        m2 = MsgExc("Alice", "Bob", "bwin", str)
+        m3 = MsgExc("Charlie", "Dana", "busy", str)
+        m4 = MsgExc("Charlie", "Bob", "blose", str)
+        m5 = MsgExc("Bob", "Charlie", "close", str)
+        m6 = MsgExc("Bob", "Alice", "sig", str)
+        m7 = MsgExc("Charlie", "Alice", "msg", str)
+        m8 = MsgExc("Alice", "Dana", "free", str)
+
+
+        t1 = Transform(Merge(x0, x18), x1)
+        t2 = Transform(x1, Fork(x2, x3))
+        t3 = Transform(x2, Choice(x4, x5))
+        t4 = Transform(x4, Concat(m1, x6))
+        t5 = Transform(x5, Concat(m2, x7))
+        t6 = Transform(x6, Concat(m4, x8))
+        t7 = Transform(x7, Concat(m5, x9))
+        t8 = Transform(Merge(x8, x9), x10)
+        t9 = Transform(x10, Fork(x11, x12))
+        t10 = Transform(x11, Concat(m6, x14))
+        t11 = Transform(Join(x12, x13), x15)
+        t12 = Transform(x3, Concat(m3, x13))
+        t13 = Transform(x15, Concat(m7, x16))
+        t14 = Transform(Join(x14, x16), x17)
+        t15 = Transform(x17, Concat(m8, x18))
+
+        g = GlobalType(x0, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15 ])
+
+        #breakpoint()
+        scg = MPSTSmartContractGenerator(g)
+
+        c = scg.createSmartContract()
+        c.compile(prefix="lottery_choices_and_fork", debug=True)
+
+    def test_parse_global_type_missing_initial_raises_exception(self):
+
+        obj = {
+            "transforms": [
+                
+            ]
+        }
+
         with self.assertRaises(Exception) as context:
-            # an exception is expected, because Eve is not a participant
-            l_eve = g.project("Eve")
+            gt = GlobalType.parse(obj)
 
-        self.assertTrue("At least two arguments are expected" in str(context.exception))
+        self.assertTrue("Missing initial" in str(context.exception))
+
+    def test_parse_global_type_missing_transforms_is_fine(self):
+
+        obj = {
+            "initial": "x0"
+        }
+
+        gt = GlobalType.parse(obj)
+        self.assertEqual("x0", gt.initial)
+        self.assertEqual(StateVar, type(gt.initial))
+        self.assertEqual(list, type(gt.transforms))
+        self.assertEqual(0, len(gt.transforms))
 
 
+    def test_parse_choice(self):
 
+        t1 = Transform.parse({ "lhs": "x0", "rhs": { "type": "Choice", "arguments": [ "x1", "x2" ] }} )
+
+        self.assertEqual(Transform, type(t1))
+        self.assertEqual(StateVar, type(t1.lhs))
+        self.assertEqual(Choice, type(t1.rhs))
+        self.assertEqual("x1", t1.rhs.arguments[0])
+        self.assertEqual("x2", t1.rhs.arguments[1])
+
+
+    def test_parse_merge(self):
+
+        t1 = Transform.parse({ "rhs": "x2", "lhs": { "type": "Merge", "arguments": [ "x0", "x1" ] }} )
+
+        self.assertEqual(Transform, type(t1))
+        self.assertEqual(StateVar, type(t1.rhs))
+        self.assertEqual(Merge, type(t1.lhs))
+        self.assertEqual("x0", t1.lhs.arguments[0])
+        self.assertEqual("x1", t1.lhs.arguments[1])
+
+
+    def test_parse_fork(self):
+
+        t1 = Transform.parse({ "lhs": "x0", "rhs": { "type": "Fork", "arguments": [ "x1", "x2" ] }} )
+
+        self.assertEqual(Transform, type(t1))
+        self.assertEqual(StateVar, type(t1.lhs))
+        self.assertEqual(Fork, type(t1.rhs))
+        self.assertEqual("x1", t1.rhs.arguments[0])
+        self.assertEqual("x2", t1.rhs.arguments[1])
+
+
+    def test_parse_join(self):
+
+        t1 = Transform.parse({ "rhs": "x2", "lhs": { "type": "Join", "arguments": [ "x0", "x1" ] }} )
+
+        self.assertEqual(Transform, type(t1))
+        self.assertEqual(StateVar, type(t1.rhs))
+        self.assertEqual(Join, type(t1.lhs))
+        self.assertEqual("x0", t1.lhs.arguments[0])
+        self.assertEqual("x1", t1.lhs.arguments[1])
+
+    def test_parse_composition(self):
+
+        t1 = Transform.parse({ 
+            "lhs": "x0", 
+            "rhs": { 
+                "type": "Concat", 
+                "arguments":  [
+                    {   "type": "MsgExc",
+                        "sender": "Alice", 
+                        "receiver": "Bob", 
+                        "label": "Pizza_Order", 
+                        "payload": "str" 
+                    },
+                    "x1"
+                ]
+            } } )
+
+        self.assertEqual(Transform, type(t1))
+        self.assertEqual(StateVar, type(t1.lhs))
+        self.assertEqual("x0", t1.lhs)
+        self.assertEqual(Concat, type(t1.rhs))
+        self.assertEqual(MsgExc, type(t1.rhs.arguments[0]))
+        self.assertEqual("Alice", t1.rhs.arguments[0].sender)
+        self.assertEqual("Bob", t1.rhs.arguments[0].receiver)
+        self.assertEqual("Pizza_Order", t1.rhs.arguments[0].label)
+        self.assertEqual(str, t1.rhs.arguments[0].payload)
+        self.assertEqual("x1", t1.rhs.arguments[1])
+
+    def test_parse_complex_global_type(self):
+
+        obj = {
+            "initial": "x0",
+            "transforms": [
+                { "lhs": { "t": "Merge", "a": [ "x0", "x18" ] }, "rhs": "x1" },
+                { "lhs": "x1", "rhs": { "t": "Fork", "a": [ "x2", "x3" ] } },
+                { "lhs": "x2", "rhs": { "t": "Choice", "a": [ "x4", "x5" ] } },
+                { "lhs": "x4", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Charlie", "label": "cwin" }, "x6" ] } },
+                { "lhs": "x5", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Bob", "label": "bwin" }, "x7" ] } },
+                { "lhs": "x6", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Charlie", "receiver": "Bob", "label": "blose" }, "x8" ] } },
+                { "lhs": "x7", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Bob", "receiver": "Charlie", "label": "close" }, "x9" ] } },
+                { "lhs": { "t": "Merge", "a": [ "x8", "x9" ] }, "rhs": "x10" },
+                { "lhs": "x10", "rhs": { "t": "Fork", "a": [ "x11", "x12" ] } },
+                { "lhs": "x11", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Bob", "receiver": "Alice", "label": "sig" }, "x14" ] } },
+                { "lhs": { "t": "Join", "a": [ "x12", "x13" ] }, "rhs": "x15" },    
+                { "lhs": "x3", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Charlie", "receiver": "Dana", "label": "busy" }, "x13" ] } },
+                { "lhs": "x15", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Charlie", "receiver": "Alice", "label": "msg" }, "x16" ] } },
+                { "lhs": { "t": "Join", "a": [ "x14", "x16" ] }, "rhs": "x17" },    
+                { "lhs": "x17", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Dana", "label": "free" }, "x18" ] } },
+            ]
+        }
+
+        gt = GlobalType.parse(obj)
+
+        self.assertEqual(15, len(gt.transforms))
+        self.assertEqual(StateVar("x0"), gt.initial)
+
+    def test_parse_global_type_from_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.core.files.base import ContentFile, File
+
+        import os
+
+        breakpoint()
+        file = os.path.join(".","MPST","lottery_choice_fork.mpst")
+        self.assertTrue(os.path.exists(file))
+
+        with open(file, "r") as the_file:
+            m = MPST(name="test_lottery")
+            m.resource.save("lottery_choice_fork.mpst", File(the_file))
+
+        #m.save()
+        
+        gt = m.root
+
+        self.assertEqual(GlobalType, type(m.root))

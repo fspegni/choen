@@ -1,51 +1,140 @@
 import nfa
-from contracts import Constructor, Contract, Function, Variable, Constant, Event, SmartContract, Enum
+from contracts import Constructor, Contract, Function, Variable, Constant, Event, SmartContract, Enum, Struct
 
 class Generator:
 
+    def create_events(self, *args, **kwargs):
+        pass
+
+    def create_attributes(self, *args, **kwargs):
+        pass
+
+    def create_constructor(self, *args, **kwargs):
+        pass
+
+    def create_functions(self, *args, **kwargs):
+        pass
+
+    def create_enums(self, *args, **kwargs):
+        pass
+
+    def __init__(self, contract_name):
+        self._contract_name = contract_name
+
     def createContract(self):
-        raise Exception("This is an abstract method, you should implement it")
+        contract : Contract = Contract(self._contract_name) #"Enforcer")
+
+        self.create_events(contract)
+        self.create_enums(contract)
+        self.create_attributes(contract)
+        self.create_constructor(contract)
+
+        self.create_functions(contract)
+    
+        return contract
+
+
+class EncoderContractGenerator(Generator):
+ 
+    def __init__(self, n : nfa.NFA):
+        super().__init__("Encoder")
+
+        assert n is not None, f"Expected not-null nfa to build a contract"
+        self._nfa : nfa.NFA = n
+        self._DT = {}
+
+    def create_encoding(self, contract, name, plain_type, encoded_type="bytes32", plain_type_attributes=[]):
+
+        # categories to enumerate:
+        # - state names 
+        # - observed symbols
+        # - propositions
+
+        #breakpoint()
+        enum_name = f"E_{name}"
+        #mapping_name = f"M_{name}"
+        lookup_name = f"LU_{name}"
+
+        contract.add_attribute(Variable(lookup_name, f"mapping({encoded_type} => {plain_type})"))
+
+        abi_encode = "abi.encodePacked(plain)"
+        if plain_type_attributes:
+            abi_encode = "abi.encode(" + ",".join(map(lambda a: f"plain.{a}", plain_type_attributes)) + ")"
+
+        encodeBody = f"{encoded_type} encoded = keccak256({abi_encode}); return encoded;"
+        encodeStoreBody = f"{encoded_type} encoded = keccak256({abi_encode}); {lookup_name}[encoded] = plain;"
+        storeBody = f"{encoded_type} encoded = keccak256({abi_encode}); {lookup_name}[encoded] = plain;"
+        decodeBody = f"return {lookup_name}[encoded];"
+
+        decodeArrayBody = f"""
+    {plain_type}[] memory res = new {plain_type}[](items.length);
+
+    for (uint idx=0; idx < items.length; idx++) {{
+        res[idx] = decode_{name}(items[idx]);
+    }}  
+    return res;
+        """
+
+        contract.add_function(Function(f"encode_{name}", [ Variable("plain", plain_type, "memory") ], encodeBody, f"public pure returns({encoded_type})")) 
+        contract.add_function(Function(f"encode_store_{name}", [ Variable("plain", plain_type, "memory") ], encodeStoreBody, f"public returns({encoded_type})")) 
+        contract.add_function(Function(f"store_{name}", [ Variable("plain", plain_type, "memory"), Variable("encoded", encoded_type) ], storeBody, f"public returns({encoded_type})")) 
+        contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type) ], decodeBody, f"public view returns({plain_type} memory)")) 
+        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public view returns ({plain_type}[] memory)"))
+
+        contract.add_attribute(Variable(f"empty_{name}", f"{encoded_type} public"))
+
+
+    def create_constructor(self, contract):
+
+        self.create_encoding(contract, "STATE", "string")
+        self.create_encoding(contract, "SYMBOL", "Symbol", plain_type_attributes=["agent","action","message"])
+        self.create_encoding(contract, "PROPOSITION", "string")
+        self.create_encoding(contract, "AGENT", "string")
+        self.create_encoding(contract, "MESSAGE","string")
+
+        constructor_body = """
+    empty_STATE = encode_STATE('');
+    empty_AGENT = encode_AGENT('');
+    empty_SYMBOL = encode_SYMBOL(Symbol(empty_AGENT, EVENT_ACTION.epsilon, empty_AGENT));
+    empty_PROPOSITION = encode_PROPOSITION('');
+    empty_MESSAGE = encode_MESSAGE('');
+        """
+
+        contract.add_constructor(Constructor([], constructor_body, "internal"))
 
 class NFAContractGenerator(Generator): 
     
     def __init__(self, n : nfa.NFA):
+
         assert n is not None, f"Expected not-null nfa to build a contract"
+
+        super().__init__("NFA")
         self._nfa : nfa.NFA = n
         
     @property
     def nfa(self) -> nfa.NFA:
         return self._nfa
     
-    def __create_structures(self, contract : Contract):
-##
-##        contract.add_structure("buffItem", """
-##    struct buffItem {
-##        string precondition;
-##        string target;
-##        string knowledge;
-##    }
-##        """)
-##
 
-        pass
+    def create_attributes(self, contract : Contract):
 
-    def __create_attributes(self, contract : Contract):
+
+        contract.add_attribute(Variable("encoder", "Encoder"))
 
         #contract.add_attribute(Variable("states","string[]","",list(map(lambda s: s.id, self.nfa.states))))
 
-        states_encoded = ", ".join([ f"bytes32('{s.id}')" for s in self.nfa.states ])
+        #states_encoded = ", ".join([ f"encoder.encode_STATE('{s.id}')" for s in self.nfa.states ])
 
-        breakpoint()
-        contract.add_attribute(Variable("states","bytes32[]","", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
+        #breakpoint()
+        contract.add_attribute(Variable("states","bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
         #contract.add_attribute(Variable("tmpStates","string[]"))
-        contract.add_attribute(Variable("tmpStates","bytes32[]"))
+        #contract.add_attribute(Variable("tmpStates","bytes32[]")) # FS remove this
         #contract.add_attribute(Variable("initialState", "string","",'"'+str(self.nfa.initial.id)+'"'))
-        contract.add_attribute(Variable("initialState", "bytes32","",'bytes32("'+str(self.nfa.initial.id)+'")'))
+        contract.add_attribute(Variable("initialState", "bytes32")) #,"",'encoder.encode_STATE("'+str(self.nfa.initial.id)+'")'))
         #contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
 
-        final_states_encoded = ", ".join([ f"bytes32('{s.id}')" for s in self.nfa.final])
         #contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
-        contract.add_attribute(Variable("finalStates", "bytes32[]","","[" + final_states_encoded + "]"))
+        contract.add_attribute(Variable("finalStates", "bytes32[]")) #,"","[" + final_states_encoded + "]"))
         contract.add_attribute(Variable("currentStates", "bytes32[]")) #"string[]"))
         #contract.add_attribute(Variable("message", "string[]"))
         #contract.add_attribute(Variable("message", "uint[]"))
@@ -53,68 +142,79 @@ class NFAContractGenerator(Generator):
         contract.add_attribute(Variable("start","bool"))
         contract.add_attribute(Variable("end","bool"))
         #contract.add_attribute(Variable("transitions", "mapping(string => mapping(string => string[]))"))
-        contract.add_attribute(Variable("transitions", "mapping(bytes32 => mapping(SYMBOLS => bytes32[]))"))
+        #contract.add_attribute(Variable("transitions", "mapping(bytes32 => mapping(bytes32 => bytes32[]))"))
+        contract.add_attribute(Variable("transitions", "mapping(bytes32 => bytes32[])"))
         #contract.add_attribute(Variable("transitions", "mapping(string => mapping(string => buffItem[]))")) # TODO restart from here
     
-    def __create_constructor(self, contract : Contract):
-        #constructorBody = ""
+    def create_constructor(self, contract : Contract):
+
         initTransitionsBody = ""
-        transitionsDict = {}
         for t in self.nfa.transitions:
 
-            if f"{t.source.id}.{t.label}" not in transitionsDict.keys():
-                transitionsDict[f"{t.source.id}.{t.label}"] = [t.target.id]
-            else:
-                transitionsDict[f"{t.source.id}.{t.label}"].append(str(t.target.id))
-        
-        for key in transitionsDict:
-            #breakpoint()
-            key = key.split(".")
-            symbol = key[1].replace("!","__S__").replace("?","__R__").replace(",","___") if key[1] else "EPSILON"
-            #constructorBody += f"transitions['{key[0]}']['{key[1]}'] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
-            #constructorBody += f"transitions['{key[0]}'][{symbol}] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
-            initTransitionsBody += f"transitions[bytes32('{key[0][:32]}')][SYMBOLS.{symbol}] = {transitionsDict[key[0]+'.'+key[1]]};\n"  
+            #the_symbol = "Symbol('', EVENT_ACTION.epsilon, '')"
+            the_action = "epsilon"
+            actor = message = ""
+            if "!" in t.label:
+                actor, message = t.label.split("!")
+                #the_symbol = f"Symbol('{actor}', EVENT_ACTION.send, '{message}')"
+                the_action = "send"
+            elif "?" in t.label:
+                actor, message = t.label.split("?")
+                #the_symbol = f"Symbol('{actor}', EVENT_ACTION.recv, '{message}')"
+                the_action = "recv"
+            elif t.label != "":
+                raise Exception(f"Symbol not recognized: {t.label}")
+
+            initTransitionsBody += f"addTransition('{t.source.id}', '{actor}', EVENT_ACTION.{the_action}, '{message}', '{t.target.id}');\n"
 
 #        constructorBody += """
         constructorBody = """
+encoder = new Encoder();
+initStates();
 initTransitions();
-delete tmpStates;
-tmpStates.push(initialState);
-currentStates = e_closure(tmpStates);
-"""
+bytes32[] memory tmpStates = new bytes32[](1);
+tmpStates[0] = initialState;
+//currentStates = e_closure(tmpStates);
+currentStates = tmpStates;
+        """
 
-        contract.add_constructor(Constructor([], constructorBody))
-        contract.add_function(Function("initTransitions", [], initTransitionsBody, "public")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
+        contract.add_constructor(Constructor([], constructorBody, "internal"))
 
-    def __create_functions(self, contract : Contract):
+        states_encoded = "\n            ".join([ f"addState('{s.id}');" for s in self.nfa.states ])
 
+        final_states_encoded = ",\n                ".join([ f"encoder.encode_STATE('{s.id}')" for s in self.nfa.final])
 
-##        contract.add_function(Function("arrContains",
-##                                [Variable("s","string","memory"),Variable("newStates","string[]","memory")],
-##                                """for (uint i = 0; i < newStates.length; i++) {
-##    if (strCompare(s, newStates[i])) {
-##        return true;
-##    }
-##}
-##return false;""",
-##                                "internal pure",
-##                                "bool"))
-##
+        initStatesBody = f"""
+        {states_encoded} 
 
-##
-## THIS IS DEPRECATED : it seems to overload the function contains(string, string); but at the
-## same time we have also arrContains that is defined exactly like this function here; solution: stop using contains(string, string[]) and move every such reference to arrContains(string, string[])
-##
-##        contract.add_function(Function("contains",
-##                        [Variable("s","string","memory"), Variable("states","string[]","memory")],
-##                        """for (uint i = 0; i < states.length; i++) {
-##    if (strCompare(s,states[i])) {
-##        return true;
-##    }
-##}
-##return false;""",
-##                        "private",
-##                        "bool"))
+        initialState = encoder.encode_STATE("{self.nfa.initial.id}");
+
+        finalStates = [
+            {final_states_encoded}
+        ];
+        """
+
+        addStateBody = """
+    bytes32 h = encoder.encode_STATE(name);
+    encoder.store_STATE(name, h);
+    states.push(h);
+        """
+
+        contract.add_function(Function("initStates", [], initStatesBody, "private"))
+        contract.add_function(Function("initTransitions", [], initTransitionsBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
+
+        contract.add_function(Function("addState", [Variable("name", "string memory")], addStateBody, "private"))
+
+        addTransitionBody = f"Symbol memory symbol = Symbol(encoder.encode_AGENT(actor), action, encoder.encode_MESSAGE(message)); bytes32 k = keccak256(abi.encode(encoder.encode_STATE(source), encoder.encode_SYMBOL(symbol))); transitions[k].push(encoder.encode_STATE(target));"
+        contract.add_function(Function("addTransition", [ Variable("source", "string memory"), Variable("actor", "string memory"), Variable("action", "EVENT_ACTION"), Variable("message", "string memory"), Variable("target", "string memory")], addTransitionBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
+
+    def create_functions(self, contract : Contract):
+
+        contract.add_function(Function("getEncoder",
+                        [],
+                        "return encoder;",
+                        "public view",
+                        "Encoder"))
 
         contract.add_function(Function("checkInitialAndFinalStates",
                         #[Variable("newStates", "string[]","memory")],
@@ -122,77 +222,152 @@ currentStates = e_closure(tmpStates);
                         """start = false;
 end = false;
 for (uint i = 0; i < newStates.length; i++) {
-    if (strCompare(newStates[i],initialState)) {
+    if (newStates[i] == initialState) {
             start = true;
         }
         for (uint k = 0; k < finalStates.length; k++) {
-            if (strCompare(newStates[i],finalStates[k])) {
+            if (newStates[i] == finalStates[k]) {
                 end = true;
            }
         }
     }""",
                         "private",))
 
+        contract.add_function(Function("shrink",
+                        [Variable("source", "bytes32[]", "memory"), Variable("newSize", "uint")],
+"""
+        require(newSize <= source.length);
+
+        if (source.length == newSize) {
+            return source;
+        } else {
+            bytes32[] memory res = new bytes32[](newSize);
+            for (uint idx = 0; idx < newSize; idx++) {
+                res[idx] = source[idx];
+            } 
+            return res;
+        }
+
+""",
+                        "public",
+                        "bytes32[] memory")
+        )
+
+        contract.add_function(Function("indexOf",
+                        #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
+                        [Variable("array","bytes32[]","memory"),Variable("item","bytes32")],
+                        """
+        for (uint idx = 0; idx < array.length; idx++) {
+            if (array[idx] == item) {
+                return int256(idx);
+            }
+        }
+
+        return -1;
+                        """,
+                        "public",
+                        "int"))
+        
         contract.add_function(Function("union",
                         #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
                         [Variable("arrayA","bytes32[]","memory"),Variable("arrayB","bytes32[]","memory")],
-                        """delete tmpStates;
-tmpStates = arrayA;
-for (uint i = 0; i < arrayB.length; i++) {
-    if(!arrContains(arrayB[i], tmpStates)) {
-        tmpStates.push(arrayB[i]);
-    }
-}
-return tmpStates;""",
-                        "private",
-                        #"string[] memory"))
-                        "bytes32[] memory"))
+                        """
+	
+        bytes32[] memory tmp = new bytes32[](arrayA.length + arrayB.length);
+        uint countA = 0;
+        uint countB = 0;
 
-##        contract.add_function(Function("e_closure",
-##                        [Variable("newStates","string[]","memory")],
-##                        """delete tmpStates;
-##tmpStates = newStates;
-##bool found = (tmpStates.length > 0);
-##while (found) {
-##    found = false;
-##    for (uint i = 0; i < tmpStates.length; i++) {
-##        for (uint j = 0; j < transitions[tmpStates[i]][epsilon].length; j++) {
-##            if (!arrContains(transitions[tmpStates[i]][epsilon][j], tmpStates)) {
-##                tmpStates.push(transitions[tmpStates[i]][epsilon][j]);
-##                found = true;
-##            }
-##        }
-##    }
-##}
-##checkInitialAndFinalStates(tmpStates);
-##return tmpStates;""",
-##                        "private",
-##                        "string[] memory"))
-
-        contract.add_function(Function("e_closure",
-                        #[Variable("newStates","string[]","memory")],
-                        [Variable("newStates","bytes32[]","memory")],
-                        """delete tmpStates;
-tmpStates = newStates;
-bool found = (tmpStates.length > 0);
-while (found) {
-    found = false;
-    for (uint i = 0; i < tmpStates.length; i++) {
-        for (uint j = 0; j < transitions[tmpStates[i]][SYMBOLS.EPSILON].length; j++) {
-            if (!arrContains(transitions[tmpStates[i]][SYMBOLS.EPSILON][j], tmpStates)) {
-                tmpStates.push(transitions[tmpStates[i]][SYMBOLS.EPSILON][j]);
-                found = true;
+        for (uint idx = 0; idx < arrayA.length; idx++) {
+            bytes32 curr = arrayA[idx];
+            if (indexOf(tmp, curr) < 0) {
+                tmp[countA++] = curr;
             }
         }
-    }
-}
-checkInitialAndFinalStates(tmpStates);
-return tmpStates;""",
+
+        for (uint idx = 0; idx < arrayB.length; idx++) {
+            bytes32 curr = arrayB[idx];
+
+            if (indexOf(tmp, curr) < 0) {
+                tmp[countA + countB++] = curr;
+            }
+            
+        }
+
+        return shrink(tmp, countA + countB);
+	                    """,
                         "private",
                         #"string[] memory"))
                         "bytes32[] memory"))
 
 
+##        contract.add_function(Function("e_closure",
+##                        #[Variable("newStates","string[]","memory")],
+##                        [Variable("newStates","bytes32[]","memory")],
+##                        """
+##		bytes32[] memory tmpStates = new bytes32[](states.length);
+##		bool found;
+##		uint count = 0;
+##
+##		for (uint idx=0; idx < newStates.length; idx++) {
+##			tmpStates[idx] = newStates[idx];
+##			count++;
+##		}
+##
+##		
+##		do {
+##		    found = false;
+##
+##		    for (uint i = 0; i < count; i++) {
+##		
+##		        bytes32[] memory candidates = transitionFrom(tmpStates[i], encoder.encode_SYMBOL(Symbol(encoder.empty_AGENT(), EVENT_ACTION.epsilon, encoder.empty_MESSAGE())));
+##		
+##				for (uint j = 0; j < candidates.length; j++) {
+##					if (! arrContains(candidates[j], tmpStates)) {
+##						tmpStates[count++] = candidates[j];
+##						found = true;
+##					}
+##				}
+##		    }
+##		} while(found);
+##		checkInitialAndFinalStates(tmpStates);
+##		return shrink(tmpStates, count);
+##                        """,
+##                        "private",
+##                        #"string[] memory"))
+##                        "bytes32[] memory"))
+##
+
+        isTransitionBody = """
+		bytes32 h_source = encoder.encode_STATE(source);
+		bytes32 h_target = encoder.encode_STATE(target);
+		bytes32 h_actor = encoder.encode_AGENT(actor);
+		bytes32 h_message = encoder.encode_MESSAGE(message);
+
+		Symbol memory symbol = Symbol(h_actor, action, h_message);
+		bytes32 h_symbol = encoder.encode_SYMBOL(symbol);
+
+		bytes32 h = keccak256(abi.encode(h_source, h_symbol));
+
+		bytes32[] memory candidates = transitions[h];
+
+		if (candidates.length == 0) {
+			return false;
+		}
+
+		for (uint idx = 0; idx < candidates.length; idx++) {
+			if (candidates[idx] == h_target) {
+				return true;
+			}
+		}
+
+		return false;
+        """
+
+        contract.add_function(Function("isTransition",
+                                [Variable("source", "string memory"), Variable("actor", "string memory"), Variable("action", "EVENT_ACTION"), Variable("message", "string memory"), Variable("target", "string memory") ],
+                                isTransitionBody,   
+                                "public view",
+                                "bool"))
 
 
         contract.add_function(Function("getStates",
@@ -201,6 +376,12 @@ return tmpStates;""",
                                 "public view",
                                 #"string[] memory"))
                                 "bytes32[] memory"))
+
+        contract.add_function(Function("getStatesAsString",
+                                [],
+                                "return encoder.decode_array_STATE(states);",
+                                "public view",
+                                "string[] memory"))
         
         contract.add_function(Function("getCurrentStates",
                                 [],
@@ -208,10 +389,22 @@ return tmpStates;""",
                                 "public view",
                                 #"string[] memory"))
                                 "bytes32[] memory"))
-        
+
+        contract.add_function(Function("getCurrentStatesAsString",
+                                [],
+                                "return encoder.decode_array_STATE(currentStates);",
+                                "public view",
+                                "string[] memory"))
+
         contract.add_function(Function("getFinalStates",
                                 [],
                                 "return finalStates;",
+                                "public view",
+                                "bytes32[] memory"))
+
+        contract.add_function(Function("getFinalStatesAsString",
+                                [],
+                                "return encoder.decode_array_STATE(finalStates);",
                                 "public view",
                                 "string[] memory"))
 
@@ -221,34 +414,21 @@ return tmpStates;""",
                                 "public view",
                                 "bool"))
 
-#        contract.add_function(Function("isFinal",
-#                                [],
-#                                "return end;",
-#                                "public view",
-#                                "bool"))
 
         contract.add_function(Function("isFinal",
-                                [Variable("curr","string","memory")],
+                                [Variable("curr","bytes32")],
                                 """return arrContains(curr, finalStates);""", 
                                 "public view",
                                 "bool"))
  
-#        contract.add_function(Function("isInitial",
-#                                [],
-#                                "return start;",
-#                                "public view",
-#                                "bool"))
-
         contract.add_function(Function("isInitial",
-                                [Variable("curr","string","memory")],
-##                                """return arrContains(curr, currentStates);""", 
-                                """return strCompare(curr, initialState);""",
+                                [Variable("curr","bytes32")],
+                                """return curr == initialState;""",
                                 "public view",
                                 "bool"))
 
 
         contract.add_function(Function("isCurrent",
-                                #[Variable("curr","string","memory")],
                                 [Variable("curr","bytes32")],
                                 """return arrContains(curr, currentStates);""", # TODO
                                 "public view",
@@ -261,55 +441,82 @@ return tmpStates;""",
 ##                                "public view",
 ##                                "string[] memory"))
 
+
+##        transitionFromBody = """
+##		bytes32[] memory tmp = transitions[encoder.encode_STATE(state)][encoder.encode_SYMBOL(label)];
+##        string[] memory res = new string[](tmp.length);
+##
+##        for (uint idx=0; idx < tmp.length; idx++) {
+##            res[idx] = encoder.decode_STATE(tmp[idx]);
+##        }
+##        return res;
+##"""
         contract.add_function(Function("transitionFrom",
                                 #[Variable("state","string","memory"), Variable("label","string","memory")],
-                                [Variable("state","bytes32"), Variable("label","SYMBOLS")],
-                                "return transitions[state][label];",
+                                [Variable("state","bytes32"), Variable("label","bytes32")],
+                                #transitionFromBody,
+                                "bytes32 k = keccak256(abi.encode(state, label)); return transitions[k];",
                                 "public view",
-                                "string[] memory"))
+                                "bytes32[] memory"))
 
         contract.add_function(Function("transition",
                                 #[Variable("label","string","memory")],
-                                [Variable("label","SYMBOLS")],
-                                """delete tmpStates;
-for (uint i = 0; i < currentStates.length; i++) {
-    string[] memory s = transitionFrom(currentStates[i],label);
-    tmpStates = union(tmpStates, s);
-}
-require(tmpStates.length != 0);
-//message.push(label);
-currentStates = e_closure(tmpStates);""",
+                                #[Variable("label","SYMBOLS")],
+                                [Variable("label","bytes32")],
+"""
+        bytes32[] memory tmp;
+		for (uint i = 0; i < currentStates.length; i++) {
+		    bytes32[] memory s = transitionFrom(currentStates[i], label);
+		    tmp = union(tmp, s);
+		}
+		require(tmp.length != 0);
+		//message.push(label);
+		//currentStates = e_closure(tmp);
+        currentStates = tmp;
+""",
+##                                """delete tmpStates;
+##for (uint i = 0; i < currentStates.length; i++) {
+##    string[] memory s = transitionFrom(currentStates[i],label);
+##    tmpStates = union(tmpStates, s);
+##}
+##require(tmpStates.length != 0);
+##//message.push(label);
+##currentStates = e_closure(tmpStates);""",
                                 "public")) 
         
         contract.add_function(Function("checkEnabledTransitions",
-                        [Variable("symbol","string","memory")],
-                        """for (uint i = 0; i < currentStates.length; i++) {
-    string[] memory s_reached = transitionFrom(currentStates[i], encodeEvent(symbol));
+                        [Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
+                        """
+for (uint i = 0; i < currentStates.length; i++) {
+    bytes32[] memory s_reached = transitionFrom(currentStates[i], symbol_enc);
     if (s_reached.length > 0) return true;
     //reached = union(reached, s_reached); 
 }
-return false;""",
+return false;
+                        """,
                         "public view",
                         "bool"))
-    
-    def createContract(self):
-
-        contract : Contract = Contract("NFA")
-
-        self.__create_structures(contract)
-        self.__create_attributes(contract)
-        
-        self.__create_constructor(contract)
-        
-        self.__create_functions(contract)
-        
-        return contract
+##    
+##    def createContract(self):
+##
+##        contract : Contract = Contract("NFA")
+##
+##        self.__create_structures(contract)
+##        self.__create_attributes(contract)
+##        
+##        self.__create_constructor(contract)
+##        
+##        self.__create_functions(contract)
+##        
+##        return contract
     
 
 class EnforcerContractGenerator(Generator):
 
     def __init__(self, nfa : Contract):
         assert nfa is not None, f"Expected not-null nfa contract to build an enforcer"
+
+        super().__init__("Enforcer")
         self._nfa : Contract = nfa
 
     @property
@@ -317,26 +524,24 @@ class EnforcerContractGenerator(Generator):
         return self._nfa
     
 
-#    def __create_directives(self, contract : Contract):
-#        contract.add_directive("using strings for *")
+    def create_events(self, contract : Contract):
+        contract.add_event(Event("outputEvent",[Variable("debug","string") ]))
 
-    def __create_events(self, contract : Contract):
-        contract.add_event(Event("outputEvent",[Variable("debug","string"), Variable("messageOut","string")]))
-
-    def __create_attributes(self, contract : Contract):
-        contract.add_attribute(Variable("nfa",self.nfa.name))
+    def create_attributes(self, contract : Contract):
+        contract.add_attribute(Variable("encoder", "Encoder"))
+        contract.add_attribute(Variable("nfa", "NFA")) #self.nfa.name))
         contract.add_attribute(Variable("actors","string[]",))
-        contract.add_attribute(Variable("messages","string[]"))
-        #contract.add_attribute(Variable("tmpStates","string[]"))
-        contract.add_attribute(Variable("tmpStates","bytes32[]"))
-        contract.add_attribute(Variable("kb","string[]"))
+        contract.add_attribute(Variable("messages","Symbol[]"))
+        #contract.add_attribute(Variable("tmpStates","bytes32[]"))
+        contract.add_attribute(Variable("kb","bytes32[]"))
         contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
         contract.add_attribute(Variable("chainStartTime", "uint"))    
         contract.add_attribute(Variable("chainEndTime", "uint"))    
 
-    def __create_constructor(self, contract : Contract):
-        contract.add_constructor(Constructor([Variable("nfaAddress","address")],f"""
-    nfa = {self.nfa.name}(nfaAddress);
+    def create_constructor(self, contract : Contract):
+        contract.add_constructor(Constructor([],f"""
+    nfa = new NFA();
+    encoder = nfa.getEncoder();
     chainStartTime = block.timestamp;
     chainEndTime = 0;
         """))
@@ -359,103 +564,75 @@ class EnforcerContractGenerator(Generator):
                                 [],
                                 """return kb;""",
                                 "public view",
-                                "string[] memory"))
+                                "bytes32[] memory"))
 
         contract.add_function(Function("check_sat", 
-                                [Variable("precondition", "string", "memory")],
+                                [Variable("precondition", "Prop[]", "memory")],
                                 """
-if (bytes(precondition).length == 0) {
+		if (precondition.length == 0) {
             return true;
         }
 
-        bool res = arrContains(precondition, kb);
-        if (bytes(precondition)[0] == "!") {
-            // negated proposition
-            res = ! res;
-        } 
-        return res;
+        for (uint idx = 0; idx < precondition.length; idx++) {
+            Prop memory curr = precondition[idx];
+            bool found = arrContains(curr.identifier, kb);
+            if ((! curr.neg && found) || (curr.neg && ! found))
+            {
+                return false;
+            }
+        }
+        return true;
+
 """,
                                 "public view",
                                 "bool"))
 
 
-##        contract.add_function(Function("strCompare",
-##                                [Variable("stringA","string","memory"),Variable("stringB","string","memory")],
-##                                "return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));",
-##                                "internal pure",
-##                                "bool"))
-##
-##
-##        contract.add_function(Function("contains",
-##                                [Variable("what","string","memory"),Variable("where","string","memory")],
-##                                """strings.slice memory whereSliced = where.toSlice();
-##strings.slice memory whatSliced = what.toSlice();
-##return whereSliced.contains(whatSliced);""",
-##                                "internal pure",
-##                                "bool"))
-##
-##        contract.add_function(Function("split",
-##                                [Variable("sequence","string","memory"),Variable("del","string","memory")],
-##                                """strings.slice memory s = sequence.toSlice();
-##strings.slice memory delim = del.toSlice();
-##string[] memory parts = new string[](s.count(delim) + 1);
-##for(uint i = 0; i < parts.length; i++) {
-##    parts[i] = s.split(delim).toString();
-##}
-##return parts;""",
-##                                "private pure",
-##                                "string[] memory"))
-        
         contract.add_function(Function("buffer_add",
-                                [Variable("actor","string","memory"),Variable("message","string","memory")],
-                                """uint counter = buffer[actor][message];
-counter += 1;
-if (!arrContains(actor,actors)) {
-    actors.push(actor);
-}
-if(!arrContains(message,messages)) {
-    messages.push(message);
-}
-buffer[actor][message] = counter;""",
+                                [ Variable("message", "Symbol", "memory") ],
+                                """
+// TODO finish here
+                                """,
                                 "private"))
 
         contract.add_function(Function("buffer_remove",
-                                [Variable("actor","string","memory"),Variable("message","string","memory")],
-                                """uint counter = buffer[actor][message];
-require(counter > 0, string(abi.encodePacked("No message ", message, " to remove for actor ", actor)));
-counter -= 1;
-buffer[actor][message] = counter;""",
+                                [Variable("message","Symbol","memory")],
+                                """
+// TODO finish here
+                                """,
                                 "private"))
 
     def __create_conditions(self, contract : Contract):
         contract.add_function(Function("condition_rule_send_now",
-                                [Variable("precondition", "string", "memory"), Variable("message","string","memory")],
-                                """return check_sat(precondition) && contains("!", message) && nfa.checkEnabledTransitions(message);""",
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
+                                """return check_sat(precondition) && symbol.action == EVENT_ACTION.send && nfa.checkEnabledTransitions(symbol, symbol_enc);""",
                                 "private view",
                                 "bool"))
                 
         contract.add_function(Function("condition_rule_receive_now",
-                                [Variable("precondition", "string", "memory"), Variable("message","string","memory")],
-                                """return check_sat(precondition) && contains("?", message) && nfa.checkEnabledTransitions(message);""",
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
+                                """return check_sat(precondition) && symbol.action == EVENT_ACTION.recv && nfa.checkEnabledTransitions(symbol, symbol_enc);""",
                                 "private view",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_receive_delayed",
-                                [Variable("precondition", "string", "memory"), Variable("message","string","memory")],
-                                """return contains("?", message);""",
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
+                                """return symbol.action == EVENT_ACTION.recv;""",
                                 "private view",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_send_delayed",
-                                [Variable("precondition", "string", "memory"), Variable("message","string","memory")],
-                                """return contains("!", message);""",
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
+                                """return symbol.action == EVENT_ACTION.send;""",
                                 "private view",
                                 "bool"))
 
 
         contract.add_function(Function("condition_rule_buffered",
                                 [],
-                                """delete tmpStates;
+                                """
+/*
+delete tmpStates;
 for (uint i = 0; i < actors.length; i++) {
     for (uint j = 0; j < messages.length; j++) {
         string memory send_message = string(abi.encodePacked("!", messages[j]));
@@ -466,7 +643,7 @@ for (uint i = 0; i < actors.length; i++) {
             //string[] memory currentStates = nfa.getCurrentStates();
             bytes32[] memory currentStates = nfa.getCurrentStates();
             for (uint s = 0; s < currentStates.length; s++) {
-                tmpStates = nfa.transitionFrom(currentStates[s], encodeEvent(message));
+                tmpStates = nfa.transitionFrom(currentStates[s], encoder.encode_SYMBOL(message));
                 if (tmpStates.length > 0) {
                     return split(string(abi.encodePacked(actors[i], ":?:", message)), ":");
                 }
@@ -476,7 +653,7 @@ for (uint i = 0; i < actors.length; i++) {
             //string[] memory currentStates = nfa.getCurrentStates();
             bytes32[] memory currentStates = nfa.getCurrentStates();
             for (uint s = 0; s < currentStates.length; s++) {
-                tmpStates = nfa.transitionFrom(currentStates[s], encodeEvent(message));
+                tmpStates = nfa.transitionFrom(currentStates[s], encoder.encode_SYMBOL(message));
                 if (tmpStates.length > 0) {
                     return split(string(abi.encodePacked(actors[i], ":!:", message)), ":");
                 }
@@ -484,171 +661,176 @@ for (uint i = 0; i < actors.length; i++) {
         } 
     }
 }
-return split("","");""",
+return split("","");
+*/
+return false; // TODO finish this
+""",
                                 "private",
-                                "string[] memory"))
+                                "bool"))
 
     def __create_rules(self, contract : Contract):
         contract.add_function(Function("rule_send_now",
-                                [Variable("message","string","memory")],
+                                [Variable("symbol","Symbol","memory"),Variable("symbol_enc", "bytes32")],
                                 #"nfa.transition(message); return message;",
-                                "nfa.transition(encodeEvent(message)); return message;",
+                                "nfa.transition(symbol_enc); return symbol;",
                                 "private",
-                                "string memory"))
+                                "Symbol memory"))
         
         contract.add_function(Function("rule_receive_now",
-                                [Variable("message","string","memory")],
+                                [Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
                                 #"nfa.transition(message); return message;",
-                                "nfa.transition(encodeEvent(message)); return message;",
+                                "nfa.transition(symbol_enc); return symbol;",
                                 "private",
-                                "string memory"))
+                                "Symbol memory"))
 
         contract.add_function(Function("rule_receive_delayed",
-                                [Variable("actor","string","memory"),Variable("message","string","memory")],
-                                """buffer_add(actor, string(abi.encodePacked("?", message)));
-return "";""",
+                                [Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
+                                """
+buffer_add(symbol);
+return Symbol("", EVENT_ACTION.epsilon, "");
+                                """,
                                 "private",
-                                "string memory"))
+                                "Symbol memory"))
 
 
         contract.add_function(Function("rule_send_delayed",
-                                [Variable("actor","string","memory"),Variable("message","string","memory")],
-                                """buffer_add(actor, string(abi.encodePacked("!", message)));
-return "";""",
+                                [Variable("symbol", "Symbol", "memory"), Variable("symbol_enc", "bytes32")],
+                                """
+buffer_add(symbol);
+return Symbol("", EVENT_ACTION.epsilon, "");
+                                """,
                                 "private",
-                                "string memory"))
+                                "Symbol memory"))
 
         contract.add_function(Function("rule_receive_buffered",
-                                [Variable("actor","string","memory"),Variable("message","string","memory")],
-                                """nfa.transition(encodeEvent(string(abi.encodePacked(actor,"?",message))));
-buffer_remove(actor, string(abi.encodePacked("?", message)));
-return string(abi.encodePacked(actor,"?",message));""",
+                                [Variable("symbol", "Symbol", "memory"), Variable("symbol_enc", "bytes32")],
+                                """
+//nfa.transition(encoder.encode_SYMBOL(message));
+//buffer_remove(actor, string(abi.encodePacked("?", message)));
+//return string(abi.encodePacked(actor,"?",message));
+return symbol; // TODO 
+                                """,
                                 "private",
-                                "string memory"))
+                                "Symbol  memory"))
  
         contract.add_function(Function("rule_send_buffered",
-                                [Variable("actor","string","memory"),Variable("message","string","memory")],
-                                """nfa.transition(encodeEvent(string(abi.encodePacked(actor,"!",message))));
-buffer_remove(actor, string(abi.encodePacked("!", message)));
-return string(abi.encodePacked(actor,"!",message));""",
+                                #[Variable("actor","string","memory"),Variable("message","string","memory")],
+                                [Variable("symbol", "Symbol", "memory"), Variable("symbol_enc", "bytes32")],
+                                """
+//nfa.transition(encoder.encode_SYMBOL(message));
+//buffer_remove(actor, string(abi.encodePacked("!", message)));
+//return string(abi.encodePacked(actor,"!",message));
+return symbol; // TODO
+                                """,
                                 "private",
-                                "string memory"))
+                                "Symbol memory"))
       
     def __create_getters(self, contract : Contract):
-        contract.add_function(Function("getActors",
-                                [],
-                                "return actors;",
-                                "public view",
-                                "string[] memory"))
-        
+##        contract.add_function(Function("getActors",
+##                                [],
+##                                "return actors;",
+##                                "public view",
+##                                "bytes32[] memory"))
+##        
         contract.add_function(Function("getMessages",
                                 [],
                                 "return messages;",
                                 "public view",
-                                "string[] memory"))
+                                "Symbol[] memory"))
 
-        contract.add_function(Function("get_buffer_item",
-                                [Variable("actor", "string", "memory"), Variable("message", "string", "memory")],
-                                "return buffer[actor][message];",
-                                "public view",
-                                "uint"))
+##        contract.add_function(Function("get_buffer_item",
+##                                [Variable("actor", "string", "memory"), Variable("message", "string", "memory")],
+##                                "return buffer[actor][message];",
+##                                "public view",
+##                                "uint"))
+##
 
     def __create_processors(self, contract : Contract):
         contract.add_function(Function("process_input",
-#                                [Variable("the_input","string","memory")],
-                                [Variable("precondition","string","memory"), Variable("event_input","string","memory"), Variable("knowledge", "string[]", "memory")],
-                                """string memory out;
+                                [ Variable("agent", "string", "memory"), Variable("action", "EVENT_ACTION"), Variable("message","string","memory") ],
+                                """
+Symbol memory symbol = Symbol(encoder.encode_AGENT(agent), action, encoder.encode_MESSAGE(message));
+Prop[] memory precondition;
+Symbol memory out;
 string memory debug;
 
-/*
-string memory precondition;
-string memory event_input;
-string[] memory input_parts = split(the_input, ":");
+bytes32 symbol_enc = encoder.encode_SYMBOL(symbol);
+//bytes32 agent_enc = encoder.encode_AGENT(symbol.agent);
+//bytes32 message_enc = encoder.encode_MESSAGE(symbol.message);
 
-if (input_parts.length == 2) {
-    precondition = input_parts[0];
-    event_input = input_parts[1];
-} else {
-    event_input = input_parts[0];
-}
-*/
-if (condition_rule_send_now(precondition, event_input)) {
-    debug = string(abi.encodePacked("(* Condition rule receive send: ", precondition, " => ", event_input, " *)"));
-    out = rule_send_now(event_input);
-}  else if (condition_rule_send_delayed(precondition, event_input)) {
-    string memory actor = split(event_input, "!")[0];
-    string memory message = split(event_input, "!")[1];
-    debug = string(abi.encodePacked("(* Condition rule receive send delayed: ", precondition, " => ", event_input, " *)"));
-    out = rule_send_delayed(actor, message);
-} else if (condition_rule_receive_now(precondition, event_input)) {
-    //string memory actor = split(event_input, "?")[0];
-    //string memory message = split(event_input, "?")[1];
-    debug = string(abi.encodePacked("(* Condition rule receive now: ", precondition, " => ", event_input, " *)"));
-    out = rule_receive_now(event_input);
-} else if (condition_rule_receive_delayed(precondition, event_input)) {
-    string memory actor = split(event_input, "?")[0];
-    string memory message = split(event_input, "?")[1];
-    debug = string(abi.encodePacked("(* Condition rule receive delayed: ", precondition, " => ", event_input, " *)"));
-    out = rule_receive_delayed(actor, message);
+if (condition_rule_send_now(precondition, symbol, symbol_enc)) {
+    debug = string(abi.encodePacked("(* Condition rule receive send *)"));
+    out = rule_send_now(symbol, symbol_enc);
+}  else if (condition_rule_send_delayed(precondition, symbol, symbol_enc)) {
+    debug = string(abi.encodePacked("(* Condition rule receive send delayed *)"));
+    out = rule_send_delayed(symbol, symbol_enc);
+} else if (condition_rule_receive_now(precondition, symbol, symbol_enc)) {
+    debug = string(abi.encodePacked("(* Condition rule receive now *)"));
+    out = rule_receive_now(symbol, symbol_enc);
+} else if (condition_rule_receive_delayed(precondition, symbol, symbol_enc)) {
+    debug = string(abi.encodePacked("(* Condition rule receive delayed *)"));
+    out = rule_receive_delayed(symbol, symbol_enc);
 } else {
     debug = "No matching condition";
-    out = "None";
+    out = Symbol("", EVENT_ACTION.epsilon, ""); //"None";
 }
-emit outputEvent(debug, out);
-return out;""",
+emit outputEvent(debug);
+return out;
+                                """,
                                 "public",
-                                "string memory"))
+                                "Symbol memory"))
 
         contract.add_function(Function("process_check",
                                 [],
-                                """string memory out = "";
+                                """
+Symbol memory out = Symbol("", EVENT_ACTION.epsilon, "");
 string memory debug;
-string[]  memory parts = condition_rule_buffered();
 
-if (parts.length == 0) {
-    out = "None";
-    debug = "(* No usable message found in buffer for current states. *)";
-} else {
-    string memory actor = parts[0];
-    string memory action = parts[1];
-    string memory message = parts[2];
+// TODO finish this
 
-    if (strCompare(action, "?")) {
-        debug = string(abi.encodePacked("(* Condition rule receive buffered: ", message, " *)"));
-        out = rule_receive_buffered(actor, action);            
-    } else {
-        debug = string(abi.encodePacked("(* Condition rule send buffered: ", message, " *)"));
-        out = rule_send_buffered(actor, action);            
-    }
-}
-
-emit outputEvent(debug, out);
-return out;""",
+//emit outputEvent(debug, out);
+return out;
+""",
                                 "public",
-                                "string memory"))
+                                "Symbol memory"))
 
-        contract.add_function(Function("getNfaAddress",
+        contract.add_function(Function("getNFA",
                                 [],
-                                """return address(nfa);""",
+                                "return nfa;",
                                 "public view",
-                                "address"))
+                                "NFA"))
 
-    def createContract(self):
-        contract : Contract = Contract("Enforcer")
+        contract.add_function(Function("getNFAStates",
+                                [],
+                                "return nfa.getStatesAsString();",
+                                "public view",
+                                "string[] memory"))
 
-#        self.__create_directives(contract)
-        self.__create_events(contract)
-        self.__create_attributes(contract)
-        self.__create_constructor(contract)
+        contract.add_function(Function("getNFACurrentStates",
+                                [],
+                                "return nfa.getCurrentStatesAsString();",
+                                "public view",
+                                "string[] memory"))
 
-        #Functions
+
+##
+##    def createContract(self):
+##        contract : Contract = Contract("Enforcer")
+##
+###        self.__create_directives(contract)
+##        self.__create_events(contract)
+##        self.__create_attributes(contract)
+##        self.__create_constructor(contract)
+## .. and other code now in create_function
+
+    def create_functions(self, contract):
+
         self.__create_utils(contract)
         self.__create_conditions(contract)
         self.__create_rules(contract)
         self.__create_getters(contract)
         self.__create_processors(contract)
 
-        return contract
     
 class SmartContractGenerator:
     
@@ -662,68 +844,30 @@ class SmartContractGenerator:
         return self._nfa
 
     @property
-    def contract(self):
+    def contract(self) -> SmartContract:
         return self._contract
 
-    def createSmartContract(self):
+    def create_structs(self):
+
+        self._contract.add_struct(Struct("Symbol", [ ("agent", "bytes32"), ("action", "EVENT_ACTION"), ("message", "bytes32") ]))
+        self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "bytes32") ]))
+
+    def create_enums(self):
+
+        self._contract.add_enum(Enum("EVENT_ACTION", [ "epsilon", "send", "recv" ]))
+
+
+    def createSmartContract(self) -> SmartContract:
     
-        # create constants for transition symbols
-        transitions_labels = set([])
 
-        #init_constants = [ "uint constant EPSILON = 0;" ]
-        init_encode = [ ("","EPSILON") ]
+        self.create_enums()
+        self.create_structs()
 
-        #self.contract.add_constant(Constant("EPSILON", "uint", "0"))
-
-        constant_value = 1
-        for t in self.nfa.transitions:
-            if t.label and t.label not in transitions_labels:
-                #breakpoint()
-                transitions_labels.add(t.label)
-                constant_name = t.label.replace("!","__S__").replace("?","__R__").replace(",","___")
-                #self.contract.add_constant(Constant(constant_name, "uint", constant_value))
-                #init_constants.append(f"uint constant {constant_name} = {constant_value};")
-                init_encode.append((t.label, constant_name))
-                constant_value = constant_value + 1
-
-        self.contract.add_enum(Enum("SYMBOLS", [ b for (a,b) in init_encode] ))
-
-        self.contract.add_function(Function("indexOf",
-                            [Variable("mainStr", "string", "memory"), Variable("subStr", "string", "memory")],
-                            """
-        bytes memory mainBytes = bytes(mainStr);
-        bytes memory subBytes = bytes(subStr);
-        
-        if (subBytes.length == 0 || subBytes.length > mainBytes.length) {
-            return -1; // Return -1 if substring is empty or longer than the main string
-        }
-
-        for (uint i = 0; i <= mainBytes.length - subBytes.length; i++) {
-            bool matchFound = true;
-            
-            for (uint j = 0; j < subBytes.length; j++) {
-                if (mainBytes[i + j] != subBytes[j]) {
-                    matchFound = false;
-                    break;
-                }
-            }
-            
-            if (matchFound) {
-                return int(i); // Return the starting index of the substring
-            }
-        }
-        
-        return -1; // Not found
-                            """,
-                            "pure",
-                            "int"))
-
-
-        self.contract.add_function(Function("arrContains",
+        self._contract.add_function(Function("arrContains",
                                 #[Variable("s","string","memory"),Variable("states","string[]","memory")],
                                 [Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
                                 """for (uint i = 0; i < states.length; i++) {
-    if (strCompare(s,states[i])) {
+    if (s == states[i]) {
         return true;
     }
 }
@@ -731,114 +875,450 @@ return false;""",
                                 "pure", #"internal pure",
                                 "bool"))
 
-
-        self.contract.add_function(Function("contains",
-                            [Variable("what", "string", "memory"),Variable("where", "string", "memory")],
-                            """
-		return indexOf(where, what) >= 0;
-                            """,
-                            "pure",
-                            "bool"))
-
-        self.contract.add_function(Function("split",
-                            [Variable("str", "string", "memory"),Variable("delimiter", "string", "memory")],
-                            """
-        bytes memory strBytes = bytes(str);
-        bytes memory delimiterBytes = bytes(delimiter);
-        
-        uint count = 1; // At least one element
-        for (uint i = 0; i < strBytes.length - delimiterBytes.length + 1; i++) {
-            bool matchFound = true;
-            for (uint j = 0; j < delimiterBytes.length; j++) {
-                if (strBytes[i + j] != delimiterBytes[j]) {
-                    matchFound = false;
-                    break;
-                }
-            }
-            if (matchFound) {
-                count++;
-                i += delimiterBytes.length - 1;
-            }
-        }
-
-        string[] memory parts = new string[](count);
-        uint index = 0;
-        uint lastIndex = 0;
-
-        for (uint i = 0; i < strBytes.length - delimiterBytes.length + 1; i++) {
-            bool matchFound = true;
-            for (uint j = 0; j < delimiterBytes.length; j++) {
-                if (strBytes[i + j] != delimiterBytes[j]) {
-                    matchFound = false;
-                    break;
-                }
-            }
-            if (matchFound) {
-                parts[index] = substring(str, lastIndex, i);
-                index++;
-                lastIndex = i + delimiterBytes.length;
-                i += delimiterBytes.length - 1;
-            }
-        }
-        parts[index] = substring(str, lastIndex, strBytes.length); // Last part
-        return parts;
-                            """,
-                            "pure", 
-                            "string[] memory"))
-
-        self.contract.add_function(Function("substring",
-                            [Variable("str","string","memory"),Variable("startIndex", "uint"),Variable("endIndex", "uint")],
-                            """
-        bytes memory strBytes = bytes(str);
-        bytes memory result = new bytes(endIndex - startIndex);
-        for (uint i = startIndex; i < endIndex; i++) {
-            result[i - startIndex] = strBytes[i];
-        }
-        return string(result);
-                            """,
-                            "pure",
-                            "string memory"))
-
-        self.contract.add_function(Function("strCompare",
-                            #[Variable("stringA", "string", "memory"), Variable("stringB", "string", "memory")],
-                            [Variable("stringA", "bytes32"), Variable("stringB", "bytes32")],
-                            #"return keccak256(abi.encodePacked(stringA)) == keccak256(abi.encodePacked(stringB));",
-                            "return stringA == stringB;", 
-                            "pure", 
-                            "bool"))
-    
-        #breakpoint()
-        self.contract.add_function(Function("encodeEvent",
-                            #[Variable("symbol", "string", "memory")],
-                            [Variable("symbol", "bytes32")],
-
-                            "\n".join([ f"if (strCompare(symbol, bytes32('{symbol[:32]}'))) {{ return SYMBOLS.{constant}; }}" for symbol,constant in init_encode ]),
-                            "view", 
-                            "SYMBOLS"))
-
-###    
-###        verbatim = """
-###library Symbols {
-###    """ + '\n    '.join(init_constants) + """
-###
-###    function encodeEvent(string memory symbol) public view returns (uint) { return 0;
-###        """ + "\n".join([ f"if (strCompare(symbol, '{symbol}')) {{ return {constant}; }}" for symbol,constant in init_encode ][:1]) + """
-###    }
-###}
-###        """
-###
-###        self.contract.add_verbatim(verbatim)
-###
-
-        #Library
-        #strings: String & slice utility library for Solidity contracts.
-        #self.contract.add_library("strings", "https://raw.githubusercontent.com/Arachnid/solidity-stringutils/master/src/strings.sol")
-
         #Contracts    
+        encoderContract = EncoderContractGenerator(self.nfa).createContract()
         nfaContract = NFAContractGenerator(self.nfa).createContract()
         enforcerContract = EnforcerContractGenerator(nfaContract).createContract()
 
-        self.contract.add_contract(nfaContract)
-        self.contract.add_contract(enforcerContract)
+        self._contract.add_contract(encoderContract)
+        self._contract.add_contract(nfaContract)
+        self._contract.add_contract(enforcerContract)
+
+        return self._contract
+
+
+class MPSTLocalTypeContractGenerator(Generator):
+
+    def __init__(self, contract_name : str, local_type):
+    
+        #breakpoint()
+        self._local_type = local_type
+        super().__init__(contract_name)
+
+    def create_attributes(self, contract):
+
+        contract.add_attribute(Variable("states", "STATES[]"))
+        contract.add_attribute(Variable("pr", "PruneRelation"))
+        contract.add_attribute(Variable("input", "Task[]"))
+        contract.add_attribute(Variable("output", "Task[]"))
+        contract.add_attribute(Variable("buffer", "Task[]"))
+
+    def create_constructor(self, contract):
+        initial_state = str(self._local_type.initial)
+        constructor_body = f"states.push(STATES.{initial_state});\ncheck_no_input();"
+        contract.add_constructor(Constructor([], constructor_body))
+
+    def create_functions(self, contract):
+
+        from mpst.models import MsgSend, MsgRecv
+
+        check_no_input_body = """
+int256 pos1;
+int256 pos2;
+
+bool dirty = false;
+
+do {
+    dirty = false;
+        """
+
+        for t in self._local_type.transforms:
+            if t.is_fork:
+                check_no_input_body = f"{check_no_input_body}\n\n    // fork: {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >= 0) {{ apply_fork(states, pr, uint256(pos1), STATES.{t.rhs.arguments[0]}, STATES.{t.rhs.arguments[1]}); dirty = true; }}"
+
+            elif t.is_join:
+
+                check_no_input_body = f"{check_no_input_body}\n\n    // join: {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs.arguments[0]}); if (pos1 >= 0) {{ pos2 = states_arr_find(states, STATES.{t.lhs.arguments[1]}); if (pos2 >= 0) {{ apply_join(states, pr, uint256(pos1), uint256(pos2), STATES.{t.rhs}); dirty = true; }} }}"
+
+
+            elif t.is_merge:
+
+                check_no_input_body = f"{check_no_input_body}\n\n    // merge : {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs.arguments[0]}); if (pos1 >= 0) {{ apply_passthrough(states, pr, uint256(pos1), STATES.{t.rhs}); dirty = true; }} else {{ pos2 = states_arr_find(states, STATES.{t.lhs.arguments[1]}); if (pos2 >= 0) {{ apply_passthrough(states, pr, uint256(pos2), STATES.{t.rhs}); dirty = true; }} }}"
+
+            elif t.is_passthrough:
+                check_no_input_body = f"{check_no_input_body}\n\n    // passthrough : {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >=0) {{ apply_passthrough(states, pr, uint256(pos1)); dirty = true; }}"
+
+            elif t.is_end:
+                check_no_input_body = f"{check_no_input_body}\n\n    // end : {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >= 0) {{ apply_end(states, pr, uint256(pos1)); dirty = true; }}"
+
+            elif t.is_internal_choice or t.is_external_choice:
+                #breakpoint()
+                check_no_input_body = f"{check_no_input_body}\n\n    // internal/external choice: {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >= 0) {{ apply_choice(states, pr, uint256(pos1), STATES.{t.rhs.arguments[0]}, STATES.{t.rhs.arguments[1]}); dirty = true; }} "
+
+
+        check_no_input_body = f"{check_no_input_body}\n}} while (dirty); "
+
+
+        contract.add_function(Function("check_no_input", [], check_no_input_body, "public"))
+
+
+        check_task_body = """
+int256 pos;
+
+input.push(task);
+
+        """
+
+        for t in self._local_type.transforms:
+            if t.is_concat:
+
+                assert len(t.rhs.arguments) == 2, "Unexpected number of arguments for Concat"
+
+                next_var = t.rhs.arguments[-1]
+                action = "" # "none"
+                #breakpoint()
+                if isinstance(t.rhs.arguments[0], MsgSend):
+                    action = "Send" 
+                    #field = "target"
+                    initiator = t.rhs.arguments[0].sender
+                    target = t.rhs.arguments[0].receiver
+
+
+                elif isinstance(t.rhs.arguments[0], MsgRecv):
+                    action = "Receive"
+                    #field = "initiator"
+                    initiator = t.rhs.arguments[0].receiver
+                    target = t.rhs.arguments[0].sender
+
+                else:
+                    raise Exception("Action not supported")
+
+
+                check_task_body = f"{check_task_body}\n\n// {action} : {t} \npos = states_arr_find(states, STATES.{t.lhs}); if (pos >= 0) {{ if (task.action == ACTIONS.{ action } && task.initiator == PARTICIPANTS.{ initiator } && task.target == PARTICIPANTS.{ target }) {{ apply_send_receive(states, pr, uint256(pos), STATES.{t.rhs.arguments[-1]}); output.push(task); check_no_input(); return; }} else if (task.action == ACTIONS.Wt{ action } && task.initiator == PARTICIPANTS.{ initiator } && task.target == PARTICIPANTS.{ target }) {{ apply_passthrough(states, pr, uint256(pos), STATES.{t.lhs}); output.push(task); check_no_input(); return; }} }} "
+
+
+    
+
+        check_task_body = f"{check_task_body}\n\ncheck_no_input();\n\n// otherwise, add to buffer\n\nbuffer.push(task);"
+
+        contract.add_function(Function("check_task", [Variable("task", "Task", "calldata")], check_task_body, "public"))
+
+
+        contract.add_function(Function("getStates", [], "return states;", "public view returns(STATES[] memory)"))
+        contract.add_function(Function("getInput", [], "return input;", "public view returns(Task[] memory)"))
+        contract.add_function(Function("getOutput", [], "return output;", "public view returns(Task[] memory)"))
+        contract.add_function(Function("getBuffer", [], "return buffer;", "public view returns(Task[] memory)"))
+
+        contract.add_function(Function("getPruneRelationKeys", [], "return pr.keys;", "public view returns(STATES[] memory)"))
+        contract.add_function(Function("getPruneRelation", [Variable("s","STATES")], "return pr.to_prune[s];", "public view returns(STATES[] memory)"))
+
+        
+        contract.add_function(Function("getInputAsString", [], "return task_arr_to_string(input);", "public view returns(string[] memory)"))
+        contract.add_function(Function("getOutputAsString", [], "return task_arr_to_string(output);", "public view returns(string[] memory)"))
+        contract.add_function(Function("getBufferAsString", [], "return task_arr_to_string(buffer);", "public view returns(string[] memory)"))
+ 
+class MPSTSmartContractGenerator:
+    
+    from mpst.models import GlobalType
+
+    def __init__(self, gt : GlobalType):
+        assert gt is not None, f"Expected not-null MPST global type to build a contract"
+        self._gt = gt
+        self._contract : SmartContract = SmartContract("0.7.6")
+
+        self._participants = gt.participants
+        if not self._participants or len(self._participants) < 2:
+            raise Exception("Expected global type with at least two participants")
+
+        self._local_types = {}
+        self._local_types_contracts = {}
+
+        self._actions = { "Send" : "!", "Receive": "?", "WtSend": "!*", "WtReceive": "?*" }
+
+        for p in self._participants:
+            #breakpoint()
+            lt = gt.project(p)
+            self._local_types[p] = lt
+            lt_sc = MPSTLocalTypeContractGenerator(p, lt).createContract()
+            self._local_types_contracts[p] = lt_sc
+
+
+    @property
+    def gt(self):
+        return self._gt
+
+    @property
+    def participants(self):
+        return self._participants
+
+    @property
+    def contract(self):
+        return self._contract
+
+    @property
+    def local_types(self):
+        return self._local_types
+
+    @property
+    def local_types_contracts(self):
+        return self._local_types_contracts
+
+ 
+    def createSmartContract(self):
+
+        self.create_enums()
+        self.create_structs()
+        self.create_contracts()
+
+        self.create_aux_functions()
 
         return self.contract
+
+    def create_aux_functions(self):
+
+        states_arr_remove_body = """
+	for (uint256 i = 0; i < states.length; i++) {
+		if (states[i] == state) {
+			states[i] = states[states.length - 1];
+			states.pop();
+		}
+	}
+        """
+        self.contract.add_function(Function("states_arr_remove", [Variable("states", "STATES[] storage"), Variable("state", "STATES")], states_arr_remove_body, ""))
+
+        states_arr_find_body = """
+    for (uint256 i = 0; i < states.length; i++) {
+        if (states[i] == state) {
+            return int256(i);
+        }
+    }
+
+    return -1;
+        """
+        self.contract.add_function(Function("states_arr_find", [Variable("states", "STATES[] memory"), Variable("state", "STATES")], states_arr_find_body, "pure returns(int256)"))
+
+        states_arr_of1_body = """
+    STATES[] memory temp = new STATES[](1);
+	temp[0] = a;
+	return temp;
+        """
+        self.contract.add_function(Function("states_arr_of", [Variable("a", "STATES")], states_arr_of1_body, "pure returns(STATES[] memory)"))
+
+        states_arr_of2_body = """
+    STATES[] memory temp = new STATES[](2);
+	temp[0] = a;
+	temp[1] = b;
+	return temp;
+        """
+        self.contract.add_function(Function("states_arr_of", [Variable("a", "STATES"), Variable("b", "STATES")], states_arr_of2_body, "pure returns(STATES[] memory)"))
+
+
+        states_arr_join = """
+	STATES[] memory temp = new STATES[](a.length + b.length);
+	uint idx=0;
+	for (idx=0; idx<a.length; idx++) {
+		temp[idx] = a[idx];
+	}
+	for (uint jdx=0; jdx<b.length; jdx++) {
+		temp[jdx+idx] = b[jdx];
+	}
+	return temp;
+        """
+        self.contract.add_function(Function("states_arr_join", [Variable("a", "STATES[] memory"), Variable("b", "STATES[] memory")], states_arr_join, "pure returns(STATES[] memory)"))
+
+
+        pr_add_body = """
+	// check1 : the state should not exist in the mapping
+	require(pr.to_prune[source].length == 0); 
+
+	// check 2 : the state should not exist in the keys
+	for (uint idx=0; idx<pr.keys.length; idx++) {
+		if (pr.keys[idx] == source) {
+			revert("Unexpected error: state should not be in prune relation");
+		}
+	}
+
+	pr.keys.push(source);
+
+	pr.to_prune[source] = to_prune;
+        """
+        self.contract.add_function(Function("pr_add", [Variable("pr", "PruneRelation storage"), Variable("source", "STATES"), Variable("to_prune", "STATES[] memory")], pr_add_body, ""))
+
+        pr_remove_body = """
+	for (uint idx=0; idx<pr.keys.length; idx++) {
+		STATES source1 = pr.keys[idx];
+
+		if (source1 == source) {
+			// remove source's alternative states
+			pr.keys[idx] = pr.keys[pr.keys.length-1];
+			pr.keys.pop();
+
+			delete pr.to_prune[source];
+		} else {
+			
+			// source1 != source => remove source from source1's alternative states (if present)
+			for (uint jdx=0; jdx<pr.to_prune[source1].length; jdx++) {
+				if (pr.to_prune[source1][jdx] == source) {
+					pr.to_prune[source1][jdx] = pr.to_prune[source1][ pr.to_prune[source1].length - 1];
+					pr.to_prune[source1].pop();
+				}
+			}
+		}
+	}
+        """
+        self.contract.add_function(Function("pr_remove", [Variable("pr", "PruneRelation storage"), Variable("source", "STATES")], pr_remove_body, ""))
+
+        pr_update_body = """
+    require(targets.length > 0, "Empty targets");
+
+    for (uint idx=0; idx<pr.keys.length; idx++) {
+    
+        int found = states_arr_find(pr.to_prune[pr.keys[idx]], source);
+        if (found >= 0) {
+            STATES[] storage old_targets = pr.to_prune[pr.keys[idx]];
+            old_targets[uint(found)] = targets[0];
+
+            for (uint j=1; j<targets.length; j++) {
+                old_targets.push(targets[j]);
+            }
+            pr.to_prune[source] = old_targets;
+
+            break;        
+        }
+    }
+        """
+        self.contract.add_function(Function("pr_update", [Variable("pr", "PruneRelation storage"), Variable("source", "STATES"), Variable("targets", "STATES[] memory")], pr_update_body, ""))
+
+        apply_fork_body = """
+    STATES source = states[lhs];
+    states[lhs] = rhs1;
+    states.push(rhs2);
+    pr_update(pr, source, states_arr_of(rhs1, rhs2));
+        """
+        self.contract.add_function(Function("apply_fork", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs1", "STATES"), Variable("rhs2", "STATES")], apply_fork_body, ""))
+
+    
+        apply_join_body = """
+    STATES source1 = states[lhs1];
+    STATES source2 = states[lhs2];
+    states[lhs1] = rhs;
+    states[lhs2] = states[states.length - 1];
+    states.pop();
+    pr_update(pr, source1, states_arr_of(rhs));
+    pr_update(pr, source2, states_arr_of(rhs));
+        """
+        self.contract.add_function(Function("apply_join", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs1","uint256"), Variable("lhs2", "uint256"), Variable("rhs", "STATES")], apply_join_body, ""))
+
+
+        apply_choice_body = """
+
+	STATES source = states[lhs];
+	STATES[] memory to_prune = pr.to_prune[source];
+
+	states[lhs] = rhs1;
+	states.push(rhs2);
+
+	pr_update(pr, source, states_arr_of(rhs1, rhs2));
+
+	pr_add(pr, rhs1, states_arr_join(to_prune, states_arr_of(rhs2)));
+	pr_add(pr, rhs2, states_arr_join(to_prune, states_arr_of(rhs1)));
+        """
+    
+        self.contract.add_function(Function("apply_choice", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs1", "STATES"), Variable("rhs2", "STATES")], apply_choice_body, ""))
+
+
+##        apply_merge_body = """
+##    STATES source = states[lhs];
+##    states[lhs] = rhs;
+##    pr_update(pr, source, states_arr_of(rhs));
+##        """
+##        self.contract.add_function(Function("apply_merge", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs", "STATES")], apply_merge_body, ""))
+##
+
+        apply_passthrough_body = """
+    STATES source = states[lhs];
+    states[lhs] = rhs;
+    if (source != rhs) { pr_update(pr, source, states_arr_of(rhs)); }
+        """
+        self.contract.add_function(Function("apply_passthrough", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs", "STATES")], apply_passthrough_body, ""))
+
+        apply_end_body = """
+    STATES source = states[lhs];
+    states[lhs] = states[states.length - 1];
+    states.pop();
+
+	pr_remove(pr, source);
+        """
+        self.contract.add_function(Function("apply_end", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256") ], apply_end_body, ""))
+
+ 
+        apply_send_receive_body = """
+    STATES source = states[lhs];
+
+    states[lhs] = rhs;
+
+	// remove all the alternatives from the prune relation
+	STATES[] memory to_prune = pr.to_prune[source];	        
+	for (uint idx=0; idx<to_prune.length; idx++) {
+		pr_remove(pr, to_prune[idx]);
+		states_arr_remove(states, to_prune[idx]);
+	}
+	// remove also the source state from the prune relation
+	pr_remove(pr, source);
+        """
+        self.contract.add_function(Function("apply_send_receive", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs", "STATES")], apply_send_receive_body, ""))
+
+
+        a_to_s_parts = [ f"if (a == ACTIONS.{ k }) {{ return '{v}'; }}" for k,v in self._actions.items() ]
+        action_to_string_body = " else ".join(a_to_s_parts) + " else return '??';"
+
+        self.contract.add_function(Function("action_to_string", [Variable("a","ACTIONS")], action_to_string_body, "pure returns (string memory)"))
+
+        p_to_s_parts = [ f"if (p == PARTICIPANTS.{ p }) {{ return '{p}'; }}" for p in self._participants ] 
+        participant_to_string_body = " else ".join(p_to_s_parts) + " else return '??';"
+        self.contract.add_function(Function("participant_to_string", [Variable("p","PARTICIPANTS")], participant_to_string_body, "pure returns (string memory)"))
+
+        
+        task_to_string_body = f"""
+            string memory initiator = participant_to_string(t.initiator);
+            string memory action = action_to_string(t.action);
+            string memory target = participant_to_string(t.target);
+
+            return string(abi.encodePacked(initiator, action, target));
+
+        """
+        self.contract.add_function(Function("task_to_string", [Variable("t", "Task memory")], task_to_string_body, "pure returns (string memory)"))
+
+        task_arr_to_string_body = """
+    string[] memory result = new string[](ar.length);
+    for (uint idx=0; idx<ar.length; idx++) {
+        Task memory t = ar[idx];
+        
+        //if (idx > 0) {
+        //    result = string(abi.encodePacked(result, ", "));
+        //}
+
+        //result = string(abi.encodePacked(result, task_to_string(t)));
+        result[idx] = task_to_string(t);
+    }
+
+    return result;
+        """
+        self.contract.add_function(Function("task_arr_to_string", [Variable("ar", "Task[] memory")], task_arr_to_string_body, "pure returns (string[] memory)"))
+
+
+
+    def create_contracts(self):
+
+        for p, sc in self._local_types_contracts.items():
+            self.contract.add_contract(sc)
+
+        return self.contract   
+
+
+    def create_structs(self):
+
+        self.contract.add_struct(Struct("Task", [ ("initiator", "PARTICIPANTS"), ("action", "ACTIONS"), ("target", "PARTICIPANTS")  ]))
+        self.contract.add_struct(Struct("PruneRelation", [ ("keys", "STATES[]"), ("to_prune", "mapping(STATES => STATES[])")  ]))
+
+
+    def create_enums(self):
+
+        #breakpoint()
+        states = sorted(map(str, self._gt.state_vars)) # [ "a", "b", "c" ]
+        self.contract.add_enum(Enum("STATES", states, ", "))
+
+        self.contract.add_enum(Enum("ACTIONS", self._actions.keys()))
+        self.contract.add_enum(Enum("PARTICIPANTS", sorted(self._participants)))
+
+

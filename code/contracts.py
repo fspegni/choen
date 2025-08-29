@@ -66,7 +66,10 @@ class Constant(Variable):
         super().__init__(name, type, value=value)
 
     def compile(self) -> str:
-        return f"{self._type} constant {self._name} = {self._value};"
+        init = ""
+        if self._value:
+            init = f" = {self._value}"
+        return f"{self._type} constant {self._name}{init};"
 
 class Event(Compileable):
     def __init__(self, name: str, variables : list):
@@ -140,11 +143,35 @@ class Constructor(Function):
 }}
 """
 
+
+class Struct(Compileable):
+
+    def __init__(self, name : str, attributes : list):
+        self._name = name
+        self._attributes = attributes
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def attributes(self):
+        return self._attributes
+
+
+    def compile(self):
+        #breakpoint()
+        enum_body = "\n    ".join(map(lambda a: f"{a[1]} {a[0]};", self._attributes))
+        text = "struct " + self.name + " {\n    " + enum_body + "\n}\n"
+        return str(text)
+
+
 class Enum(Compileable):
 
-    def __init__(self, name : str, values : list):
+    def __init__(self, name : str, values : list, sep=",\n    "):
         self._name = name
         self._values = values
+        self._sep = sep
 
     @property
     def name(self):
@@ -156,7 +183,7 @@ class Enum(Compileable):
 
     def compile(self):
         #breakpoint()
-        enum_body = ",\n    ".join(map(str, self.values))
+        enum_body = (self._sep).join(map(str, self.values))
         text = "enum " + self.name + " {\n    " + enum_body + "\n}\n"
         return str(text)
 
@@ -166,10 +193,11 @@ class Contract(Compileable):
         self._name = name
         self._functions : dict = {}
         self._attributes : dict = {}
-        self._structures : dict = {}
+#        self._structures : dict = {}
         self._constructor : dict = {}
         self._directives = []
         self._events : dict = {}
+        self._enums: dict = {}
         #self._version = version
         #self._imports = []
         #self._libraries = []
@@ -186,9 +214,9 @@ class Contract(Compileable):
     def attributes(self) -> list:
         return self._attributes.items()
 
-    @property
-    def structures(self) -> list:
-        return self._structures.items()
+#    @property
+#    def structures(self) -> list:
+#        return self._structures.items()
 
     @property
     def functions(self) -> list:
@@ -214,6 +242,9 @@ class Contract(Compileable):
     def events(self):
         return self._events
 
+    def add_enum(self, enum : Enum):
+        self._enums[enum.name] = enum
+
     def add_function(self, f : Function):
         #if f.name in self._functions:
         #    raise Exception(f"Function named {f.name} already exists")
@@ -226,14 +257,6 @@ class Contract(Compileable):
 
         self._attributes[a.name] = a
 
-    def add_structure(self, name : str, text: str):
-        if name in self._structures:
-            raise Exception(f"A structure with name {name} already exists")
-    
-        self._structures[name] = text
-
-    def add_enum(self, c : Enum): 
-        self._enums.append(c)
 
     def add_constructor(self, c : Constructor):
         if len(self._constructor) > 0:
@@ -259,9 +282,10 @@ class Contract(Compileable):
         #imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
         #libraries_text = "\n".join(map(lambda l: f"{l}", self._libraries))
         directives_text = "\n".join(map(lambda d: f"{d};", self._directives))
-           
-        #breakpoint()
-        struct_text = "\n".join(self._structures.values())
+     
+      
+        enums_text = "\n".join(map(lambda a: a.compile(), self._enums.values()))
+        struct_text = "" # FS this should be removed
         attributes_text = "\n".join(map(lambda a: a.compile()+";", self._attributes.values()))
         events_text = "\n".join(map(lambda e: e.compile()+";", self._events.values()))
         functions_text = "\n".join(map(lambda f: f.compile()+"\n", self._functions.values()))
@@ -277,6 +301,8 @@ class Contract(Compileable):
 {directives_text}
 
 {events_text}
+
+{enums_text}
 
 {struct_text}
 
@@ -345,25 +371,37 @@ class SmartContract(Compileable):
         self._version = version
         self._imports = []
         self._functions : list = []
-        self._constants : list = []
+        self._attributes : list = []
         self._libraries : dict = {}
         self._contracts : dict = {}
         self._verbatim : str = ""
-        self._enums : list = []
+        self._enums : dict = {}
+        self._structures : dict = {}
 
     def add_verbatim(self, verbatim):
         self._verbatim = verbatim
 
+    def add_struct(self, s : Struct):
+        if s.name in self._structures:
+            raise Exception(f"A structure with name {s.name} already exists")
+
+        self._structures[s.name] = s
+
+    @property
+    def structures(self):
+        return self._structures.values()
+
     def add_enum(self, enum : Enum):
-        self._enums.append(enum)
+        #self._enums.append(enum)
+        self._enums[enum.name] = enum
 
     @property
     def enumerations(self):
-        return self._enums
+        return self._enums.values()
 
     @property
-    def constants(self):
-        return self._constants
+    def attributes(self):
+        return self._attributes
 
     @property
     def functions(self):
@@ -388,8 +426,8 @@ class SmartContract(Compileable):
     def add_function(self, f : Function):
         self._functions.append(f)
 
-    def add_constant(self, c : Constant):
-        self._constants.append(c)
+    def add_attribute(self, v : Variable):
+        self._attributes.append(v)
 
     def add_import(self, i : str):
         self._imports.append(i)
@@ -404,7 +442,7 @@ class SmartContract(Compileable):
             raise Exception(f"A contract with name {c.name} already exists")
         self._contracts[c.name] = c
 
-    def compile(self, debug : bool):
+    def compile(self, prefix:str="smart_contract", debug:bool=False):
 
         debug = True
         try:
@@ -419,10 +457,11 @@ class SmartContract(Compileable):
         imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
         libraries_text = "\n".join(map(lambda l: l+"\n", self.libraries.values()))
         functions_text = "\n".join(map(lambda f: f.compile()+"\n", self.functions)) 
-        constants_text = "\n".join(map(lambda c: c.compile()+"\n", self.constants)) 
+        attributes_text = "\n".join(map(lambda c: c.compile()+"\n", self.attributes)) 
         contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
         #breakpoint()
         enums_text = "\n".join(map(lambda c: c.compile()+"\n", self.enumerations))    
+        structs_text = "\n".join(map(lambda c: c.compile()+"\n", self.structures))    
 
 
         verbatim = self._verbatim       
@@ -438,7 +477,9 @@ pragma abicoder v2;
 
 {enums_text}
 
-{constants_text}
+{structs_text}
+
+{attributes_text}
 
 {functions_text}
 
@@ -449,35 +490,45 @@ pragma abicoder v2;
 
         #breakpoint()
         if (debug):
-            file_name = "_".join(["smart_contract",datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
+            file_name = "_".join([prefix,datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
             #tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
             tmp_path = os.path.join(settings.BASE_DIR, "..", "public", "tmp", f"{file_name}.sol")
             with open(tmp_path,"w") as file:
                 file.write(smart_contract_text)
                 print("\nSmart contract saved at: ",tmp_path,"\n")
 
-        compiled_sol = solcx.compile_standard(
-            {
-                "language": "Solidity",
-                "sources": 
-                    {
-                        f"smart_contract.sol": 
-                            {
-                                "content": smart_contract_text
-                            }
+        try:
+            compiled_sol = solcx.compile_standard(
+                {
+                    "language": "Solidity",
+                    "sources": 
+                        {
+                            f"smart_contract.sol": 
+                                {
+                                    "content": smart_contract_text
+                                }
+                        },
+                    "settings": {
+                        "outputSelection": {
+                            "*": {"*": ["abi", "metadata", "evm.bytecode", "evm.sourceMap"]}
+                        },
+                        #"libraries": {"strings.sol"}
                     },
-                "settings": {
-                    "outputSelection": {
-                        "*": {"*": ["abi", "metadata", "evm.bytecode", "evm.sourceMap"]}
-                    },
-                    #"libraries": {"strings.sol"}
                 },
-            },
-            # TODO add a setting parameter for solc version
-            solc_version = settings.SOLC_VERSION, #"0.8.0",
-            allow_paths = ["."]
-        )
-        return compiled_sol
+                # TODO add a setting parameter for solc version
+                solc_version = settings.SOLC_VERSION, #"0.8.0",
+                allow_paths = ["."]
+            )
+
+        
+
+            return compiled_sol
+
+        except Exception as err:
+            print(f"Errors compiling smart-contract code: {err}")    
+
+
+        return None
 
 
 
