@@ -1,6 +1,7 @@
 #from distutils.log import debug
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 import glob
 import json
 from tracemalloc import start
@@ -26,7 +27,9 @@ from engine.models import Contract, Configuration, RunningInstance, Engine, Engi
 
 import random
 import string
-
+import subprocess
+import pyperclip
+from django.contrib.sites.models import Site
 
 def random_string(length):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -364,7 +367,7 @@ class CmdHelp(UICommand):
 
         max_len = max(map(lambda name: len(name), self.ui._registry.keys()))
 
-        for name, cmd in self.ui._registry.items():
+        for name, cmd in sorted(self.ui._registry.items()):
             label = name.ljust(max_len + 2, ".")
             print(f"/{label} : {cmd.description}")
         #print(", ".join(sorted(self.ui._registry.keys())))
@@ -392,7 +395,8 @@ class CmdListChoreographies(UICommand):
 
         print("Available choreographies:")
         items = Choreography.objects.all().order_by("name")
-
+    
+        #breakpoint()
         if len(items) == 0:
             print(f"(* none *)")
         else:
@@ -403,7 +407,13 @@ class CmdListChoreographies(UICommand):
 
             for c in items:
                 cho_name = c.name.ljust(longest+3,".")
-                print(f"* {cho_name} - {c.resource}")
+                nfa = c.to_nfa(optimize=True)
+                nfa_optimized = c.to_nfa(optimize=True,silent=True)
+                no_states = len(nfa.states)
+                no_transitions = len(nfa.transitions)
+                no_states_o = len(nfa_optimized.states)
+                no_transitions_o = len(nfa_optimized.transitions)
+                print(f"* {cho_name} - ({no_states:>3}/{no_states_o:<3} ; {no_transitions:>3}/{no_transitions_o:<3}) -{c.resource}")
 
 
 class CmdClear(UICommand):
@@ -547,6 +557,53 @@ class CmdGetBalance(UICommand):
             except Exception as err:
                 print(f"Error fetching balance. Account: {address}. URL: {chain_url}")
     
+
+class CmdOpenFile(UICommand):
+
+    _description = "Opens a file or a choreography in the local system given its path or name"
+
+    def execute(self, path=None, extra=None, *args, **kwargs):
+
+        if not path:
+            c : Choreography = self.ui._model.get_object("choreography")
+            m : MPST = self.ui._model.get_object("mpst")
+
+            if c:
+                path = c.name
+            elif m:
+                path = m.resource.path
+            else:
+                print("Please, specify a resource you want to open, i.e. either: 1) a file path, or 2) a choreography name, or 3) a MPST name.")
+                return
+
+        if not os.path.exists(path):
+    
+            found = Choreography.objects.filter(Q(resource=path)|Q(name=path))
+            if len(found) > 0:
+                try:
+                    found = found[0]
+                    site = Site.objects.first()
+                    path = f"http://{site.domain}#{found.name}"
+            
+                except Exception as err:
+                    print(f"Cannot detect choen frontend: {err}")
+                    return
+            else:
+                print(f"File or choreography does not exist: {path}")
+                return
+
+        try:
+            if extra == "copy":
+                with open(path, "r") as f:
+                    content = f.read()
+                    pyperclip.copy(content)
+                    print(f"Content copied on clipboard from file: {path} ...")
+
+            else:
+                subprocess.run(["open", path])
+                print(f"Opening file with system shell: {path} ...")
+        except Exception as err:
+            print(f"Error opening file: {path}. Details: {err}")
 
 class CmdBuildContracts(UICommand):
 
@@ -694,7 +751,7 @@ class CmdLoadChoreography(UICommand):
         c, created = Choreography.objects.get_or_create(name=cho_name, defaults=attribs)
 
         try:
-            c.to_nfa()
+            c.to_nfa(optimize=True)
         except Exception as err:
             traceback.print_exc()
             print(f"KO Choreography {cho_name} : error extracting NFA ({err}), cannot import ...")
@@ -839,13 +896,6 @@ class CmdStart(UICommand):
 
 
     def setup_offchain_running_instance(self, ri): #, automaton):
-        #engine = EngineOffChain(automaton)
-
-        #breakpoint()
-        automaton = ri.choreography.to_nfa()
-        #automaton.remove_epsilon_transitions()
-        #automaton.remove_unreachable_states()
-
         try:
             engine = ri.engineoffchain
 
@@ -853,6 +903,7 @@ class CmdStart(UICommand):
                 raise Excepion("Engine off-chain not set yet")
 
             if not engine.nfa:
+                automaton = ri.choreography.to_nfa(optimize=True)
                 engine.set_nfa(automaton)
 
         except Exception:
@@ -895,7 +946,7 @@ class CmdStart(UICommand):
         # 1. create a pair enforcer/engine
         #enforcer = None
  
-        automaton = cho.to_nfa()
+        #automaton = cho.to_nfa(optimize=True)
         #automaton.remove_epsilon_transitions()
         #automaton.remove_unreachable_states()
 
@@ -1119,7 +1170,7 @@ class CmdDump(UICommand):
     def execute(self, *args, **kwargs):
 
         if len(args) == 0:
-            print("Please specify an argument: dump <curr_states|states|transitions|buffer|rei>")
+            print("Please specify an argument: dump <" + "|".join(self.get_completions().keys()) + ">") #curr_states|states|transitions|buffer|rei>")
         else:
             if args[0] == "curr_states":    
                 print("\nCurrent states: \n")
@@ -1141,7 +1192,8 @@ class CmdDump(UICommand):
                 if self.ui._enforcer is None:
                     print("You must start the enforcer, before dumping its transitions")
                     return
-
+    
+                #breakpoint()
                 for t in self.ui._enforcer.engine.get_transitions():
 
                     t_repr = str(t)
@@ -1433,6 +1485,7 @@ class UI:
             "clear" : CmdClear(self),
             "rm"    : CmdRemove(self), #self.cmd_remove,
 #            "load"  : CmdLoadChoreography(self), #self.cmd_load,
+            "open": CmdOpenFile(self),
             "load_mpst"  : CmdLoadMPST(self), #self.cmd_load, # FS redundant but more familiar name
             "load_choreography"  : CmdLoadChoreography(self), #self.cmd_load, # FS redundant but more familiar name
             "load_instance": CmdLoadInstance(self),

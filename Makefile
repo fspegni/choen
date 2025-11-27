@@ -2,7 +2,8 @@ PORT = 8000
 DC = django-admin
 
 up:
-	${DC} runserver 0.0.0.0:${PORT}
+	${DC} runserver 0.0.0.0:${PORT} &
+	sleep 3 && open http://localhost:${PORT}
 
 shell:
 	${DC} shell_plus

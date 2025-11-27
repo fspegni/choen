@@ -5,6 +5,7 @@ import itertools
 from deprecation import deprecated
 from graphviz import Digraph
 import traceback
+import re
 
 EPSILON = ""
 
@@ -206,7 +207,7 @@ class NFA:
         return f"{len(self.states)} states, {len(self.transitions)} transitions, initial: {self._initial}, {len(self.final)} final states"
 
 
-    def remove_epsilon_transitions(self):
+    def remove_epsilon_transitions(self, silent=True):
 
 
         class Continue(Exception):
@@ -217,7 +218,8 @@ class NFA:
         while dirty:
 
             dirty = False
-            print(f"Iteration no. {idx} : # transitions = {len(self.transitions)} ...")
+            if not silent:
+                print(f"Iteration no. {idx} : # transitions = {len(self.transitions)} ...")
             #breakpoint()
             idx = idx + 1
 
@@ -326,15 +328,18 @@ class NFA:
             except Continue:
                 pass
 
-    def remove_unreachable_states(self):
+    def remove_unreachable_states(self, silent=True):
         
         #to_remove = list(map(lambda s: s.id, filter(lambda s: self.is_initial(s) or self.is_final(s) or len(self.transitions_to(s)) > 0, self.states)))
         to_remove = list(map(lambda s: s.id, filter(lambda s: not self.is_initial(s) and len(self.transitions_to(s)) == 0, self.states)))
-        print(f"States to remove: {to_remove} ({len(to_remove)})")
-        print(f"States before: # {len(self._states)}")
+        if not silent:
+            print(f"States to remove: {to_remove} ({len(to_remove)})")
+            print(f"States before: # {len(self._states)}")
         #self._states = {k:v for k,v in self._states.items() if k in to_remove}
         self._states = {k:v for k,v in self._states.items() if k not in to_remove}
-        print(f"States after: # {len(self._states)}")
+
+        if not silent:
+            print(f"States after: # {len(self._states)}")
 
         for s in to_remove:
             del self._transitions[s]
@@ -362,6 +367,41 @@ class NFA:
 #        print(g)
         return g
      
+    @property
+    def propositions(self):
+
+        return set() # TODO implement this ...
+##        propositions = set()
+##        for encoded, curr in self.event_dictionary.items():
+##            parts = re.split(r'!|\?', curr) # one symbol is expected in the middle of the string, either ! or ?
+##            propositions.add(...)
+##    
+##        return propositions
+
+       
+
+    @property
+    def agents(self):
+ 
+        agents = set()
+        for encoded, curr in self.event_dictionary.items():
+            parts = re.split(r'!|\?', curr) # one symbol is expected in the middle of the string, either ! or ?
+            agents.add(parts[0])
+    
+        return agents
+
+    @property
+    def messages(self):
+ 
+        messages = set()
+        for encoded, curr in self.event_dictionary.items():
+            parts = re.split(r'!|\?', curr) # one symbol is expected in the middle of the string, either ! or ?
+            messages.add(parts[1])
+    
+        return messages
+
+
+
     @property
     def event_dictionary(self):
         return self._event_dictionary_lookup
@@ -645,6 +685,7 @@ class NFA:
 
 
     def set_initial(self, state):
+        #breakpoint()
         if isinstance(state, State):
             state = state.id
 

@@ -1,5 +1,13 @@
 import nfa
 from contracts import Constructor, Contract, Function, Variable, Constant, Event, SmartContract, Enum, Struct
+import re
+
+def is_memory_type(solidity_type):
+
+    if solidity_type == "string" or solidity_type.endswith("[]"):
+        return True
+
+    return False
 
 class Generator:
 
@@ -37,7 +45,7 @@ class Generator:
 class EncoderContractGenerator(Generator):
  
     def __init__(self, n : nfa.NFA):
-        super().__init__("Encoder")
+        super().__init__("_Encoder")
 
         assert n is not None, f"Expected not-null nfa to build a contract"
         self._nfa : nfa.NFA = n
@@ -77,8 +85,8 @@ class EncoderContractGenerator(Generator):
 
         contract.add_function(Function(f"encode_{name}", [ Variable("plain", plain_type, "memory") ], encodeBody, f"public pure returns({encoded_type})")) 
         contract.add_function(Function(f"encode_store_{name}", [ Variable("plain", plain_type, "memory") ], encodeStoreBody, f"public returns({encoded_type})")) 
-        contract.add_function(Function(f"store_{name}", [ Variable("plain", plain_type, "memory"), Variable("encoded", encoded_type) ], storeBody, f"public returns({encoded_type})")) 
-        contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type) ], decodeBody, f"public view returns({plain_type} memory)")) 
+        contract.add_function(Function(f"store_{name}", [ Variable("plain", plain_type, "memory"), Variable("encoded", encoded_type) ], storeBody, f"public")) 
+        contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type) ], decodeBody, f"public pure returns({plain_type} memory)"))  # FS "pure" was "view"
         contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public view returns ({plain_type}[] memory)"))
 
         contract.add_attribute(Variable(f"empty_{name}", f"{encoded_type} public"))
@@ -86,21 +94,158 @@ class EncoderContractGenerator(Generator):
 
     def create_constructor(self, contract):
 
-        self.create_encoding(contract, "STATE", "string")
-        self.create_encoding(contract, "SYMBOL", "Symbol", plain_type_attributes=["agent","action","message"])
-        self.create_encoding(contract, "PROPOSITION", "string")
-        self.create_encoding(contract, "AGENT", "string")
-        self.create_encoding(contract, "MESSAGE","string")
+        #self.create_encoding(contract, "STATE", "string", encoded_type="STATES")
+        #breakpoint()
+
+        #breakpoint()
+        state_names = list(map(lambda s: s.id, self._nfa.states))
+
+        #self.create_encoder(contract, "STATE", "string", values=state_names, encoded_type="STATES")
+        self.create_decoder(contract, "STATE", "string", values=sorted(state_names), encoded_type="STATES")
+
+        #self.create_encoder(contract, "AGENT", "string", values=self._nfa.agents, encoded_type="AGENTS")
+        self.create_decoder(contract, "AGENT", "string", values=sorted(self._nfa.agents), encoded_type="AGENTS")
+
+        #self.create_encoder(contract, "MESSAGE", "string", values=self._nfa.messages, encoded_type="MESSAGES")
+        self.create_decoder(contract, "MESSAGE", "string", values=sorted(self._nfa.messages), encoded_type="MESSAGES")
+
+        #self.create_encoder(contract, "EVENT_ACTION", "bytes1", values={ "send": "!", "recv": "?" }, encoded_type="EVENT_ACTION")
+        self.create_decoder(contract, "EVENT_ACTION", "bytes1", values={ "send": "!", "recv": "?" }, encoded_type="EVENT_ACTION")
+
+
+
+        #self.create_encoding(contract, "SYMBOL", "Symbol", plain_type_attributes=["agent","action","message"], encoded_type="SYMBOLS")
+        #self.create_encoding(contract, "PROPOSITION", "string", encoded_type="PROPOSITIONS")
+        #self.create_encoding(contract, "AGENT", "string", encoded_type="AGENTS")
+        #self.create_encoding(contract, "MESSAGE","string", encoded_type="MESSAGES")
 
         constructor_body = """
-    empty_STATE = encode_STATE('');
-    empty_AGENT = encode_AGENT('');
-    empty_SYMBOL = encode_SYMBOL(Symbol(empty_AGENT, EVENT_ACTION.epsilon, empty_AGENT));
-    empty_PROPOSITION = encode_PROPOSITION('');
-    empty_MESSAGE = encode_MESSAGE('');
+    //empty_STATE = encode_STATE('');
+    //empty_AGENT = encode_AGENT('');
+    //empty_SYMBOL = encode_SYMBOL(Symbol(empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE));
+    //empty_PROPOSITION = encode_PROPOSITION('');
+    //empty_MESSAGE = encode_MESSAGE('');
         """
 
         contract.add_constructor(Constructor([], constructor_body, "internal"))
+
+class EncoderContractWithCountersGenerator(EncoderContractGenerator):
+
+    def create_encoding(self, contract, name, plain_type, encoded_type="uint16", plain_type_attributes=[]):
+
+        #breakpoint()
+        enum_name = f"E_{name}"
+        counter_name = f"counter_{name}"
+        lookup_name = f"LU_{name}"
+
+        contract.add_attribute(Variable(lookup_name, f"mapping({encoded_type} => {plain_type})"))
+        contract.add_attribute(Variable(counter_name, encoded_type))
+
+        if encoded_type.startswith("uint"):        
+            encodeBody = f"return {counter_name} + 1;"
+            encodeStoreBody = f"{encoded_type} new_value = {counter_name} + 1; {counter_name} = new_value; return new_value;"
+        else:
+            encodeBody = f"return {encoded_type}.wrap({encoded_type}.unwrap({counter_name}) + 1);"
+            encodeStoreBody = f"{encoded_type} new_value = {encoded_type}.wrap({encoded_type}.unwrap({counter_name}) + 1); {counter_name} = new_value; return new_value;"
+
+        #encodeStoreBody = f"return {counter_name}++;"
+        #storeBody = f"{lookup_name}[encoded] = plain;";
+        storeBody = f"{counter_name} = encoded;"
+        decodeBody = f"return {lookup_name}[encoded];"
+
+        decodeArrayBody = f"""
+    {plain_type}[] memory res = new {plain_type}[](items.length);
+
+    for (uint idx=0; idx < items.length; idx++) {{
+        res[idx] = decode_{name}(items[idx]);
+    }}  
+    return res;
+        """
+
+        contract.add_function(Function(f"encode_{name}", [ Variable("plain", plain_type, "memory") ], encodeBody, f"public view returns({encoded_type})")) 
+        contract.add_function(Function(f"encode_store_{name}", [ Variable("plain", plain_type, "memory") ], encodeStoreBody, f"public returns({encoded_type})")) 
+        contract.add_function(Function(f"store_{name}", [ Variable("plain", plain_type, "memory"), Variable("encoded", encoded_type) ], storeBody, f"public")) 
+        #contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type) ], decodeBody, f"public view returns({plain_type} memory)")) 
+        #contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public view returns ({plain_type}[] memory)"))
+
+        #contract.add_attribute(Variable(f"empty_{name}", f"{encoded_type} public"))
+
+
+class EncoderContractWithEnumsGenerator(EncoderContractGenerator):
+
+
+    def create_encoder(self, contract, name, plain_type, values, encoded_type, plain_type_attributes=[]):
+
+        encodeBody_lines = []
+        if isinstance(values, dict):
+            for k,v in sorted(values.items()):
+                # k : enum label
+                # v : string received as input
+                if plain_type == "string":
+                    encodeBody_lines.append(f"if (keccak256(bytes(plain)) == keccak256(bytes('{v}'))) {{ return {encoded_type}.{k}; }}")
+                elif plain_type == "bytes1":
+                    encodeBody_lines.append(f"if (plain == '{v}') {{ return {encoded_type}.{k}; }}")
+                else:
+                    encodeBody_lines.append(f"if (plain == {v})) {{ return {encoded_type}.{k}; }}")
+        else:
+            for curr in values: #self._nfa.states:
+                if plain_type == "string":
+                    encodeBody_lines.append(f"if (keccak256(bytes(plain)) == keccak256(bytes('{curr}'))) {{ return {encoded_type}.{curr}; }}")
+                elif plain_type == "bytes1":
+                    encodeBody_lines.append(f"if (plain == '{curr}') {{ return {encoded_type}.{curr}; }}")
+                else:
+                    encodeBody_lines.append(f"if (plain == {curr}) {{ return {encoded_type}.{curr}; }}")
+
+        encodeBody_lines.append(f"revert('Input not recognized');")
+
+        encodeBody = "\n".join(encodeBody_lines)
+
+        plain_type_extra = f"{plain_type} memory" if is_memory_type(plain_type) else plain_type
+        encoded_type_extra = f"{encoded_type} memory" if is_memory_type(encoded_type) else encoded_type
+
+        contract.add_function(Function(f"encode_{name}", [ Variable("plain", f"{plain_type_extra}") ], encodeBody, f"public pure returns({encoded_type_extra})")) 
+ 
+
+    def create_decoder(self, contract, name, plain_type, values, encoded_type, plain_type_attributes=[]):
+
+        decodeBody_lines = []
+        if isinstance(values, dict):
+            for k,v in sorted(values.items()):
+                # k : enum label
+                # v : string to be returned
+                if plain_type in [ "string", "bytes1" ]:
+                    decodeBody_lines.append(f"if (encoded == {encoded_type}.{k}) {{ return '{v}'; }}")
+                else:
+                    decodeBody_lines.append(f"if (encoded == {encoded_type}.{k}) {{ return {v}; }}")
+        else:
+            for curr in values: #self._nfa.states:
+                if plain_type in [ "string", "bytes1" ]:
+                    decodeBody_lines.append(f"if (encoded == {encoded_type}.{curr}) {{ return '{curr}'; }}")
+                else:
+                    decodeBody_lines.append(f"if (encoded == {encoded_type}.{curr}) {{ return {curr}; }}")
+
+        decodeBody_lines.append(f"revert('Value not recognized');")
+
+        decodeBody = "\n".join(decodeBody_lines)
+
+        plain_type_extra = f"{plain_type} memory" if is_memory_type(plain_type) else plain_type
+        encoded_type_extra = f"{encoded_type} memory" if is_memory_type(encoded_type) else encoded_type
+
+        contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type_extra) ], decodeBody, f"public pure returns({plain_type_extra})")) 
+ 
+        decodeArrayBody = f"""
+    {plain_type}[] memory res = new {plain_type}[](items.length);
+
+    for (uint idx=0; idx < items.length; idx++) {{
+        res[idx] = decode_{name}(items[idx]);
+    }}  
+    return res;
+        """
+      
+        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public view returns ({plain_type}[] memory)"))
+
+
+
 
 class NFAContractGenerator(Generator): 
     
@@ -108,7 +253,7 @@ class NFAContractGenerator(Generator):
 
         assert n is not None, f"Expected not-null nfa to build a contract"
 
-        super().__init__("NFA")
+        super().__init__("_NFA")
         self._nfa : nfa.NFA = n
         
     @property
@@ -119,23 +264,25 @@ class NFAContractGenerator(Generator):
     def create_attributes(self, contract : Contract):
 
 
-        contract.add_attribute(Variable("encoder", "Encoder"))
+        contract.add_attribute(Variable("encoder", "_Encoder"))
 
         #contract.add_attribute(Variable("states","string[]","",list(map(lambda s: s.id, self.nfa.states))))
 
         #states_encoded = ", ".join([ f"encoder.encode_STATE('{s.id}')" for s in self.nfa.states ])
 
         #breakpoint()
-        contract.add_attribute(Variable("states","bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
+        #contract.add_attribute(Variable("states", "uint16[]")) #"bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
+        contract.add_attribute(Variable("states", "STATES[]")) #"bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
+
         #contract.add_attribute(Variable("tmpStates","string[]"))
         #contract.add_attribute(Variable("tmpStates","bytes32[]")) # FS remove this
         #contract.add_attribute(Variable("initialState", "string","",'"'+str(self.nfa.initial.id)+'"'))
-        contract.add_attribute(Variable("initialState", "bytes32")) #,"",'encoder.encode_STATE("'+str(self.nfa.initial.id)+'")'))
+        contract.add_attribute(Variable("initialState", "STATES")) #"bytes32")) #,"",'encoder.encode_STATE("'+str(self.nfa.initial.id)+'")'))
         #contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
 
         #contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
-        contract.add_attribute(Variable("finalStates", "bytes32[]")) #,"","[" + final_states_encoded + "]"))
-        contract.add_attribute(Variable("currentStates", "bytes32[]")) #"string[]"))
+        contract.add_attribute(Variable("finalStates", "STATES[]")) #"bytes32[]")) #,"","[" + final_states_encoded + "]"))
+        contract.add_attribute(Variable("currentStates", "STATES[]")) #"bytes32[]")) #"string[]"))
         #contract.add_attribute(Variable("message", "string[]"))
         #contract.add_attribute(Variable("message", "uint[]"))
         #contract.add_attribute(Variable("epsilon","string"))
@@ -143,7 +290,7 @@ class NFAContractGenerator(Generator):
         contract.add_attribute(Variable("end","bool"))
         #contract.add_attribute(Variable("transitions", "mapping(string => mapping(string => string[]))"))
         #contract.add_attribute(Variable("transitions", "mapping(bytes32 => mapping(bytes32 => bytes32[]))"))
-        contract.add_attribute(Variable("transitions", "mapping(bytes32 => bytes32[])"))
+        contract.add_attribute(Variable("transitions", "mapping(bytes32 => STATES[])")) #"mapping(bytes32 => bytes32[])"))
         #contract.add_attribute(Variable("transitions", "mapping(string => mapping(string => buffItem[]))")) # TODO restart from here
     
     def create_constructor(self, contract : Contract):
@@ -165,48 +312,55 @@ class NFAContractGenerator(Generator):
             elif t.label != "":
                 raise Exception(f"Symbol not recognized: {t.label}")
 
-            initTransitionsBody += f"addTransition('{t.source.id}', '{actor}', EVENT_ACTION.{the_action}, '{message}', '{t.target.id}');\n"
+            initTransitionsBody += f"addTransition(STATES.{t.source.id}, AGENTS.{solidity_slugify(actor)}, EVENT_ACTION.{solidity_slugify(the_action)}, MESSAGES.{solidity_slugify(message)}, STATES.{t.target.id});\n"
+
+        
 
 #        constructorBody += """
-        constructorBody = """
-encoder = new Encoder();
-initStates();
+        constructorBody = f"""
+encoder = new _Encoder();
 initTransitions();
-bytes32[] memory tmpStates = new bytes32[](1);
+STATES[] memory tmpStates = new STATES[](1);
 tmpStates[0] = initialState;
-//currentStates = e_closure(tmpStates);
 currentStates = tmpStates;
         """
 
         contract.add_constructor(Constructor([], constructorBody, "internal"))
 
+        #breakpoint()
         states_encoded = "\n            ".join([ f"addState('{s.id}');" for s in self.nfa.states ])
 
         final_states_encoded = ",\n                ".join([ f"encoder.encode_STATE('{s.id}')" for s in self.nfa.final])
 
-        initStatesBody = f"""
-        {states_encoded} 
+##        initStatesBody = f"""
+##        {states_encoded} 
+##
+##        initialState = encoder.encode_STATE("{self.nfa.initial.id}");
+##
+##        finalStates = [
+##            {final_states_encoded}
+##        ];
+##        """
+##
+##        addStateBody = """
+##    //uint16 h = encoder.encode_STATE(name);
+##    //encoder.store_STATE(name, h);
+##    //states.push(h);
+##    states.push(state)
+##        """
+##
+#        contract.add_function(Function("initStates", [], initStatesBody, "private"))
+        contract.add_function(Function("initTransitions", [], initTransitionsBody, "private")) # TODO ensure this cannot be called twice
 
-        initialState = encoder.encode_STATE("{self.nfa.initial.id}");
+        #initStatesBody = "\n".join ( map(lambda s: f"states.push(STATES.{s.id});", self.nfa.states) )
+        #contract.add_function(Function("initStates", [], initStatesBody, "private"))  # TODO ensure this cannot be called twice
 
-        finalStates = [
-            {final_states_encoded}
-        ];
-        """
+#        contract.add_function(Function("addState", [Variable("name", "string memory")], addStateBody, "private"))
+#        contract.add_function(Function("addState", [Variable("state", "STATES")], addStateBody, "private"))
 
-        addStateBody = """
-    bytes32 h = encoder.encode_STATE(name);
-    encoder.store_STATE(name, h);
-    states.push(h);
-        """
-
-        contract.add_function(Function("initStates", [], initStatesBody, "private"))
-        contract.add_function(Function("initTransitions", [], initTransitionsBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
-
-        contract.add_function(Function("addState", [Variable("name", "string memory")], addStateBody, "private"))
-
-        addTransitionBody = f"Symbol memory symbol = Symbol(encoder.encode_AGENT(actor), action, encoder.encode_MESSAGE(message)); bytes32 k = keccak256(abi.encode(encoder.encode_STATE(source), encoder.encode_SYMBOL(symbol))); transitions[k].push(encoder.encode_STATE(target));"
-        contract.add_function(Function("addTransition", [ Variable("source", "string memory"), Variable("actor", "string memory"), Variable("action", "EVENT_ACTION"), Variable("message", "string memory"), Variable("target", "string memory")], addTransitionBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
+#        addTransitionBody = f"Symbol memory symbol = Symbol(actor, action, message); bytes32 k = keccak256(abi.encode(source, encoder.encode_SYMBOL(symbol))); transitions[k].push(target);"
+        addTransitionBody = f"bytes32 k = keccak256(abi.encode(source, actor, action, message)); transitions[k].push(target);"
+        contract.add_function(Function("addTransition", [ Variable("source", "STATES"), Variable("actor", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGES"), Variable("target", "STATES")], addTransitionBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
 
     def create_functions(self, contract : Contract):
 
@@ -214,11 +368,12 @@ currentStates = tmpStates;
                         [],
                         "return encoder;",
                         "public view",
-                        "Encoder"))
+                        "_Encoder"))
 
         contract.add_function(Function("checkInitialAndFinalStates",
                         #[Variable("newStates", "string[]","memory")],
-                        [Variable("newStates", "bytes32[]", "memory")],
+                        #[Variable("newStates", "bytes32[]", "memory")],
+                        [Variable("newStates", "STATES[]", "memory")],
                         """start = false;
 end = false;
 for (uint i = 0; i < newStates.length; i++) {
@@ -234,28 +389,30 @@ for (uint i = 0; i < newStates.length; i++) {
                         "private",))
 
         contract.add_function(Function("shrink",
-                        [Variable("source", "bytes32[]", "memory"), Variable("newSize", "uint")],
+                        #[Variable("source", "bytes32[]", "memory"), Variable("newSize", "uint")],
+                        [Variable("source", "STATES[]", "memory"), Variable("newSize", "uint")],
 """
         require(newSize <= source.length);
 
         if (source.length == newSize) {
             return source;
         } else {
-            bytes32[] memory res = new bytes32[](newSize);
+            STATES[] memory res = new STATES[](newSize);
             for (uint idx = 0; idx < newSize; idx++) {
                 res[idx] = source[idx];
             } 
             return res;
         }
-
 """,
-                        "public",
-                        "bytes32[] memory")
+                        "public pure",
+                        #"bytes32[] memory")
+                        "STATES[] memory")
         )
 
         contract.add_function(Function("indexOf",
                         #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
-                        [Variable("array","bytes32[]","memory"),Variable("item","bytes32")],
+                        #[Variable("array","bytes32[]","memory"),Variable("item","bytes32")],
+                        [Variable("array","STATES[]","memory"),Variable("item","STATES")],
                         """
         for (uint idx = 0; idx < array.length; idx++) {
             if (array[idx] == item) {
@@ -265,27 +422,28 @@ for (uint i = 0; i < newStates.length; i++) {
 
         return -1;
                         """,
-                        "public",
+                        "public pure",
                         "int"))
         
         contract.add_function(Function("union",
                         #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
-                        [Variable("arrayA","bytes32[]","memory"),Variable("arrayB","bytes32[]","memory")],
+                        #[Variable("arrayA","bytes32[]","memory"),Variable("arrayB","bytes32[]","memory")],
+                        [Variable("arrayA","STATES[]","memory"),Variable("arrayB","STATES[]","memory")],
                         """
 	
-        bytes32[] memory tmp = new bytes32[](arrayA.length + arrayB.length);
+        STATES[] memory tmp = new STATES[](arrayA.length + arrayB.length);
         uint countA = 0;
         uint countB = 0;
 
         for (uint idx = 0; idx < arrayA.length; idx++) {
-            bytes32 curr = arrayA[idx];
+            STATES curr = arrayA[idx];
             if (indexOf(tmp, curr) < 0) {
                 tmp[countA++] = curr;
             }
         }
 
         for (uint idx = 0; idx < arrayB.length; idx++) {
-            bytes32 curr = arrayB[idx];
+            STATES curr = arrayB[idx];
 
             if (indexOf(tmp, curr) < 0) {
                 tmp[countA + countB++] = curr;
@@ -295,9 +453,10 @@ for (uint i = 0; i < newStates.length; i++) {
 
         return shrink(tmp, countA + countB);
 	                    """,
-                        "private",
+                        "private pure", # was "private"
                         #"string[] memory"))
-                        "bytes32[] memory"))
+                        #"bytes32[] memory"))
+                        "STATES[] memory"))
 
 
 ##        contract.add_function(Function("e_closure",
@@ -338,24 +497,24 @@ for (uint i = 0; i < newStates.length; i++) {
 ##
 
         isTransitionBody = """
-		bytes32 h_source = encoder.encode_STATE(source);
-		bytes32 h_target = encoder.encode_STATE(target);
-		bytes32 h_actor = encoder.encode_AGENT(actor);
-		bytes32 h_message = encoder.encode_MESSAGE(message);
+		//uint16 h_source = encoder.encode_STATE(source);
+		//uint16 h_target = encoder.encode_STATE(target);
+		//uint16 h_actor = encoder.encode_AGENT(actor);
+		//uint16 h_message = encoder.encode_MESSAGE(message);
 
-		Symbol memory symbol = Symbol(h_actor, action, h_message);
-		bytes32 h_symbol = encoder.encode_SYMBOL(symbol);
+		Symbol memory symbol = Symbol(actor, action, message);
+		//uint16 h_symbol = encoder.encode_SYMBOL(symbol);
 
-		bytes32 h = keccak256(abi.encode(h_source, h_symbol));
+		bytes32 h = keccak256(abi.encode(source /* h_source */, /* h_symbol */ symbol));
 
-		bytes32[] memory candidates = transitions[h];
+		STATES[] memory candidates = transitions[h];
 
 		if (candidates.length == 0) {
 			return false;
 		}
 
 		for (uint idx = 0; idx < candidates.length; idx++) {
-			if (candidates[idx] == h_target) {
+			if (candidates[idx] == target /* h_target */) {
 				return true;
 			}
 		}
@@ -364,18 +523,19 @@ for (uint i = 0; i < newStates.length; i++) {
         """
 
         contract.add_function(Function("isTransition",
-                                [Variable("source", "string memory"), Variable("actor", "string memory"), Variable("action", "EVENT_ACTION"), Variable("message", "string memory"), Variable("target", "string memory") ],
+                                [Variable("source", "STATES"), Variable("actor", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGES"), Variable("target", "STATES") ],
                                 isTransitionBody,   
                                 "public view",
                                 "bool"))
 
 
-        contract.add_function(Function("getStates",
-                                [],
-                                "return states;",
-                                "public view",
-                                #"string[] memory"))
-                                "bytes32[] memory"))
+##        contract.add_function(Function("getStates",
+##                                [],
+##                                "return states;",
+##                                "public view",
+##                                #"string[] memory"))
+##                                #"bytes32[] memory"))
+##                                "uint16[] memory"))
 
         contract.add_function(Function("getStatesAsString",
                                 [],
@@ -388,7 +548,8 @@ for (uint i = 0; i < newStates.length; i++) {
                                 "return currentStates;",
                                 "public view",
                                 #"string[] memory"))
-                                "bytes32[] memory"))
+                                #"bytes32[] memory"))
+                                "STATES[] memory"))
 
         contract.add_function(Function("getCurrentStatesAsString",
                                 [],
@@ -396,11 +557,26 @@ for (uint i = 0; i < newStates.length; i++) {
                                 "public view",
                                 "string[] memory"))
 
+        contract.add_function(Function("getInitialState",
+                                [],
+                                "return initialState;",
+                                "public view",
+                                "STATES"))
+
+        contract.add_function(Function("getInitialStateAsString",
+                                [],
+                                "return encoder.decode_STATE(initialState);",
+                                "public view",
+                                "string memory"))
+
+
+
         contract.add_function(Function("getFinalStates",
                                 [],
                                 "return finalStates;",
                                 "public view",
-                                "bytes32[] memory"))
+                                #"bytes32[] memory"))
+                                "STATES[] memory"))
 
         contract.add_function(Function("getFinalStatesAsString",
                                 [],
@@ -416,21 +592,24 @@ for (uint i = 0; i < newStates.length; i++) {
 
 
         contract.add_function(Function("isFinal",
-                                [Variable("curr","bytes32")],
-                                """return arrContains(curr, finalStates);""", 
+                                #[Variable("curr","bytes32")],
+                                [Variable("curr","STATES")],
+                                """return arrContains_STATES(curr, finalStates);""", 
                                 "public view",
                                 "bool"))
  
         contract.add_function(Function("isInitial",
-                                [Variable("curr","bytes32")],
+                                #[Variable("curr","bytes32")],
+                                [Variable("curr","STATES")],
                                 """return curr == initialState;""",
                                 "public view",
                                 "bool"))
 
 
         contract.add_function(Function("isCurrent",
-                                [Variable("curr","bytes32")],
-                                """return arrContains(curr, currentStates);""", # TODO
+                                #[Variable("curr","bytes32")],
+                                [Variable("curr","STATES")],
+                                """return arrContains_STATES(curr, currentStates);""", # TODO
                                 "public view",
                                 "bool"))
 
@@ -453,20 +632,26 @@ for (uint i = 0; i < newStates.length; i++) {
 ##"""
         contract.add_function(Function("transitionFrom",
                                 #[Variable("state","string","memory"), Variable("label","string","memory")],
-                                [Variable("state","bytes32"), Variable("label","bytes32")],
+                                #[Variable("state","bytes32"), Variable("label","bytes32")],
+                                #[Variable("state","STATES"), Variable("label","uint16")],
+                                [Variable("source","STATES"), Variable("actor","AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGES")],
                                 #transitionFromBody,
-                                "bytes32 k = keccak256(abi.encode(state, label)); return transitions[k];",
+                                #"bytes32 k = keccak256(abi.encode(state, label)); return transitions[k];",
+                                "bytes32 k = keccak256(abi.encode(source, actor, action, message)); return transitions[k];",
                                 "public view",
-                                "bytes32[] memory"))
+                                #"bytes32[] memory"))
+                                "STATES[] memory"))
 
         contract.add_function(Function("transition",
                                 #[Variable("label","string","memory")],
                                 #[Variable("label","SYMBOLS")],
-                                [Variable("label","bytes32")],
+                                #[Variable("label","bytes32")],
+                                #[Variable("label","uint16")],
+                                [Variable("label", "Symbol", "memory")],
 """
-        bytes32[] memory tmp;
+        STATES[] memory tmp;
 		for (uint i = 0; i < currentStates.length; i++) {
-		    bytes32[] memory s = transitionFrom(currentStates[i], label);
+		    STATES[] memory s = transitionFrom(currentStates[i], label.agent, label.action, label.message);
 		    tmp = union(tmp, s);
 		}
 		require(tmp.length != 0);
@@ -485,10 +670,11 @@ for (uint i = 0; i < newStates.length; i++) {
                                 "public")) 
         
         contract.add_function(Function("checkEnabledTransitions",
-                        [Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
+                        #[Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
+                        [Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16")],
                         """
 for (uint i = 0; i < currentStates.length; i++) {
-    bytes32[] memory s_reached = transitionFrom(currentStates[i], symbol_enc);
+    STATES[] memory s_reached = transitionFrom(currentStates[i], symbol.agent, symbol.action, symbol.message /* symbol_enc */);
     if (s_reached.length > 0) return true;
     //reached = union(reached, s_reached); 
 }
@@ -528,19 +714,19 @@ class EnforcerContractGenerator(Generator):
         contract.add_event(Event("outputEvent",[Variable("debug","string") ]))
 
     def create_attributes(self, contract : Contract):
-        contract.add_attribute(Variable("encoder", "Encoder"))
-        contract.add_attribute(Variable("nfa", "NFA")) #self.nfa.name))
+        contract.add_attribute(Variable("encoder", "_Encoder"))
+        contract.add_attribute(Variable("nfa", "_NFA")) #self.nfa.name))
         contract.add_attribute(Variable("actors","string[]",))
-        contract.add_attribute(Variable("messages","Symbol[]"))
+        contract.add_attribute(Variable("buffer","Symbol[]"))
         #contract.add_attribute(Variable("tmpStates","bytes32[]"))
-        contract.add_attribute(Variable("kb","bytes32[]"))
-        contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
+        contract.add_attribute(Variable("kb","uint16[]")) # ,"bytes32[]"))
+        #contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
         contract.add_attribute(Variable("chainStartTime", "uint"))    
         contract.add_attribute(Variable("chainEndTime", "uint"))    
 
     def create_constructor(self, contract : Contract):
         contract.add_constructor(Constructor([],f"""
-    nfa = new NFA();
+    nfa = new _NFA();
     encoder = nfa.getEncoder();
     chainStartTime = block.timestamp;
     chainEndTime = 0;
@@ -564,7 +750,8 @@ class EnforcerContractGenerator(Generator):
                                 [],
                                 """return kb;""",
                                 "public view",
-                                "bytes32[] memory"))
+                                #"bytes32[] memory"))
+                                "uint16[] memory"))
 
         contract.add_function(Function("check_sat", 
                                 [Variable("precondition", "Prop[]", "memory")],
@@ -575,7 +762,7 @@ class EnforcerContractGenerator(Generator):
 
         for (uint idx = 0; idx < precondition.length; idx++) {
             Prop memory curr = precondition[idx];
-            bool found = arrContains(curr.identifier, kb);
+            bool found = arrContains_uint16(uint16(curr.identifier), kb);
             if ((! curr.neg && found) || (curr.neg && ! found))
             {
                 return false;
@@ -589,121 +776,115 @@ class EnforcerContractGenerator(Generator):
 
 
         contract.add_function(Function("buffer_add",
-                                [ Variable("message", "Symbol", "memory") ],
+                                [ Variable("symbol", "Symbol", "memory") ],
                                 """
-// TODO finish here
+    buffer.push(symbol);
                                 """,
                                 "private"))
 
         contract.add_function(Function("buffer_remove",
-                                [Variable("message","Symbol","memory")],
+                                [Variable("symbol","Symbol","memory")],
                                 """
-// TODO finish here
+		for (uint i=0; i < buffer.length; i++) {
+			Symbol memory curr  = buffer[i];
+			if (curr.action == symbol.action && curr.agent == symbol.agent && curr.message == symbol.message) {
+				buffer[i] = buffer[buffer.length-1];
+				buffer.pop();
+			}
+		}
                                 """,
                                 "private"))
 
+
+
+#        splitInput_body = """
+#    bytes memory data = bytes(input);
+#
+#    for (uint i = 0; i < data.length; i++) {
+#        
+#        if (data[i] == "!" || data[i] == "?") {
+#            agent = encoder.encode_AGENT(substring(data, 0, i));
+#            action = encoder.encode_EVENT_ACTION(data[i]);
+#            message = encoder.encode_MESSAGE(substring(data, i+1, data.length));
+#            return (agent, action, message);
+#        }
+#    }
+#
+#    revert("Unexpected input");
+#        """
+#
+#        contract.add_function(Function("splitInput",
+#                                [ Variable("input", "string memory") ],
+#                                splitInput_body,
+#                                "private view",
+#                                "AGENTS agent, EVENT_ACTION action, MESSAGES message"))
+#
+
+
     def __create_conditions(self, contract : Contract):
         contract.add_function(Function("condition_rule_send_now",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
-                                """return check_sat(precondition) && symbol.action == EVENT_ACTION.send && nfa.checkEnabledTransitions(symbol, symbol_enc);""",
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
+                                """return check_sat(precondition) && symbol.action == EVENT_ACTION.send && nfa.checkEnabledTransitions(symbol /* , symbol_enc */);""",
                                 "private view",
                                 "bool"))
                 
         contract.add_function(Function("condition_rule_receive_now",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
-                                """return check_sat(precondition) && symbol.action == EVENT_ACTION.recv && nfa.checkEnabledTransitions(symbol, symbol_enc);""",
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
+                                """return check_sat(precondition) && symbol.action == EVENT_ACTION.recv && nfa.checkEnabledTransitions(symbol /*, symbol_enc */);""",
                                 "private view",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_receive_delayed",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
                                 """return symbol.action == EVENT_ACTION.recv;""",
-                                "private view",
+                                "private pure",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_send_delayed",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
                                 """return symbol.action == EVENT_ACTION.send;""",
-                                "private view",
+                                "private pure",
                                 "bool"))
 
-
-        contract.add_function(Function("condition_rule_buffered",
-                                [],
-                                """
-/*
-delete tmpStates;
-for (uint i = 0; i < actors.length; i++) {
-    for (uint j = 0; j < messages.length; j++) {
-        string memory send_message = string(abi.encodePacked("!", messages[j]));
-        string memory receive_message = string(abi.encodePacked("?", messages[j]));
-
-        if (buffer[actors[i]][receive_message] > 0) {
-            string memory message = string(abi.encodePacked(actors[i],"?",messages[j]));
-            //string[] memory currentStates = nfa.getCurrentStates();
-            bytes32[] memory currentStates = nfa.getCurrentStates();
-            for (uint s = 0; s < currentStates.length; s++) {
-                tmpStates = nfa.transitionFrom(currentStates[s], encoder.encode_SYMBOL(message));
-                if (tmpStates.length > 0) {
-                    return split(string(abi.encodePacked(actors[i], ":?:", message)), ":");
-                }
-            }
-        } else if (buffer[actors[i]][send_message] > 0) {
-            string memory message = string(abi.encodePacked(actors[i],"!",messages[j]));
-            //string[] memory currentStates = nfa.getCurrentStates();
-            bytes32[] memory currentStates = nfa.getCurrentStates();
-            for (uint s = 0; s < currentStates.length; s++) {
-                tmpStates = nfa.transitionFrom(currentStates[s], encoder.encode_SYMBOL(message));
-                if (tmpStates.length > 0) {
-                    return split(string(abi.encodePacked(actors[i], ":!:", message)), ":");
-                }
-            }
-        } 
-    }
-}
-return split("","");
-*/
-return false; // TODO finish this
-""",
-                                "private",
-                                "bool"))
 
     def __create_rules(self, contract : Contract):
         contract.add_function(Function("rule_send_now",
-                                [Variable("symbol","Symbol","memory"),Variable("symbol_enc", "bytes32")],
+                                [Variable("symbol","Symbol","memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 #"nfa.transition(message); return message;",
-                                "nfa.transition(symbol_enc); return symbol;",
+                                #"nfa.transition(symbol_enc); return symbol;",
+                                "nfa.transition(symbol); return symbol;",
                                 "private",
                                 "Symbol memory"))
         
         contract.add_function(Function("rule_receive_now",
-                                [Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
+                                [Variable("symbol","Symbol","memory")],  #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 #"nfa.transition(message); return message;",
-                                "nfa.transition(symbol_enc); return symbol;",
+                                #"nfa.transition(symbol_enc); return symbol;",
+                                "nfa.transition(symbol); return symbol;",
                                 "private",
                                 "Symbol memory"))
 
         contract.add_function(Function("rule_receive_delayed",
-                                [Variable("symbol","Symbol","memory"), Variable("symbol_enc", "bytes32")],
+                                [Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
 buffer_add(symbol);
-return Symbol("", EVENT_ACTION.epsilon, "");
+return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
                                 """,
                                 "private",
                                 "Symbol memory"))
 
 
         contract.add_function(Function("rule_send_delayed",
-                                [Variable("symbol", "Symbol", "memory"), Variable("symbol_enc", "bytes32")],
+                                [Variable("symbol", "Symbol", "memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
 buffer_add(symbol);
-return Symbol("", EVENT_ACTION.epsilon, "");
+return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
                                 """,
                                 "private",
                                 "Symbol memory"))
 
         contract.add_function(Function("rule_receive_buffered",
-                                [Variable("symbol", "Symbol", "memory"), Variable("symbol_enc", "bytes32")],
+                                [Variable("symbol", "Symbol", "memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
 //nfa.transition(encoder.encode_SYMBOL(message));
 //buffer_remove(actor, string(abi.encodePacked("?", message)));
@@ -715,7 +896,7 @@ return symbol; // TODO
  
         contract.add_function(Function("rule_send_buffered",
                                 #[Variable("actor","string","memory"),Variable("message","string","memory")],
-                                [Variable("symbol", "Symbol", "memory"), Variable("symbol_enc", "bytes32")],
+                                [Variable("symbol", "Symbol", "memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
 //nfa.transition(encoder.encode_SYMBOL(message));
 //buffer_remove(actor, string(abi.encodePacked("!", message)));
@@ -732,11 +913,13 @@ return symbol; // TODO
 ##                                "public view",
 ##                                "bytes32[] memory"))
 ##        
-        contract.add_function(Function("getMessages",
+        contract.add_function(Function("getBuffer",
                                 [],
-                                "return messages;",
+                                "return buffer;",
                                 "public view",
                                 "Symbol[] memory"))
+
+
 
 ##        contract.add_function(Function("get_buffer_item",
 ##                                [Variable("actor", "string", "memory"), Variable("message", "string", "memory")],
@@ -747,34 +930,45 @@ return symbol; // TODO
 
     def __create_processors(self, contract : Contract):
         contract.add_function(Function("process_input",
-                                [ Variable("agent", "string", "memory"), Variable("action", "EVENT_ACTION"), Variable("message","string","memory") ],
+                                [ Variable("agent", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message","MESSAGES") ],
+#                                [ Variable("the_input", "string memory") ],
                                 """
-Symbol memory symbol = Symbol(encoder.encode_AGENT(agent), action, encoder.encode_MESSAGE(message));
+
+//AGENTS agent;
+//EVENT_ACTION action;
+//MESSAGES message;
+//
+//( agent, action, message ) = splitInput(the_input);
+
+Symbol memory symbol = Symbol(agent, action, message);
 Prop[] memory precondition;
 Symbol memory out;
 string memory debug;
 
-bytes32 symbol_enc = encoder.encode_SYMBOL(symbol);
+//uint16 symbol_enc = encoder.encode_SYMBOL(symbol);
 //bytes32 agent_enc = encoder.encode_AGENT(symbol.agent);
 //bytes32 message_enc = encoder.encode_MESSAGE(symbol.message);
 
-if (condition_rule_send_now(precondition, symbol, symbol_enc)) {
-    debug = string(abi.encodePacked("(* Condition rule receive send *)"));
-    out = rule_send_now(symbol, symbol_enc);
-}  else if (condition_rule_send_delayed(precondition, symbol, symbol_enc)) {
-    debug = string(abi.encodePacked("(* Condition rule receive send delayed *)"));
-    out = rule_send_delayed(symbol, symbol_enc);
-} else if (condition_rule_receive_now(precondition, symbol, symbol_enc)) {
-    debug = string(abi.encodePacked("(* Condition rule receive now *)"));
-    out = rule_receive_now(symbol, symbol_enc);
-} else if (condition_rule_receive_delayed(precondition, symbol, symbol_enc)) {
-    debug = string(abi.encodePacked("(* Condition rule receive delayed *)"));
-    out = rule_receive_delayed(symbol, symbol_enc);
+if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
+    debug = "(* Condition rule receive send *)";
+    out = rule_send_now(symbol /*, symbol_enc */);
+}  else if (condition_rule_send_delayed(precondition, symbol /* , symbol_enc */)) {
+    debug = "(* Condition rule receive send delayed *)";
+    out = rule_send_delayed(symbol /* , symbol_enc */);
+} else if (condition_rule_receive_now(precondition, symbol /*, symbol_enc */)) {
+    debug = "(* Condition rule receive now *)";
+    out = rule_receive_now(symbol /*, symbol_enc */);
+} else if (condition_rule_receive_delayed(precondition, symbol /*, symbol_enc */)) {
+    debug = "(* Condition rule receive delayed *)";
+    out = rule_receive_delayed(symbol /*, symbol_enc */);
 } else {
     debug = "No matching condition";
-    out = Symbol("", EVENT_ACTION.epsilon, ""); //"None";
+    out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
 }
 emit outputEvent(debug);
+
+process_check();
+
 return out;
                                 """,
                                 "public",
@@ -783,13 +977,34 @@ return out;
         contract.add_function(Function("process_check",
                                 [],
                                 """
-Symbol memory out = Symbol("", EVENT_ACTION.epsilon, "");
-string memory debug;
+		Prop[] memory precondition; // FS fix this
 
-// TODO finish this
+		Symbol memory out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
 
-//emit outputEvent(debug, out);
-return out;
+		bool dirty = true;
+
+		while (dirty) {
+			dirty = false;
+
+			for (uint i=0; i<buffer.length; i++) {
+				Symbol memory currSymbol = buffer[i];
+
+				if (currSymbol.action == EVENT_ACTION.send && condition_rule_send_now(precondition, currSymbol)) {
+					rule_send_now(currSymbol);
+					buffer[i] = buffer[buffer.length-1];
+					buffer.pop();
+					dirty = true;
+				} else if (currSymbol.action == EVENT_ACTION.recv && condition_rule_receive_now(precondition, currSymbol)) {
+					rule_receive_now(currSymbol);
+					buffer[i] = buffer[buffer.length-1];
+					buffer.pop();
+					dirty = true;
+				}
+			}
+		}
+
+		return out; // TODO fix this, in theory a sequence may be emitted
+
 """,
                                 "public",
                                 "Symbol memory"))
@@ -798,13 +1013,13 @@ return out;
                                 [],
                                 "return nfa;",
                                 "public view",
-                                "NFA"))
+                                "_NFA"))
 
-        contract.add_function(Function("getNFAStates",
-                                [],
-                                "return nfa.getStatesAsString();",
-                                "public view",
-                                "string[] memory"))
+##        contract.add_function(Function("getNFAStates",
+##                                [],
+##                                "return nfa.getStatesAsString();",
+##                                "public view",
+##                                "STATES[] memory"))
 
         contract.add_function(Function("getNFACurrentStates",
                                 [],
@@ -812,6 +1027,25 @@ return out;
                                 "public view",
                                 "string[] memory"))
 
+        contract.add_function(Function("getNFAStates",
+                                [],
+                                "return nfa.getStatesAsString();",
+                                "public view",
+                                "string[] memory"))
+
+
+        contract.add_function(Function("getNFAInitialState",
+                                [],
+                                "return nfa.getInitialStateAsString();",
+                                "public view",
+                                "string memory"))
+
+
+        contract.add_function(Function("getNFAFinalStates",
+                                [],
+                                "return nfa.getFinalStatesAsString();",
+                                "public view",
+                                "string[] memory"))
 
 ##
 ##    def createContract(self):
@@ -831,6 +1065,8 @@ return out;
         self.__create_getters(contract)
         self.__create_processors(contract)
 
+def solidity_slugify(text):
+    return re.sub(r"[^a-zA-Z0-9]","_", text)
     
 class SmartContractGenerator:
     
@@ -849,12 +1085,23 @@ class SmartContractGenerator:
 
     def create_structs(self):
 
-        self._contract.add_struct(Struct("Symbol", [ ("agent", "bytes32"), ("action", "EVENT_ACTION"), ("message", "bytes32") ]))
-        self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "bytes32") ]))
+        #self._contract.add_type("PROPOSITIONS", "uint16")
+        #self._contract.add_type("AGENTS", "uint16")
+        #self._contract.add_type("MESSAGES", "uint16")
+        #self._contract.add_struct(Struct("Symbol", [ ("agent", "bytes32"), ("action", "EVENT_ACTION"), ("message", "bytes32") ]))
+        self._contract.add_struct(Struct("Symbol", [ ("agent", "AGENTS"), ("action", "EVENT_ACTION"), ("message", "MESSAGES") ]))
+        self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "PROPOSITIONS") ])) #("identifier", "bytes32") ]))
+
 
     def create_enums(self):
 
         self._contract.add_enum(Enum("EVENT_ACTION", [ "epsilon", "send", "recv" ]))
+
+        self._contract.add_enum(Enum("STATES", [ s.id for s in self._nfa.states ])) 
+        self._contract.add_enum(Enum("AGENTS", [ "empty_AGENT", ] + [ solidity_slugify(a) for a in self._nfa.agents ])) 
+        self._contract.add_enum(Enum("MESSAGES", [ "empty_MESSAGE", ] + [m for m in self._nfa.messages ]))
+        propositions = [ m for m in self._nfa.propositions ] or [ "foo" ] # at least one member is required for ENUM's
+        self._contract.add_enum(Enum("PROPOSITIONS", propositions))
 
 
     def createSmartContract(self) -> SmartContract:
@@ -863,20 +1110,49 @@ class SmartContractGenerator:
         self.create_enums()
         self.create_structs()
 
-        self._contract.add_function(Function("arrContains",
-                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
-                                [Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
-                                """for (uint i = 0; i < states.length; i++) {
-    if (s == states[i]) {
+        # same body for two versions of the function
+        arrContains_body = """
+for (uint i = 0; i < collection.length; i++) {
+    if (item == collection[i]) {
         return true;
     }
 }
-return false;""",
+return false;"""
+
+
+        self._contract.add_function(Function("arrContains_uint16",
+                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
+                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
+                                [Variable("item","uint16"),Variable("collection","uint16[]","memory")],
+                                arrContains_body,
                                 "pure", #"internal pure",
                                 "bool"))
 
+        self._contract.add_function(Function("arrContains_STATES",
+                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
+                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
+                                [ Variable("item", "STATES"), Variable("collection", "STATES[]", "memory") ],
+                                arrContains_body,
+                                "pure", #"internal pure",
+                                "bool"))
+
+        substring_body = """
+    bytes memory result = new bytes(end - start);
+    for (uint i = start; i < end; i++) {
+        result[i - start] = data[i];
+    }
+    return string(result);
+        """
+
+        self._contract.add_function(Function("substring",
+                                [ Variable("data", "bytes memory"), Variable("start", "uint"), Variable("end", "uint") ],
+                                substring_body,
+                                "pure",
+                                "string memory"))
+
         #Contracts    
-        encoderContract = EncoderContractGenerator(self.nfa).createContract()
+        #encoderContract = EncoderContractGenerator(self.nfa).createContract()
+        encoderContract = EncoderContractWithEnumsGenerator(self.nfa).createContract()
         nfaContract = NFAContractGenerator(self.nfa).createContract()
         enforcerContract = EnforcerContractGenerator(nfaContract).createContract()
 

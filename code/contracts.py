@@ -377,6 +377,7 @@ class SmartContract(Compileable):
         self._verbatim : str = ""
         self._enums : dict = {}
         self._structures : dict = {}
+        self._types : dict = {}
 
     def add_verbatim(self, verbatim):
         self._verbatim = verbatim
@@ -386,6 +387,10 @@ class SmartContract(Compileable):
             raise Exception(f"A structure with name {s.name} already exists")
 
         self._structures[s.name] = s
+
+    def add_type(self, new_type: str, existing_type: str):
+
+        self._types[new_type] = existing_type
 
     @property
     def structures(self):
@@ -460,6 +465,7 @@ class SmartContract(Compileable):
         attributes_text = "\n".join(map(lambda c: c.compile()+"\n", self.attributes)) 
         contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
         #breakpoint()
+        types_text = "\n".join(map(lambda i: f"type {i[0]} is {i[1]};", self._types.items()))
         enums_text = "\n".join(map(lambda c: c.compile()+"\n", self.enumerations))    
         structs_text = "\n".join(map(lambda c: c.compile()+"\n", self.structures))    
 
@@ -474,6 +480,8 @@ pragma abicoder v2;
 {verbatim}
 
 {imports_text}
+
+{types_text}
 
 {enums_text}
 

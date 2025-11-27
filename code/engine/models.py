@@ -490,7 +490,7 @@ class EngineOffChain(Engine,models.Model):
         e = EngineOffChain()
 
         #breakpoint()
-        nfa = ri.choreography.to_nfa()
+        nfa = ri.choreography.to_nfa(optimize=True)
         #nfa.remove_epsilon_transitions()
         #nfa.remove_unreachable_states()
 
@@ -1077,9 +1077,9 @@ class EngineOnChain(Engine,models.Model):
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
-        nfa = ri.choreography.to_nfa()
-        nfa.remove_epsilon_transitions()
-        nfa.remove_unreachable_states()
+        nfa = ri.choreography.to_nfa(optimize=True)
+        #nfa.remove_epsilon_transitions()
+        #nfa.remove_unreachable_states()
 
         blockchain_configuration = ri.blockchain_configuration
 #        super().__init__(nfa)
