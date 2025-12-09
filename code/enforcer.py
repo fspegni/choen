@@ -135,6 +135,7 @@ class Enforcer:
             out = self._engine.process_check()
 
         except Exception:
+            traceback.print_exc()
             pass
 
         return out
@@ -624,8 +625,14 @@ class CmdBuildContracts(UICommand):
             #nfa.remove_epsilon_transitions()
             #nfa.remove_unreachable_states()
 
+            
+            nfa : NFA = self.ui._model.get_object("nfa")
+            if not nfa:
+                print("Unexpected error when loading current choreography: no NFA generated")
+                return
+
             #self.compile(nfa)
-            self.compile_choreography(c, debug=debug)
+            self.compile_nfa(nfa, debug=debug)
         elif m:
             #scg = MPSTSmartContractGenerator(m.root)
             #c = scg.createSmartContract()
@@ -637,9 +644,9 @@ class CmdBuildContracts(UICommand):
 
 
     
-    def compile_choreography(self, c : Choreography, debug=False):
+    def compile_nfa(self, nfa, debug=False):
 
-        nfa = c.to_nfa(optimize=True)
+        #nfa = c.to_nfa(optimize=True)
         #breakpoint()
         scg: SmartContractGenerator = SmartContractGenerator(nfa)
 
@@ -727,6 +734,16 @@ class CmdLoadChoreography(UICommand):
         try:
             c : Choreography = Choreography.objects.get(name=name)
             self.ui._model.set_object("choreography", c)
+
+            rei : REI = c.to_rei()
+            self.ui._model.set_object("rei", rei)
+
+            nfa : NFA = c.to_nfa(optimize=True)
+            self.ui._model.set_object("nfa", nfa)
+
+            
+            
+
             print(f"Choreography '{name}' loaded ...")
         except Choreography.DoesNotExist as e:
             #breakpoint()
@@ -1238,7 +1255,7 @@ class CmdDump(UICommand):
                     print(msg)
             
             elif args[0] == "rei":
-                c : Choreography = self.ui._model.get_object("choreography")
+                rei : Choreography = self.ui._model.get_object("rei")
 
                 if not c:
                     print("You must load a choreography, before dumping its rei")
@@ -1246,18 +1263,25 @@ class CmdDump(UICommand):
 
                 print("\nREI: \n")
 #                print(self.ui._rei)
-                print(c.to_rei())
+#                print(c.to_rei())
+                print(rei)
 
             elif args[0] == "nfa":
 
                 c : Choreography = self.ui._model.get_object("choreography")
                 if not c:
-                    print("You must load a choreography, before dumping its rei")
+                    print("You must load a choreography, before dumping its nfa")
                     return
 
-                optimize = len(args) > 1 and args[1] == "reduced"
+
+                nfa : NFA = self.ui._model.get_object("nfa")
+                if not nfa:
+                    print("Unexpected error generating NFA from the current choreography")
+                    return
+
+                #optimize = len(args) > 1 and args[1] == "reduced"
                 
-                nfa = c.to_nfa(optimize=optimize)
+                #nfa = c.to_nfa(optimize=optimize)
 
                 print("\nNFA: \n")
 #                g = self.ui._nfa.to_dot()   

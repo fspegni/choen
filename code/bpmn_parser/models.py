@@ -439,7 +439,7 @@ class Choreography(models.Model):
         #print("REI:", exp)
         return exp
 
-    def to_nfa(self, optimize=False, silent=True):
+    def to_nfa(self, optimize=True, silent=True):
         from nfa import ReiToNFA
         rei = self.to_rei()
         #breakpoint()

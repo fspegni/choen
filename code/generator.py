@@ -87,7 +87,7 @@ class EncoderContractGenerator(Generator):
         contract.add_function(Function(f"encode_store_{name}", [ Variable("plain", plain_type, "memory") ], encodeStoreBody, f"public returns({encoded_type})")) 
         contract.add_function(Function(f"store_{name}", [ Variable("plain", plain_type, "memory"), Variable("encoded", encoded_type) ], storeBody, f"public")) 
         contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type) ], decodeBody, f"public pure returns({plain_type} memory)"))  # FS "pure" was "view"
-        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public view returns ({plain_type}[] memory)"))
+        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public pure returns ({plain_type}[] memory)"))
 
         contract.add_attribute(Variable(f"empty_{name}", f"{encoded_type} public"))
 
@@ -717,7 +717,7 @@ class EnforcerContractGenerator(Generator):
         contract.add_attribute(Variable("encoder", "_Encoder"))
         contract.add_attribute(Variable("nfa", "_NFA")) #self.nfa.name))
         contract.add_attribute(Variable("actors","string[]",))
-        contract.add_attribute(Variable("buffer","Symbol[]"))
+        contract.add_attribute(Variable("buffer","BufferItem[]"))
         #contract.add_attribute(Variable("tmpStates","bytes32[]"))
         contract.add_attribute(Variable("kb","uint16[]")) # ,"bytes32[]"))
         #contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
@@ -776,21 +776,14 @@ class EnforcerContractGenerator(Generator):
 
 
         contract.add_function(Function("buffer_add",
-                                [ Variable("symbol", "Symbol", "memory") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory") ],
                                 """
-    buffer.push(symbol);
-                                """,
-                                "private"))
+		BufferItem storage newItem = buffer.push();
+		newItem.symbol = symbol;
 
-        contract.add_function(Function("buffer_remove",
-                                [Variable("symbol","Symbol","memory")],
-                                """
-		for (uint i=0; i < buffer.length; i++) {
-			Symbol memory curr  = buffer[i];
-			if (curr.action == symbol.action && curr.agent == symbol.agent && curr.message == symbol.message) {
-				buffer[i] = buffer[buffer.length-1];
-				buffer.pop();
-			}
+		// Manually copy precondition array
+		for (uint i = 0; i < precondition.length; i++) {
+			newItem.precondition.push(precondition[i]);
 		}
                                 """,
                                 "private"))
@@ -849,7 +842,7 @@ class EnforcerContractGenerator(Generator):
 
     def __create_rules(self, contract : Contract):
         contract.add_function(Function("rule_send_now",
-                                [Variable("symbol","Symbol","memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 #"nfa.transition(message); return message;",
                                 #"nfa.transition(symbol_enc); return symbol;",
                                 "nfa.transition(symbol); return symbol;",
@@ -857,7 +850,7 @@ class EnforcerContractGenerator(Generator):
                                 "Symbol memory"))
         
         contract.add_function(Function("rule_receive_now",
-                                [Variable("symbol","Symbol","memory")],  #Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")],  #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 #"nfa.transition(message); return message;",
                                 #"nfa.transition(symbol_enc); return symbol;",
                                 "nfa.transition(symbol); return symbol;",
@@ -865,46 +858,24 @@ class EnforcerContractGenerator(Generator):
                                 "Symbol memory"))
 
         contract.add_function(Function("rule_receive_delayed",
-                                [Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
-buffer_add(symbol);
-return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
+    buffer_add(precondition, symbol);
+    return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
                                 """,
                                 "private",
                                 "Symbol memory"))
 
 
         contract.add_function(Function("rule_send_delayed",
-                                [Variable("symbol", "Symbol", "memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
-buffer_add(symbol);
-return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
+    buffer_add(precondition, symbol);
+    return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
                                 """,
                                 "private",
                                 "Symbol memory"))
 
-        contract.add_function(Function("rule_receive_buffered",
-                                [Variable("symbol", "Symbol", "memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
-                                """
-//nfa.transition(encoder.encode_SYMBOL(message));
-//buffer_remove(actor, string(abi.encodePacked("?", message)));
-//return string(abi.encodePacked(actor,"?",message));
-return symbol; // TODO 
-                                """,
-                                "private",
-                                "Symbol  memory"))
- 
-        contract.add_function(Function("rule_send_buffered",
-                                #[Variable("actor","string","memory"),Variable("message","string","memory")],
-                                [Variable("symbol", "Symbol", "memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
-                                """
-//nfa.transition(encoder.encode_SYMBOL(message));
-//buffer_remove(actor, string(abi.encodePacked("!", message)));
-//return string(abi.encodePacked(actor,"!",message));
-return symbol; // TODO
-                                """,
-                                "private",
-                                "Symbol memory"))
       
     def __create_getters(self, contract : Contract):
 ##        contract.add_function(Function("getActors",
@@ -917,7 +888,7 @@ return symbol; // TODO
                                 [],
                                 "return buffer;",
                                 "public view",
-                                "Symbol[] memory"))
+                                "BufferItem[] memory"))
 
 
 
@@ -951,16 +922,16 @@ string memory debug;
 
 if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive send *)";
-    out = rule_send_now(symbol /*, symbol_enc */);
+    out = rule_send_now(precondition, symbol /*, symbol_enc */);
 }  else if (condition_rule_send_delayed(precondition, symbol /* , symbol_enc */)) {
     debug = "(* Condition rule receive send delayed *)";
-    out = rule_send_delayed(symbol /* , symbol_enc */);
+    out = rule_send_delayed(precondition, symbol /* , symbol_enc */);
 } else if (condition_rule_receive_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive now *)";
-    out = rule_receive_now(symbol /*, symbol_enc */);
+    out = rule_receive_now(precondition, symbol /*, symbol_enc */);
 } else if (condition_rule_receive_delayed(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive delayed *)";
-    out = rule_receive_delayed(symbol /*, symbol_enc */);
+    out = rule_receive_delayed(precondition, symbol /*, symbol_enc */);
 } else {
     debug = "No matching condition";
     out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
@@ -977,35 +948,36 @@ return out;
         contract.add_function(Function("process_check",
                                 [],
                                 """
-		Prop[] memory precondition; // FS fix this
-
-		Symbol memory out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
-
-		bool dirty = true;
-
-		while (dirty) {
-			dirty = false;
-
-			for (uint i=0; i<buffer.length; i++) {
-				Symbol memory currSymbol = buffer[i];
-
-				if (currSymbol.action == EVENT_ACTION.send && condition_rule_send_now(precondition, currSymbol)) {
-					rule_send_now(currSymbol);
-					buffer[i] = buffer[buffer.length-1];
-					buffer.pop();
-					dirty = true;
-				} else if (currSymbol.action == EVENT_ACTION.recv && condition_rule_receive_now(precondition, currSymbol)) {
-					rule_receive_now(currSymbol);
-					buffer[i] = buffer[buffer.length-1];
-					buffer.pop();
-					dirty = true;
+		
+				Symbol memory out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
+		
+				bool dirty = true;
+		
+				while (dirty) {
+					dirty = false;
+		
+					for (uint i=0; i<buffer.length; i++) {
+						BufferItem memory bi = buffer[i];
+						Prop[] memory precondition = bi.precondition;
+						Symbol memory currSymbol = bi.symbol;
+		
+						if (currSymbol.action == EVENT_ACTION.send && condition_rule_send_now(precondition, currSymbol)) {
+							rule_send_now(precondition, currSymbol);
+							buffer[i] = buffer[buffer.length-1];
+							buffer.pop();
+							dirty = true;
+						} else if (currSymbol.action == EVENT_ACTION.recv && condition_rule_receive_now(precondition, currSymbol)) {
+							rule_receive_now(precondition, currSymbol);
+							buffer[i] = buffer[buffer.length-1];
+							buffer.pop();
+							dirty = true;
+						}
+					}
 				}
-			}
-		}
-
-		return out; // TODO fix this, in theory a sequence may be emitted
-
-""",
+		
+				return out; // TODO fix this, in theory a sequence may be emitted
+		
+                                """,
                                 "public",
                                 "Symbol memory"))
 
@@ -1091,6 +1063,7 @@ class SmartContractGenerator:
         #self._contract.add_struct(Struct("Symbol", [ ("agent", "bytes32"), ("action", "EVENT_ACTION"), ("message", "bytes32") ]))
         self._contract.add_struct(Struct("Symbol", [ ("agent", "AGENTS"), ("action", "EVENT_ACTION"), ("message", "MESSAGES") ]))
         self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "PROPOSITIONS") ])) #("identifier", "bytes32") ]))
+        self._contract.add_struct(Struct("BufferItem", [ ("precondition", "Prop[]", "memory"), ("symbol", "Symbol") ]))
 
 
     def create_enums(self):

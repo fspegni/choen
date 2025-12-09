@@ -63,6 +63,10 @@ class State:
     def __eq__(self, other):
         return self.__class__ == other.__class__ and hash(self) == hash(other)
 
+    @staticmethod
+    def reset_counter():
+        State.counter = 0
+
 class Transition:
 
     def __init__(self, source:State, target:State, label:str=None):
@@ -892,8 +896,15 @@ class NFA:
 
         return result
 
-
 def ReiToNFA(rei : REI) -> NFA:
+
+    res : NFA = __ReiToNFA(rei)
+    State.reset_counter()
+
+    return res
+
+
+def __ReiToNFA(rei : REI) -> NFA:
 
     if isinstance(rei, Start) or isinstance(rei, End):
         s = State()
@@ -920,7 +931,7 @@ def ReiToNFA(rei : REI) -> NFA:
 
     elif isinstance(rei, Star):
         
-        a : NFA = ReiToNFA(rei.rei)
+        a : NFA = __ReiToNFA(rei.rei)
 
         for f in a.final:
             a.add_transition(f, a.initial)
@@ -938,7 +949,7 @@ def ReiToNFA(rei : REI) -> NFA:
 
         for curr in rei.items:
 
-            b = ReiToNFA(curr)
+            b = __ReiToNFA(curr)
             if prev is None:
                 a.set_initial(b.initial)
 
@@ -977,7 +988,7 @@ def ReiToNFA(rei : REI) -> NFA:
         for curr in rei.items:
             assert isinstance(curr, REI)
 
-            b = ReiToNFA(curr)
+            b = __ReiToNFA(curr)
             nfa_children.append(b)
 
             automata_state_ids = map(lambda s: s.id, b.states)
@@ -1071,7 +1082,7 @@ def ReiToNFA(rei : REI) -> NFA:
 
 
         for curr in rei.items:
-            b = ReiToNFA(curr)
+            b = __ReiToNFA(curr)
 
             #if len(b.states) > 10:
             #    breakpoint()

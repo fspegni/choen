@@ -20,6 +20,7 @@ import json
 import time
 import logging
 
+
 class Configuration(models.Model):
 
     label = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("label"))
@@ -578,6 +579,9 @@ class EngineOffChain(Engine,models.Model):
 
 
     def process_check(self):
+
+        from enforcer import Enforcer
+
         out = None
         #breakpoint()
         try:
@@ -586,13 +590,15 @@ class EngineOffChain(Engine,models.Model):
             precondition, event, knowledge = self.buffer_find_usable_event()
             #out = self._engine.rule_receive_buffered(actor, message)
 
-            (_, actor, action, message, _) = self._parse_event(event) #symbol)
+            (actor, action, message) = self._parse_event(event) #symbol)
 
             #breakpoint()
             if action == "!": #message.starts_with("!"):
-                out = self.rule_send_buffered(precondition, event, knowledge)
+                out = self.rule_send_buffered(precondition, actor, message, event, knowledge)
+            elif action == "?":
+                out = self.rule_receive_buffered(precondition, actor, message, event, knowledge)
             else:
-                out = self.rule_receive_buffered(precondition, event, knowledge)
+                raise ValueError(f"Unexpected action: {action}")
         except Enforcer.NoMessageFound: #Exception:
             pass
 
@@ -683,6 +689,8 @@ class EngineOffChain(Engine,models.Model):
 ##
 
     def buffer_find_usable_event(self):
+
+        from enforcer import Enforcer
 
         found = None
         for actor in self.buffer:
@@ -924,18 +932,19 @@ class EngineOffChain(Engine,models.Model):
         self._buffer_add(precondition, actor, "!" + message, knowledge)
         return ""
 
-    def rule_send_buffered(self, precondition, event, knowledge):
+    #def rule_send_buffered(self, precondition, event, knowledge):
+    def rule_send_buffered(self, precondition, actor, message, event, knowledge):
         
-        _, actor, action, message, _ = self._parse_event(event)
+        #_, actor, action, message, _ = self._parse_event(event)
 
-        assert actor in self.buffer and action + message in self.buffer[actor]
+        assert actor in self.buffer and "!" + message in self.buffer[actor]
         
         #counter = self.buffer[actor][action + message]
 
         #assert counter > 0
 
         #event = f"{actor}!{message}"
-        event = f"{actor}{action}{message}"
+        #event = f"{actor}{action}{message}"
 
         reached = set()
         for s in self.curr_states:
@@ -946,7 +955,7 @@ class EngineOffChain(Engine,models.Model):
             else:
                 reached = reached.union(s_reached)
         
-        self._buffer_remove(precondition, actor, action + message, knowledge)
+        self._buffer_remove(precondition, actor, "!" + message, knowledge)
 
         nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
         #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
@@ -981,18 +990,18 @@ class EngineOffChain(Engine,models.Model):
         self._buffer_add(precondition, actor, "?" + message, knowledge)
         return ""
 
-    def rule_receive_buffered(self, precondition, event, knowledge):
+    def rule_receive_buffered(self, precondition, actor, message, event, knowledge):
         
-        _, actor, action, message, _ = self._parse_event(event)
+        #_, actor, action, message, _ = self._parse_event(event)
 
-        assert actor in self.buffer and action + message in self.buffer[actor]
+        assert actor in self.buffer and "?" + message in self.buffer[actor]
         
         #counter = self.buffer[actor][action + message]
 
         #assert counter > 0
 
         #event = f"{actor}?{message}"
-        event = f"{actor}{action}{message}"
+        #event = f"{actor}{action}{message}"
 
         reached = set()
         for s in self.curr_states:
@@ -1003,7 +1012,7 @@ class EngineOffChain(Engine,models.Model):
             else:
                 reached = reached.union(s_reached)
         
-        self._buffer_remove(precondition, actor, action + message, knowledge)
+        self._buffer_remove(precondition, actor, "?" + message, knowledge)
 
         nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
         #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
