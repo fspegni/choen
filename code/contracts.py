@@ -517,6 +517,10 @@ pragma abicoder v2;
                                 }
                         },
                     "settings": {
+                        "optimizer": {
+                            "enabled": True,
+                            "runs": 40000        # or 10000–50000 depending on your needs
+                        },
                         "outputSelection": {
                             "*": {"*": ["abi", "metadata", "evm.bytecode", "evm.sourceMap"]}
                         },

@@ -120,10 +120,11 @@ class Enforcer:
         #breakpoint()
         precondition, event, knowledge = self._parse_event(symbol)
 
-        num_states_pre = self._engine.get_num_states() #en(self._curr_states)
+        #num_states_pre = self._engine.get_num_states() #en(self._curr_states)
+
         #out = self._engine.process_input(event)
         out = self._engine.process_input(precondition, event, knowledge)
-        nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
+        #nd_factor = (self._engine.get_num_states() - num_states_pre) / num_states_pre
         
         #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
         
@@ -632,6 +633,8 @@ class CmdBuildContracts(UICommand):
                 return
 
             #self.compile(nfa)
+
+            breakpoint()
             self.compile_nfa(nfa, debug=debug)
         elif m:
             #scg = MPSTSmartContractGenerator(m.root)
@@ -820,7 +823,6 @@ class CmdStart(UICommand):
             raise Exception("The running instance is supposed to have a non-null blockchain configuration at this stage")
 
 
-
         try:
             engine = ri.engineonchain
     
@@ -843,7 +845,6 @@ class CmdStart(UICommand):
 
             engine.set_log_file(log_file)
 
-        #breakpoint()
         if contract_address:
 
             if ri.engineonchain and ri.engineonchain.contract_enforcer and ri.engineonchain.contract_enforcer.contract_address != contract_address:
@@ -881,21 +882,21 @@ class CmdStart(UICommand):
         #if not sc_enforcer_created and sc_enforcer.running_instance != ri:
         #    raise Exception(f"The smart contract ({sc_enforcer}) is already attached to a different running instance: {sc_enforcer.running_instance}")
 
-        sc_nfa, sc_nfa_created = Contract.objects.get_or_create(
-            contract_address=engine._nfa_address, 
-            defaults={
-                "abi":engine._nfa_abi, 
-                "bytecode":engine._nfa_bytecode,
-                "label":"nfa"
-            })
-
+##        sc_nfa, sc_nfa_created = Contract.objects.get_or_create(
+##            contract_address=engine._nfa_address, 
+##            defaults={
+##                "abi":engine._nfa_abi, 
+##                "bytecode":engine._nfa_bytecode,
+##                "label":"nfa"
+##            })
+##
         #if not sc_nfa_created and sc_nfa.running_instance != ri:
         #    raise Exception(f"The smart contract ({sc_nfa}) is already attached to a different running instance: {sc_nfa.running_instance}")
  
-        if engine.contract_enforcer != sc_enforcer or engine.contract_nfa != sc_nfa:
-            engine.contract_enforcer = sc_enforcer
-            engine.contract_nfa = sc_nfa
-            engine.save()
+##        if engine.contract_enforcer != sc_enforcer or engine.contract_nfa != sc_nfa:
+##            engine.contract_enforcer = sc_enforcer
+##            engine.contract_nfa = sc_nfa
+##            engine.save()
 
         #ri.blockchain_configuration = conf
         enforcer = Enforcer(engine)
@@ -1185,6 +1186,8 @@ class CmdDump(UICommand):
         return d
 
     def execute(self, *args, **kwargs):
+
+        #breakpoint()
 
         if len(args) == 0:
             print("Please specify an argument: dump <" + "|".join(self.get_completions().keys()) + ">") #curr_states|states|transitions|buffer|rei>")

@@ -129,6 +129,7 @@ class EncoderContractGenerator(Generator):
 
         contract.add_constructor(Constructor([], constructor_body, "internal"))
 
+
 class EncoderContractWithCountersGenerator(EncoderContractGenerator):
 
     def create_encoding(self, contract, name, plain_type, encoded_type="uint16", plain_type_attributes=[]):
@@ -711,7 +712,7 @@ class EnforcerContractGenerator(Generator):
     
 
     def create_events(self, contract : Contract):
-        contract.add_event(Event("outputEvent",[Variable("debug","string") ]))
+        contract.add_event(Event("outputEvent",[Variable("debug","string"), Variable("messageOut", "Symbol") ]))
 
     def create_attributes(self, contract : Contract):
         contract.add_attribute(Variable("encoder", "_Encoder"))
@@ -921,10 +922,10 @@ string memory debug;
 //bytes32 message_enc = encoder.encode_MESSAGE(symbol.message);
 
 if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
-    debug = "(* Condition rule receive send *)";
+    debug = "(* Condition rule send now *)";
     out = rule_send_now(precondition, symbol /*, symbol_enc */);
 }  else if (condition_rule_send_delayed(precondition, symbol /* , symbol_enc */)) {
-    debug = "(* Condition rule receive send delayed *)";
+    debug = "(* Condition rule send delayed *)";
     out = rule_send_delayed(precondition, symbol /* , symbol_enc */);
 } else if (condition_rule_receive_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive now *)";
@@ -936,7 +937,7 @@ if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
     debug = "No matching condition";
     out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
 }
-emit outputEvent(debug);
+emit outputEvent(debug, out);
 
 process_check();
 
@@ -1070,9 +1071,9 @@ class SmartContractGenerator:
 
         self._contract.add_enum(Enum("EVENT_ACTION", [ "epsilon", "send", "recv" ]))
 
-        self._contract.add_enum(Enum("STATES", [ s.id for s in self._nfa.states ])) 
-        self._contract.add_enum(Enum("AGENTS", [ "empty_AGENT", ] + [ solidity_slugify(a) for a in self._nfa.agents ])) 
-        self._contract.add_enum(Enum("MESSAGES", [ "empty_MESSAGE", ] + [m for m in self._nfa.messages ]))
+        self._contract.add_enum(Enum("STATES", sorted([ s.id for s in self._nfa.states ]))) 
+        self._contract.add_enum(Enum("AGENTS", [ "empty_AGENT", ] + sorted([ solidity_slugify(a) for a in self._nfa.agents ]))) 
+        self._contract.add_enum(Enum("MESSAGES", [ "empty_MESSAGE", ] + sorted([m for m in self._nfa.messages ])))
         propositions = [ m for m in self._nfa.propositions ] or [ "foo" ] # at least one member is required for ENUM's
         self._contract.add_enum(Enum("PROPOSITIONS", propositions))
 
@@ -1134,6 +1135,9 @@ return false;"""
         self._contract.add_contract(enforcerContract)
 
         return self._contract
+
+    def decode_state(self, value):
+        return self._encoderContract.decode_state(value)
 
 
 class MPSTLocalTypeContractGenerator(Generator):
