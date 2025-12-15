@@ -4,6 +4,9 @@ from django.utils.translation import gettext as _
 from django.utils import timezone
 from eth_account import Account
 from web3 import Web3, HTTPProvider
+#from web3.middleware import SignAndSendRawMiddlewareBuilder
+#from web3.middleware.signing import NonceManager
+
 import re
 from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
@@ -42,9 +45,24 @@ class Configuration(models.Model):
         short_url = self.url if len(self.url) < 20 else self.url[:20] + "..."
         return self.label or short_url
 
+    def get_account(self):
+        account = Account.from_key(self.private_key)
+        return account
+
     def get_w3(self):
         print(f"\nConnecting to {self.url} ...")
-        return Web3(Web3.HTTPProvider(self.url, request_kwargs={'timeout': 300}))
+        w3 = Web3(Web3.HTTPProvider(self.url, request_kwargs={'timeout': 300}))
+
+        # NB not needed; w3 v7.5 now computes nonce automatically if you don't specify
+        # Add automatic nonce management
+        #w3.middleware_onion.add(NonceManager())
+
+        # Add automatic signing + sending
+        #account = self.get_account()
+        #sign_and_send_mw = SignAndSendRawMiddlewareBuilder().build(account)
+        #w3.middleware_onion.add(sign_and_send_mw)
+
+        return w3
 
 class RunningInstance(models.Model):
 
@@ -1118,9 +1136,10 @@ class EngineOnChain(Engine,models.Model):
         e._debug_log(f"Network ID: {network_id}")
         
         # test account
-        account = Account.from_key(blockchain_configuration.private_key)
+        #account = Account.from_key(blockchain_configuration.private_key)
+        account = blockchain_configuration.get_account()
         balance = e._w3.eth.get_balance(account.address) 
-        print(f"Account: {account.address}. Balance: {e.w3.from_wei(balance, 'ether')} ETH")
+        print(f"Account: {account.address} . Balance: {e.w3.from_wei(balance, 'ether')} ETH")
         #e._stats = []
 
         #breakpoint()
@@ -1365,12 +1384,42 @@ class EngineOnChain(Engine,models.Model):
         self.stats.append([type, contractAddress, gasUsed, float(cost), executionTime])
     
     def __sendTransaction(self, transaction):
-        # Sign the transaction
-        sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
-        
+
+        #breakpoint()
+
         # Send the transaction
         #tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
-        tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
+
+        tx_hash = None
+        retries = 3
+
+        #breakpoint()
+        while tx_hash is None and retries > 0:
+
+            try:
+
+                nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
+                transaction["nonce"] = nonce
+
+                # Sign the transaction
+                sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
+                
+                tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
+
+            except web3.exceptions.Web3RPCError as err:
+                retries = retries - 1
+                if str(err).contains("nonce too low"):
+                    print(f"Nonce too low. Try again. Details: {err} ...")
+                else:
+                    raise err
+
+        if not tx_hash:
+            raise Exception(f"Cannot sign transaction after several retries.")
+            
+        
+        # NB cannot sign the transaction explicitly, otherwise the nonce must be computed manually; this is
+        #    left to the middlewares (i.e. NonceManager and SignAndSendRawMiddleware)
+        #tx_hash = self.w3.eth.send_transaction(transaction)
         
         print(f"Transaction hash: {tx_hash.hex()}. Wait for validation ...")
         # Wait for the transaction to be mined, and get the transaction receipt
@@ -1387,31 +1436,26 @@ class EngineOnChain(Engine,models.Model):
         #create the contract
         contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
 
-        #nonce =  self.w3.eth.get_transaction_count(self.address)
-        nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
-        #nonce = self.w3.get_nonce() # TODO apparently the get_nonce(...) method is not working for me ...
         gas_price = self.w3.eth.gas_price
         print(f"Gas price: {gas_price}")
-#        gas_price = self.w3.to_wei('30', 'gwei') # TODO was: 10 gwei
 
         block_gas_limit = self.w3.eth.get_block("latest")["gasLimit"]
         print(f"Block Gas Limit: {block_gas_limit}")
 
         balance = self.w3.eth.get_balance(self.address)
         balance_eth = self.w3.from_wei(balance, 'ether')
-        print(f"Account: {self.address}. Balance (before deployment): {balance_eth} ETH")
+        print(f"Account: {self.address} . Balance (before deployment): {balance_eth} ETH")
 
         start_time = time.time()
         # build transaction
         #if (address == None):
         tx = {
             "chainId": self.w3.eth.chain_id, #self.chain_id,
-            "gasPrice": gas_price, #self.w3.eth.gas_price,
+            #"gasPrice": gas_price, #self.w3.eth.gas_price,
             "gas": int(0.9 * block_gas_limit), #60000000,
             "from": self.address,
-            "nonce": nonce, 
-            #"maxFeePerGas": int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER),
-            #"maxPriorityFeePerGas": int(gas_price * settings.GAS_PRIORITY_FEE_MULTIPLIER),
+            "maxFeePerGas": int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER),
+            "maxPriorityFeePerGas": self.w3.eth.max_priority_fee,
 
         }
         print(f"Transaction parameters: {tx}")
@@ -1452,7 +1496,7 @@ class EngineOnChain(Engine,models.Model):
 
         balance = self.w3.eth.get_balance(self.address)
         balance_eth = self.w3.from_wei(balance, 'ether')
-        print(f"Account: {self.address}. Balance (after deployment): {balance_eth} ETH")
+        print(f"Account: {self.address} . Balance (after deployment): {balance_eth} ETH")
 
         execution_time = time.time() - start_time
 
@@ -1491,7 +1535,7 @@ class EngineOnChain(Engine,models.Model):
             return res
 
         except Exception as err:
-            breakpoint()
+            #breakpoint()
             raise Exception(f"Error invoking smart contract function: {function_name}. Details: {err}")
             #print(f"Error invoking Enforcer contract function: {function_name}")
             #traceback.print_exc()
@@ -1576,15 +1620,8 @@ class EngineOnChain(Engine,models.Model):
         if not self._enforcer_contract:
             raise Exception(f"No enforcer contract defined. Not ready for this method")
 
-##        enforcer = self.w3.eth.contract(
-##                address = self._enforcer_address,
-##                abi = self._enforcer_abi
-##            )
-        nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added 'pending' ot solve the nonce too low problem
         start_time = time.time()
-#        transaction = enforcer.functions.process_input(event).buildTransaction({
 
-        #breakpoint()
         parts = re.split(r'([!?])', event)
 
         if len(parts) != 3:
@@ -1599,7 +1636,6 @@ class EngineOnChain(Engine,models.Model):
                         "chainId": self.w3.eth.chain_id, #self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
-                        "nonce": nonce
                     })
         build_time = time.time() - start_time
 
@@ -1631,18 +1667,12 @@ class EngineOnChain(Engine,models.Model):
         if not self._enforcer_contract:
             raise Exception(f"No enforcer contract defined. Not ready for this method")
 
-##        enforcer = self.w3.eth.contract(
-##                address = self.enforcer_address,
-##                abi = self.enforcer_abi
-##            )
-        nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added 'pending', trying to solve the nonce-too-low problem
         start_time = time.time()
 #        transaction = enforcer.functions.process_check().buildTransaction({
         transaction = self._enforcer_contract.functions.process_check().build_transaction({
                         "chainId": self.w3.eth.chain_id, #self.chain_id,
                         "from": self.address,
                         "gasPrice": self.w3.eth.gas_price,
-                        "nonce": nonce
                     })
         build_time = time.time() - start_time
 
