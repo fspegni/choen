@@ -10,7 +10,7 @@ In order to test the current status of the project, follow a guide for creating 
 
 ```
 export DJANGO_SETTINGS_MODULE=bpmn2solidity.settings
-export PYTHONPATH=${HOME}/git/choen/code:$PYTHONPATH
+export PYTHONPATH=${HOME}/git/choen/src:$PYTHONPATH
 ```
 
 ## Windows or Linux with VSCode
