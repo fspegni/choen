@@ -1,4 +1,4 @@
 metamask_recovery_phrase.txt
-code/db.sqlite3
+src/db.sqlite3
 **/*.pyc
 public/

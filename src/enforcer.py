@@ -634,7 +634,7 @@ class CmdBuildContracts(UICommand):
 
             #self.compile(nfa)
 
-            breakpoint()
+            #breakpoint()
             self.compile_nfa(nfa, debug=debug)
         elif m:
             #scg = MPSTSmartContractGenerator(m.root)
@@ -944,20 +944,27 @@ class CmdStart(UICommand):
 
         #breakpoint()
         cho : Choreography = self.ui._model.get_object("choreography")
+        mpst : MPST = self.ui._model.get_object("mpst")
 
-        if len(args) > 0:
-            cho = Choreography.objects.get(name=args[0])
+        #if len(args) > 0:
+        #    cho = Choreography.objects.get(name=args[0])
 
-        if not cho:
-            raise Exception("You must load a choreography or start a choreography")
+        if not cho and not mpst:
+            raise Exception("You must load a choreography or a MPST or start a choreography")
 
     
         #breakpoint()
 
         # 0. create a stub of running instance
         ri = RunningInstance()
-        ri.choreography = cho
-        ri.label = cho.name
+        if cho:
+            ri.choreography = cho
+        elif mpst:
+            ri.mpst = mpst
+        else:
+            raise Exception("You must pass either a MPST or a Choreography")
+            
+        ri.label = cho.name if cho else mpst.name
 #        ri.running = True   
 #        ri.execution_started = timezone.now() # TODO this is ok when starting a new instance; when attaching a running smart contract, one should try to find the time when the deployment transaction was validated
  

@@ -11,6 +11,7 @@ import re
 from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
+from mpst.models import MPST
 from django.db import transaction
 from django.conf import settings
 
@@ -75,7 +76,8 @@ class RunningInstance(models.Model):
     blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
 
     label = models.CharField(max_length=500, null=True, blank=True)
-    choreography = models.ForeignKey(Choreography, null=False, blank=False, on_delete=models.DO_NOTHING)
+    choreography = models.ForeignKey(Choreography, null=True, blank=False, on_delete=models.DO_NOTHING)
+    mpst = models.ForeignKey(MPST, null=True, blank=False, on_delete=models.DO_NOTHING)
     running = models.BooleanField(default=False)
 #    enforcer = PickledObjectField(blank=True, null=True) 
 
@@ -1624,12 +1626,16 @@ class EngineOnChain(Engine,models.Model):
 
         parts = re.split(r'([!?])', event)
 
-        if len(parts) != 3:
-            raise ValueError(f"Unhandled event: {event}")
+        try:
+            if len(parts) != 3:
+                raise ValueError(f"Unhandled event: {event}")
 
-        agent = self._encode_agent(parts[0])
-        action = self._encode_action(parts[1])
-        message = self._encode_message(parts[2])
+            agent = self._encode_agent(parts[0])
+            action = self._encode_action(parts[1])
+            message = self._encode_message(parts[2])
+        except Exception:
+            self._debug_log(f"Symbol not recognized: {event}")
+            return None
 
 #        transaction = self._enforcer_contract.functions.process_input(precondition or "", event, knowledge or []).build_transaction({
         transaction = self._enforcer_contract.functions.process_input(agent, action, message).build_transaction({
