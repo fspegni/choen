@@ -1098,3 +1098,5 @@ def __ReiToNFA(rei : REI) -> NFA:
             a.add_final(*b.final)
 
         return a              
+
+

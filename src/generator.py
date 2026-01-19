@@ -1,5 +1,5 @@
 import nfa
-from contracts import Constructor, Contract, Function, Variable, Constant, Event, SmartContract, Enum, Struct
+from contracts import Constructor, Contract, Function, Variable, Constant, Event, SmartContract, Enum, Struct, Library
 import re
 
 def is_memory_type(solidity_type):
@@ -87,7 +87,7 @@ class EncoderContractGenerator(Generator):
         contract.add_function(Function(f"encode_store_{name}", [ Variable("plain", plain_type, "memory") ], encodeStoreBody, f"public returns({encoded_type})")) 
         contract.add_function(Function(f"store_{name}", [ Variable("plain", plain_type, "memory"), Variable("encoded", encoded_type) ], storeBody, f"public")) 
         contract.add_function(Function(f"decode_{name}", [ Variable("encoded", encoded_type) ], decodeBody, f"public pure returns({plain_type} memory)"))  # FS "pure" was "view"
-        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public pure returns ({plain_type}[] memory)"))
+        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] calldata") ], decodeArrayBody, f"public pure returns ({plain_type}[] memory)"))
 
         contract.add_attribute(Variable(f"empty_{name}", f"{encoded_type} public"))
 
@@ -243,7 +243,7 @@ class EncoderContractWithEnumsGenerator(EncoderContractGenerator):
     return res;
         """
       
-        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] memory") ], decodeArrayBody, f"public view returns ({plain_type}[] memory)"))
+        contract.add_function(Function(f"decode_array_{name}", [ Variable("items", f"{encoded_type}[] calldata") ], decodeArrayBody, f"public pure returns ({plain_type}[] memory)"))
 
 
 
@@ -389,76 +389,6 @@ for (uint i = 0; i < newStates.length; i++) {
     }""",
                         "private",))
 
-        contract.add_function(Function("shrink",
-                        #[Variable("source", "bytes32[]", "memory"), Variable("newSize", "uint")],
-                        [Variable("source", "STATES[]", "memory"), Variable("newSize", "uint")],
-"""
-        require(newSize <= source.length);
-
-        if (source.length == newSize) {
-            return source;
-        } else {
-            STATES[] memory res = new STATES[](newSize);
-            for (uint idx = 0; idx < newSize; idx++) {
-                res[idx] = source[idx];
-            } 
-            return res;
-        }
-""",
-                        "public pure",
-                        #"bytes32[] memory")
-                        "STATES[] memory")
-        )
-
-        contract.add_function(Function("indexOf",
-                        #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
-                        #[Variable("array","bytes32[]","memory"),Variable("item","bytes32")],
-                        [Variable("array","STATES[]","memory"),Variable("item","STATES")],
-                        """
-        for (uint idx = 0; idx < array.length; idx++) {
-            if (array[idx] == item) {
-                return int256(idx);
-            }
-        }
-
-        return -1;
-                        """,
-                        "public pure",
-                        "int"))
-        
-        contract.add_function(Function("union",
-                        #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
-                        #[Variable("arrayA","bytes32[]","memory"),Variable("arrayB","bytes32[]","memory")],
-                        [Variable("arrayA","STATES[]","memory"),Variable("arrayB","STATES[]","memory")],
-                        """
-	
-        STATES[] memory tmp = new STATES[](arrayA.length + arrayB.length);
-        uint countA = 0;
-        uint countB = 0;
-
-        for (uint idx = 0; idx < arrayA.length; idx++) {
-            STATES curr = arrayA[idx];
-            if (indexOf(tmp, curr) < 0) {
-                tmp[countA++] = curr;
-            }
-        }
-
-        for (uint idx = 0; idx < arrayB.length; idx++) {
-            STATES curr = arrayB[idx];
-
-            if (indexOf(tmp, curr) < 0) {
-                tmp[countA + countB++] = curr;
-            }
-            
-        }
-
-        return shrink(tmp, countA + countB);
-	                    """,
-                        "private pure", # was "private"
-                        #"string[] memory"))
-                        #"bytes32[] memory"))
-                        "STATES[] memory"))
-
 
 ##        contract.add_function(Function("e_closure",
 ##                        #[Variable("newStates","string[]","memory")],
@@ -595,7 +525,7 @@ for (uint i = 0; i < newStates.length; i++) {
         contract.add_function(Function("isFinal",
                                 #[Variable("curr","bytes32")],
                                 [Variable("curr","STATES")],
-                                """return arrContains_STATES(curr, finalStates);""", 
+                                """(bool found, ) = Utils.arrContains(curr, finalStates); return found;""", 
                                 "public view",
                                 "bool"))
  
@@ -610,7 +540,7 @@ for (uint i = 0; i < newStates.length; i++) {
         contract.add_function(Function("isCurrent",
                                 #[Variable("curr","bytes32")],
                                 [Variable("curr","STATES")],
-                                """return arrContains_STATES(curr, currentStates);""", # TODO
+                                """(bool found, ) = Utils.arrContains(curr, currentStates); return found;""", # TODO
                                 "public view",
                                 "bool"))
 
@@ -653,7 +583,7 @@ for (uint i = 0; i < newStates.length; i++) {
         STATES[] memory tmp;
 		for (uint i = 0; i < currentStates.length; i++) {
 		    STATES[] memory s = transitionFrom(currentStates[i], label.agent, label.action, label.message);
-		    tmp = union(tmp, s);
+		    tmp = Utils.union(tmp, s);
 		}
 		require(tmp.length != 0);
 		//message.push(label);
@@ -720,14 +650,15 @@ class EnforcerContractGenerator(Generator):
         contract.add_attribute(Variable("actors","string[]",))
         contract.add_attribute(Variable("buffer","BufferItem[]"))
         #contract.add_attribute(Variable("tmpStates","bytes32[]"))
-        contract.add_attribute(Variable("kb","uint16[]")) # ,"bytes32[]"))
+        contract.add_attribute(Variable("kb","PROPOSITIONS[]")) # ,"bytes32[]"))
         #contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
         contract.add_attribute(Variable("chainStartTime", "uint"))    
         contract.add_attribute(Variable("chainEndTime", "uint"))    
 
     def create_constructor(self, contract : Contract):
-        contract.add_constructor(Constructor([],f"""
-    nfa = new _NFA();
+        contract.add_constructor(Constructor([Variable("nfaAddress", "address")],
+    f"""
+    nfa = _NFA(nfaAddress);
     encoder = nfa.getEncoder();
     chainStartTime = block.timestamp;
     chainEndTime = 0;
@@ -735,6 +666,7 @@ class EnforcerContractGenerator(Generator):
     
     def __create_utils(self, contract : Contract):
 
+        # some getters
         contract.add_function(Function("getStartTime", 
                                 [],
                                 """return chainStartTime;""",
@@ -752,7 +684,26 @@ class EnforcerContractGenerator(Generator):
                                 """return kb;""",
                                 "public view",
                                 #"bytes32[] memory"))
-                                "uint16[] memory"))
+                                "PROPOSITIONS[] memory"))
+
+
+        contract.add_function(Function("update_kb",
+                                [ Variable("knowledge", "Prop[]", "memory") ],
+                                """
+		for (uint idx = 0; idx<knowledge.length; idx++) {
+			Prop memory curr = knowledge[idx];
+			(bool found, uint pos) = Utils.arrContains(curr.identifier, kb);
+			if ( ! curr.neg && ! found) {
+				kb.push(); //(curr.identifier);
+				kb[kb.length-1] = curr.identifier;
+			} else if (curr.neg && found) {
+				kb[pos] = kb[kb.length-1];
+				kb.pop();
+			}
+		}
+                                """,
+                                "public"
+        ))
 
         contract.add_function(Function("check_sat", 
                                 [Variable("precondition", "Prop[]", "memory")],
@@ -763,7 +714,7 @@ class EnforcerContractGenerator(Generator):
 
         for (uint idx = 0; idx < precondition.length; idx++) {
             Prop memory curr = precondition[idx];
-            bool found = arrContains_uint16(uint16(curr.identifier), kb);
+            (bool found, ) = Utils.arrContains(curr.identifier, kb);
             if ((! curr.neg && found) || (curr.neg && ! found))
             {
                 return false;
@@ -777,7 +728,7 @@ class EnforcerContractGenerator(Generator):
 
 
         contract.add_function(Function("buffer_add",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory"), Variable("knowledge", "Prop[]", "memory") ],
                                 """
 		BufferItem storage newItem = buffer.push();
 		newItem.symbol = symbol;
@@ -786,6 +737,12 @@ class EnforcerContractGenerator(Generator):
 		for (uint i = 0; i < precondition.length; i++) {
 			newItem.precondition.push(precondition[i]);
 		}
+
+		// Manually copy knowledge array
+		for (uint i = 0; i < knowledge.length; i++) {
+			newItem.knowledge.push(knowledge[i]);
+		}
+
                                 """,
                                 "private"))
 
@@ -817,25 +774,25 @@ class EnforcerContractGenerator(Generator):
 
     def __create_conditions(self, contract : Contract):
         contract.add_function(Function("condition_rule_send_now",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory") ], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
                                 """return check_sat(precondition) && symbol.action == EVENT_ACTION.send && nfa.checkEnabledTransitions(symbol /* , symbol_enc */);""",
                                 "private view",
                                 "bool"))
                 
         contract.add_function(Function("condition_rule_receive_now",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory") ], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
                                 """return check_sat(precondition) && symbol.action == EVENT_ACTION.recv && nfa.checkEnabledTransitions(symbol /*, symbol_enc */);""",
                                 "private view",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_receive_delayed",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory") ], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
                                 """return symbol.action == EVENT_ACTION.recv;""",
                                 "private pure",
                                 "bool"))
 
         contract.add_function(Function("condition_rule_send_delayed",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory") ], #Variable("symbol_enc", "uint16") ], #"bytes32") ],
                                 """return symbol.action == EVENT_ACTION.send;""",
                                 "private pure",
                                 "bool"))
@@ -843,25 +800,25 @@ class EnforcerContractGenerator(Generator):
 
     def __create_rules(self, contract : Contract):
         contract.add_function(Function("rule_send_now",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("knowledge", "Prop[]", "memory") ], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 #"nfa.transition(message); return message;",
                                 #"nfa.transition(symbol_enc); return symbol;",
-                                "nfa.transition(symbol); return symbol;",
+                                "nfa.transition(symbol); update_kb(knowledge); return symbol;",
                                 "private",
                                 "Symbol memory"))
         
         contract.add_function(Function("rule_receive_now",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")],  #Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("knowledge", "Prop[]", "memory") ],  #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 #"nfa.transition(message); return message;",
                                 #"nfa.transition(symbol_enc); return symbol;",
-                                "nfa.transition(symbol); return symbol;",
+                                "nfa.transition(symbol); update_kb(knowledge); return symbol;",
                                 "private",
                                 "Symbol memory"))
 
         contract.add_function(Function("rule_receive_delayed",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("knowledge", "Prop[]", "memory") ], #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
-    buffer_add(precondition, symbol);
+    buffer_add(precondition, symbol, knowledge);
     return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
                                 """,
                                 "private",
@@ -869,9 +826,9 @@ class EnforcerContractGenerator(Generator):
 
 
         contract.add_function(Function("rule_send_delayed",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory")], # Variable("symbol_enc", "uint16")], #"bytes32")],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory"), Variable("knowledge", "Prop[]", "memory") ], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
-    buffer_add(precondition, symbol);
+    buffer_add(precondition, symbol, knowledge);
     return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
                                 """,
                                 "private",
@@ -902,7 +859,7 @@ class EnforcerContractGenerator(Generator):
 
     def __create_processors(self, contract : Contract):
         contract.add_function(Function("process_input",
-                                [ Variable("agent", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message","MESSAGES") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("agent", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message","MESSAGES"), Variable("knowledge", "Prop[]", "memory") ],
 #                                [ Variable("the_input", "string memory") ],
                                 """
 
@@ -913,7 +870,7 @@ class EnforcerContractGenerator(Generator):
 //( agent, action, message ) = splitInput(the_input);
 
 Symbol memory symbol = Symbol(agent, action, message);
-Prop[] memory precondition;
+//Prop[] memory precondition;
 Symbol memory out;
 string memory debug;
 
@@ -923,16 +880,16 @@ string memory debug;
 
 if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule send now *)";
-    out = rule_send_now(precondition, symbol /*, symbol_enc */);
+    out = rule_send_now(precondition, symbol, knowledge /*, symbol_enc */);
 }  else if (condition_rule_send_delayed(precondition, symbol /* , symbol_enc */)) {
     debug = "(* Condition rule send delayed *)";
-    out = rule_send_delayed(precondition, symbol /* , symbol_enc */);
+    out = rule_send_delayed(precondition, symbol, knowledge /* , symbol_enc */);
 } else if (condition_rule_receive_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive now *)";
-    out = rule_receive_now(precondition, symbol /*, symbol_enc */);
+    out = rule_receive_now(precondition, symbol, knowledge /*, symbol_enc */);
 } else if (condition_rule_receive_delayed(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive delayed *)";
-    out = rule_receive_delayed(precondition, symbol /*, symbol_enc */);
+    out = rule_receive_delayed(precondition, symbol, knowledge /*, symbol_enc */);
 } else {
     debug = "No matching condition";
     out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
@@ -961,14 +918,15 @@ return out;
 						BufferItem memory bi = buffer[i];
 						Prop[] memory precondition = bi.precondition;
 						Symbol memory currSymbol = bi.symbol;
+                        Prop[] memory knowledge = bi.knowledge;
 		
 						if (currSymbol.action == EVENT_ACTION.send && condition_rule_send_now(precondition, currSymbol)) {
-							rule_send_now(precondition, currSymbol);
+							rule_send_now(precondition, currSymbol, knowledge);
 							buffer[i] = buffer[buffer.length-1];
 							buffer.pop();
 							dirty = true;
 						} else if (currSymbol.action == EVENT_ACTION.recv && condition_rule_receive_now(precondition, currSymbol)) {
-							rule_receive_now(precondition, currSymbol);
+							rule_receive_now(precondition, currSymbol, knowledge);
 							buffer[i] = buffer[buffer.length-1];
 							buffer.pop();
 							dirty = true;
@@ -1056,6 +1014,124 @@ class SmartContractGenerator:
     def contract(self) -> SmartContract:
         return self._contract
 
+    def create_libraries(self):
+
+        # a collector for several utils
+
+        utils = Library("Utils")
+
+        # same body for several versions of the function
+        arrContains_body = """
+for (uint i = 0; i < collection.length; i++) {
+    if (item == collection[i]) {
+        return (true, i);
+    }
+}
+return (false, 0);
+        """
+
+
+
+        utils.add_function(Function("arrContains",
+                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
+                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
+                                [Variable("item","uint16"),Variable("collection","uint16[]","memory")],
+                                arrContains_body,
+                                "public pure", #"internal pure",
+                                "bool, uint"))
+
+        utils.add_function(Function("arrContains",
+                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
+                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
+                                [ Variable("item", "STATES"), Variable("collection", "STATES[]", "memory") ],
+                                arrContains_body,
+                                "public pure", #"internal pure",
+                                "bool, uint"))
+
+        utils.add_function(Function("arrContains",
+                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
+                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
+                                [ Variable("item", "PROPOSITIONS"), Variable("collection", "PROPOSITIONS[]", "memory") ],
+                                arrContains_body,
+                                "public pure", #"internal pure",
+                                "bool, uint"))
+        
+        utils.add_function(Function("shrink",
+                        #[Variable("source", "bytes32[]", "memory"), Variable("newSize", "uint")],
+                        [Variable("source", "STATES[]", "memory"), Variable("newSize", "uint")],
+"""
+        require(newSize <= source.length);
+
+        if (source.length == newSize) {
+            return source;
+        } else {
+            STATES[] memory res = new STATES[](newSize);
+            for (uint idx = 0; idx < newSize; idx++) {
+                res[idx] = source[idx];
+            } 
+            return res;
+        }
+""",
+                        "public pure",
+                        #"bytes32[] memory")
+                        "STATES[] memory")
+        )
+
+        utils.add_function(Function("indexOf",
+                        #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
+                        #[Variable("array","bytes32[]","memory"),Variable("item","bytes32")],
+                        [Variable("array","STATES[]","memory"),Variable("item","STATES")],
+                        """
+        for (uint idx = 0; idx < array.length; idx++) {
+            if (array[idx] == item) {
+                return int256(idx);
+            }
+        }
+
+        return -1;
+                        """,
+                        "public pure",
+                        "int"))
+        
+        utils.add_function(Function("union",
+                        #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
+                        #[Variable("arrayA","bytes32[]","memory"),Variable("arrayB","bytes32[]","memory")],
+                        [Variable("arrayA","STATES[]","memory"),Variable("arrayB","STATES[]","memory")],
+                        """
+	
+        STATES[] memory tmp = new STATES[](arrayA.length + arrayB.length);
+        uint countA = 0;
+        uint countB = 0;
+
+        for (uint idx = 0; idx < arrayA.length; idx++) {
+            STATES curr = arrayA[idx];
+            if (indexOf(tmp, curr) < 0) {
+                tmp[countA++] = curr;
+            }
+        }
+
+        for (uint idx = 0; idx < arrayB.length; idx++) {
+            STATES curr = arrayB[idx];
+
+            if (indexOf(tmp, curr) < 0) {
+                tmp[countA + countB++] = curr;
+            }
+            
+        }
+
+        return shrink(tmp, countA + countB);
+	                    """,
+                        "public pure", # was "private"
+                        #"string[] memory"))
+                        #"bytes32[] memory"))
+                        "STATES[] memory"))
+
+
+
+        self._contract.add_library("Utils", utils)
+
+
+
     def create_structs(self):
 
         #self._contract.add_type("PROPOSITIONS", "uint16")
@@ -1064,7 +1140,7 @@ class SmartContractGenerator:
         #self._contract.add_struct(Struct("Symbol", [ ("agent", "bytes32"), ("action", "EVENT_ACTION"), ("message", "bytes32") ]))
         self._contract.add_struct(Struct("Symbol", [ ("agent", "AGENTS"), ("action", "EVENT_ACTION"), ("message", "MESSAGES") ]))
         self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "PROPOSITIONS") ])) #("identifier", "bytes32") ]))
-        self._contract.add_struct(Struct("BufferItem", [ ("precondition", "Prop[]", "memory"), ("symbol", "Symbol") ]))
+        self._contract.add_struct(Struct("BufferItem", [ ("precondition", "Prop[]", "memory"), ("symbol", "Symbol"), ("knowledge", "Prop[]", "memory") ]))
 
 
     def create_enums(self):
@@ -1081,49 +1157,27 @@ class SmartContractGenerator:
     def createSmartContract(self) -> SmartContract:
     
 
+        self.create_libraries()
         self.create_enums()
         self.create_structs()
 
-        # same body for two versions of the function
-        arrContains_body = """
-for (uint i = 0; i < collection.length; i++) {
-    if (item == collection[i]) {
-        return true;
-    }
-}
-return false;"""
 
 
-        self._contract.add_function(Function("arrContains_uint16",
-                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
-                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
-                                [Variable("item","uint16"),Variable("collection","uint16[]","memory")],
-                                arrContains_body,
-                                "pure", #"internal pure",
-                                "bool"))
 
-        self._contract.add_function(Function("arrContains_STATES",
-                                #[Variable("s","string","memory"),Variable("states","string[]","memory")],
-                                #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
-                                [ Variable("item", "STATES"), Variable("collection", "STATES[]", "memory") ],
-                                arrContains_body,
-                                "pure", #"internal pure",
-                                "bool"))
-
-        substring_body = """
-    bytes memory result = new bytes(end - start);
-    for (uint i = start; i < end; i++) {
-        result[i - start] = data[i];
-    }
-    return string(result);
-        """
-
-        self._contract.add_function(Function("substring",
-                                [ Variable("data", "bytes memory"), Variable("start", "uint"), Variable("end", "uint") ],
-                                substring_body,
-                                "pure",
-                                "string memory"))
-
+##        substring_body = """
+##    bytes memory result = new bytes(end - start);
+##    for (uint i = start; i < end; i++) {
+##        result[i - start] = data[i];
+##    }
+##    return string(result);
+##        """
+##
+##        self._contract.add_function(Function("substring",
+##                                [ Variable("data", "bytes memory"), Variable("start", "uint"), Variable("end", "uint") ],
+##                                substring_body,
+##                                "pure",
+##                                "string memory"))
+##
         #Contracts    
         #encoderContract = EncoderContractGenerator(self.nfa).createContract()
         encoderContract = EncoderContractWithEnumsGenerator(self.nfa).createContract()

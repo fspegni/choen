@@ -815,132 +815,9 @@ class CmdStart(UICommand):
 
     _description = "Create a running instance from the currently loaded choreography"
 
-    def setup_onchain_running_instance(self, ri, contract_address): #automaton, contract_address, conf): #onchain_url, onchain_chain_id, onchain_address, onchain_private_key):
-        # detect whether a configuration exists with given parameters, otherwise save it
-        #engine = EngineOnChain(automaton, conf.url, conf.chain_id, conf.address, conf.private_key)
-
-        if not ri.blockchain_configuration:
-            raise Exception("The running instance is supposed to have a non-null blockchain configuration at this stage")
-
-
-        try:
-            engine = ri.engineonchain
-    
-            if not engine:
-                raise Exception("Engine not set")
-
-            if not engine.nfa:
-                engine.set_nfa(automaton)
-
-        except Exception:
-            engine = EngineOnChain.create_engine(ri) #automaton, conf)
-
-        assert engine is not None
-
-        log_file = self.ui.get_env("LOG_FILE", None)
-        if log_file:
-            if not os.path.exists(log_file):
-                with open(log_file, 'w', encoding="utf-8") as f:
-                    f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
-
-            engine.set_log_file(log_file)
-
-        if contract_address:
-
-            if ri.engineonchain and ri.engineonchain.contract_enforcer and ri.engineonchain.contract_enforcer.contract_address != contract_address:
-                raise Exception(f"The running instance ({ri}) is linked to a different enforcer smart contract. Passed: {contract_address}")
-
-            # 2b1. search nfa address, if enforcer address is given (use the enforcer/engine of previous step)
-#            c_enforcer = Contract.objects.filter(contract_address=contract_address).first()
-#            if c_enforcer:
-#                raise Excetpion(f"The specified smart contract ({c_enforcer}) already exists in the database. Associated running instance: {c_enforcer.running_instance}")
-#
-#            c_enforcer = Contract()
-#            c_enforcer.label = "enforcer"
-#            c_enforcer.contract_address = contract_address
-            engine.attach_smart_contracts(contract_address)
-
-        else:
-
-            # 2a. deploy new contracts if no address is given
-            #scg = SmartContractGenerator(automaton)
-            #compiled = scq.createSmartContract().compile(True) # True => debug mode
-            engine.deploy_smart_contracts()
-
-
-        # 3. store contracts with attached/deploy smart contract addresses, abis, 
-        #    and bytecodes
-
-        sc_enforcer, sc_enforcer_created = Contract.objects.get_or_create(
-            contract_address=engine._enforcer_address, 
-            defaults={
-                "abi":engine._enforcer_abi, 
-                "bytecode":engine._enforcer_bytecode,
-                "label":"enforcer"
-            })
-
-        #if not sc_enforcer_created and sc_enforcer.running_instance != ri:
-        #    raise Exception(f"The smart contract ({sc_enforcer}) is already attached to a different running instance: {sc_enforcer.running_instance}")
-
-##        sc_nfa, sc_nfa_created = Contract.objects.get_or_create(
-##            contract_address=engine._nfa_address, 
-##            defaults={
-##                "abi":engine._nfa_abi, 
-##                "bytecode":engine._nfa_bytecode,
-##                "label":"nfa"
-##            })
-##
-        #if not sc_nfa_created and sc_nfa.running_instance != ri:
-        #    raise Exception(f"The smart contract ({sc_nfa}) is already attached to a different running instance: {sc_nfa.running_instance}")
- 
-##        if engine.contract_enforcer != sc_enforcer or engine.contract_nfa != sc_nfa:
-##            engine.contract_enforcer = sc_enforcer
-##            engine.contract_nfa = sc_nfa
-##            engine.save()
-
-        #ri.blockchain_configuration = conf
-        enforcer = Enforcer(engine)
-        ri.set_enforcer(enforcer)
-
-        # 5. link contracts to running instance (and save the contracts again)
-        #sc_enforcer.running_instance = ri
-        #sc_nfa.running_instance = ri
-        #with transaction.atomic():
-        ri.save()
-        #sc_enforcer.save()
-        #sc_nfa.save()
-
-        return ri
-
-
-    def setup_offchain_running_instance(self, ri): #, automaton):
-        try:
-            engine = ri.engineoffchain
-
-            if not engine:
-                raise Excepion("Engine off-chain not set yet")
-
-            if not engine.nfa:
-                automaton = ri.choreography.to_nfa(optimize=True)
-                engine.set_nfa(automaton)
-
-        except Exception:
-            engine = EngineOffChain.create_engine(ri) #automaton)
-
-        assert engine is not None
-        
-        log_file = self.ui.get_env("LOG_FILE", None)
-        if log_file:
-            engine.set_log_file(log_file)
-
-        enforcer = Enforcer(engine)
-        ri.set_enforcer(enforcer)
-        ri.save()
-        return ri
-
 
     @transaction.atomic
-    def execute(self, contract_address=None, *args, **kwargs):
+    def execute(self, *args, **kwargs): #contract_address=None, *args, **kwargs):
 
         #breakpoint()
         cho : Choreography = self.ui._model.get_object("choreography")
@@ -965,21 +842,15 @@ class CmdStart(UICommand):
             raise Exception("You must pass either a MPST or a Choreography")
             
         ri.label = cho.name if cho else mpst.name
-#        ri.running = True   
-#        ri.execution_started = timezone.now() # TODO this is ok when starting a new instance; when attaching a running smart contract, one should try to find the time when the deployment transaction was validated
- 
-        # 1. create a pair enforcer/engine
-        #enforcer = None
- 
-        #automaton = cho.to_nfa(optimize=True)
-        #automaton.remove_epsilon_transitions()
-        #automaton.remove_unreachable_states()
+
+        ri.save()
 
         onchain_url = self.ui.get_env("ONCHAIN_URL")
         onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID", 0))
         onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
  
+
         if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
 
             conf_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
@@ -998,77 +869,25 @@ class CmdStart(UICommand):
                 conf.label = f"New configuration {suffix}"
                 conf.save()
 
-            ri.blockchain_configuration = conf
-            ri.save()
 
-            self.setup_onchain_running_instance(ri, contract_address) #automaton, contract_address, conf) #onchain_url, onchain_chain_id, onchain_address, onchain_private_key)     
-    
+            log_file = self.ui.get_env("LOG_FILE", None)
+            engine = ri.setup_onchain(conf, log_file=log_file)
+
         else:
 
-            if contract_address:
-                raise Exception(f"You specified a smart contract address for the enforcer, but you did not provide your blockchain configuration in the /env")
-    
+            log_file = self.ui.get_env("LOG_FILE", None)
+            engine = ri.setup_offchain(log_file=log_file)
+
+        assert engine is not None
+        enforcer = Enforcer(engine)
+        ri.set_enforcer(enforcer)
+
+        if not ri.running:
+            ri.running = True
             ri.save()
-            ri = self.setup_offchain_running_instance(ri) #, automaton)
-   
+
         self.ui._model.set_object("ri", ri)
 
-##        # TODO refactor the following
-##
-##        ri : RunningInstance = RunningInstance()
-##        ri.choreography = c
-##        ri.label = c.name
-## 
-##        onchain_url = self.ui.get_env("ONCHAIN_URL")
-##        onchain_chain_id = int(self.ui.get_env("ONCHAIN_CHAIN_ID"))
-##        onchain_address = self.ui.get_env("ONCHAIN_ADDRESS")
-##        onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
-## 
-##        if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
-##    
-##            c_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
-##    
-##            if len(c_list) > 0:
-##                conf = c_list[0]
-##            else:
-##
-##                suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
-##
-##                conf = Configuration()
-##                conf.url = onchain_url
-##                conf.chain_id = onchain_chain_id
-##                conf.address = onchain_address
-##                conf.private_key = onchain_private_key
-##                conf.label = f"New configuration {suffix}"
-##                conf.save()
-##    
-##            ri.blockchain_configuration = conf
-##            ri.engine_type = RunningInstance.EngineType.ON_CHAIN
-##
-##        if contract_address:
-##            if ri.engine_type != RunningInstance.EngineType.ON_CHAIN:
-##                raise Exception("Cannot attach to a running contract address with off-chain enforcer engines. Please, provide an on-chain configuration on your /env")
-##
-##            ri.attach(contract_address)
-##        else:
-##            ri.start() # NB the start method, also saves it
-##
-##        if not ri.enforcer:
-##            raise Exception(f"The start/attach procedure should have set an enforcer at this stage. Cannot continue")
-##
-##        self.ui._model.add_object("ri", ri)
-##
-##        #ri_enforcer = str(ri.enforcer) if ri.enforcer else "N/N"
-##        print(f"Enforcer: {ri.enforcer}") 
-##
-##        if isinstance(ri.enforcer, EngineOnChain):
-##            self.ui._debug_log(f"\nGas price:  {ri.enforcer._engine.w3.eth.gas_price} Wei")
-##
-##        if ri.enforcer.ended():
-##            ri.stop()
-##            self.ui._debug_log("(* Ended *)")
-##
-##
 
 class CmdLogOnOff(UICommand):
 
@@ -1084,8 +903,8 @@ class CmdLogOnOff(UICommand):
         else:
             print(f"Value not recognized: {on_off}")
 
-#class CmdLoadInstance(UICommand):   
-class CmdLoadInstance(CmdStart):
+
+class CmdLoadInstance(UICommand):
 
     _description = "Load a running instance previously paused and prepare to intereact with it throug the command line"
 
@@ -1095,7 +914,6 @@ class CmdLoadInstance(CmdStart):
         for ri in RunningInstance.objects.all():
             d[str(ri.id)] = None
 
-        #print(f"Completions: {d}")
         return d
 
     def execute(self, ri_id=None, *args, **kwargs):
@@ -1117,6 +935,7 @@ class CmdLoadInstance(CmdStart):
                 # 1. load instance
                 ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
 
+                breakpoint()
                 #automaton = ri.choreography.to_nfa()
 
                 # 2. load the environment from the running instance blockchain configuration
@@ -1132,22 +951,45 @@ class CmdLoadInstance(CmdStart):
                     self.ui.set_env("ONCHAIN_ADDRESS", ri.blockchain_configuration.address)
                     self.ui.set_env("ONCHAIN_PRIVATE_KEY", ri.blockchain_configuration.private_key)
 
-                    self.setup_onchain_running_instance(ri, contract_address) # automaton, contract_address, ri.blockchain_configuration)
 
+
+                    log_file = self.ui.get_env("LOG_FILE", None)
+                    engine = ri.setup_onchain(conf, log_file=log_file)
+
+##                    self.setup_onchain_running_instance(ri, contract_address) # automaton, contract_address, ri.blockchain_configuration)
+##
                 else:
                     self.ui.set_env("ONCHAIN_URL", None)
                     self.ui.set_env("ONCHAIN_CHAIN_ID", None)
                     self.ui.set_env("ONCHAIN_ADDRESS", None)
                     self.ui.set_env("ONCHAIN_PRIVATE_KEY", None)
 
-                    self.setup_offchain_running_instance(ri) #, automaton)
 
-
-                # 3. call the setup_onchain/offchain_engine
-
-                # 4. set the running instance
+                    log_file = self.ui.get_env("LOG_FILE", None)
+                    engine = ri.setup_offchain(log_file=log_file)
+##                    self.setup_offchain_running_instance(ri) #, automaton)
+##
+##
+##                # 3. call the setup_onchain/offchain_engine
+##
+##                # 4. set the running instance
                 self.ui._model.set_object("ri", ri)
-                
+                if ri.choreography:
+                    self.ui._model.set_object("choreography", ri.choreography)
+
+                    nfa : NFA = ri.choreography.to_nfa(optimize=True)
+                    self.ui._model.set_object("nfa", nfa)
+                    engine.set_nfa(nfa)
+                elif ri.mpst:
+                    self.ui._model.set_object("mpst", ri.mpst)
+                        
+                assert engine is not None
+                enforcer = Enforcer(engine)
+                ri.set_enforcer(enforcer)
+
+
+
+
             except RunningInstance.DoesNotExist as e:
                 print(f"Cannot find running instance {ri_id}")
                  
@@ -1522,7 +1364,7 @@ class UI:
             "open": CmdOpenFile(self),
             "load_mpst"  : CmdLoadMPST(self), #self.cmd_load, # FS redundant but more familiar name
             "load_choreography"  : CmdLoadChoreography(self), #self.cmd_load, # FS redundant but more familiar name
-            "load_instance": CmdLoadInstance(self),
+            "load_instance": CmdLoadInstance(self), 
             "log" : CmdLogOnOff(self), # self.cmd_start,
             "start" : CmdStart(self), # self.cmd_start,
             "stop"  : CmdStop(self), #self.cmd_stop,
@@ -1626,7 +1468,7 @@ class UI:
 
     def get_env(self, key, default=None):
         #breakpoint()
-        value = self._env.get(key.upper(), default)
+        value = self._env.get(key.upper(), default) or default
 
         return self._expand(value)
 
@@ -1748,6 +1590,7 @@ class UI:
 
                 self.ri.append_input(event)
 
+                #breakpoint()
                 self._debug_log(f"\n** Process input: {event} ... **")
                 out = self._enforcer.process_input(event)
                 #self._stats = self._enforcer._engine.stats
@@ -1801,7 +1644,11 @@ def cli(*args, **kwargs):
                 if not userin:  
                     continue
                 ui.consume(userin)
-            except (EOFError, KeyboardInterrupt):
+            except (KeyboardInterrupt): 
+                # CTRL+C
+                continue
+            except (EOFError, ):
+                # CTRL+D
                 break
             except Exception as e:
                 traceback.print_exc()

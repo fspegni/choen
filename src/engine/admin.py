@@ -7,6 +7,7 @@ from django_object_actions import DjangoObjectActions, action
 from django import forms
 from django.core.exceptions import ValidationError
 from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOnChain, EngineOffChain
+from django.contrib.admin import SimpleListFilter
 
 class ConfigurationForm(forms.ModelForm):
 
@@ -28,41 +29,43 @@ class ConfigurationAdmin(admin.ModelAdmin):
 
     
 
-##class RunningInstanceForm(forms.ModelForm):
-##
-##    def clean(self, *args, **kwargs):
-##
-##        cleaned_data = super().clean()
-##
-##        if cleaned_data["engine_type"] == RunningInstance.EngineType.ON_CHAIN and not cleaned_data["blockchain_configuration"]:
-##            raise ValidationError("On-chain engine require a blockchain configuration")
-##
-##        return cleaned_data
-##
-##    class Meta:
-##        model = RunningInstance
-##        exclude = []
-##
+class IsOnChainFilter(SimpleListFilter):
+
+    title = "Is onchain"
+    parameter_name = "is_onchain"
+        
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", _("Yes")),
+            ("no", _("No"))
+        )
+
+    def queryset(self, request, queryset):
+
+        if self.value() == "yes":
+            return queryset.exclude(blockchain_configuration=None)
+        elif self.value() == "no":
+            return queryset.filter(blockchain_configuration=None)
+        else:
+            return queryset
 
 @admin.register(RunningInstance)
 class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 
-##    form = RunningInstanceForm
-
-#    list_display = [ "id", "label", "engine_type", "choreography", "running", ]
-    list_display = [ "id", "label", "choreography", "running", ]
-#    list_filter = [ "engine_type", "running", ]
-    list_filter = [ "blockchain_configuration", "running", ]
+    list_display = [ "id", "label", "choreography", "running", "is_onchain", "created_at", ]
+    list_filter = [ "blockchain_configuration", "running", IsOnChainFilter, "created_at", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
-#    fields = [ "label", "blockchain_configuration", "engine_type", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
     fields = [ "label", "blockchain_configuration", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
 
-    readonly_fields = [ "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", ]
+    readonly_fields = [ "blockchain_configuration", "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", ]
 
     change_actions = [ "action_start", "action_stop", ]
     changelist_actions = [ "action_start_all", "action_stop_all", ]
 
+    @admin.display(boolean=True, description="Is onchain")
+    def is_onchain(self, obj):
+        return obj.blockchain_configuration is not None
 
     @action(label=_("Start"), description=_("Start the current instance"))
     def action_start(self, request, obj):
@@ -121,10 +124,11 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
 
-    list_display = [ "label", "contract_address", "running_instance", "choreography" ]
-    search_fields = [ "label", "contract_address", ] #"running_instance__configuration__address", ]
+    list_display = [ "label", "contract_address", "running_instance", "choreography", "deployed_at" ]
+    search_fields = [ "label", "contract_address", "running_instance__configuration__address", ]
 
-    readonly_fields = [ "running_instance", "choreography", "bytecode_size" ]
+    list_filter = [ "label", "deployed_at" ] 
+    readonly_fields = [ "running_instance", "choreography", "contract_address", "bytecode_size", "deployed_at" ]
 
     def bytecode_size(self, obj: Contract):
         return obj.bytecode_size
@@ -138,9 +142,10 @@ class TransactionAdmin(admin.ModelAdmin):
 
 @admin.register(EngineOffChain)
 class EngineOffChain(admin.ModelAdmin):
-    list_display = [ "running_instance", "running_instance__choreography", "curr_states", "kb" ]
+    list_display = [ "running_instance", "running_instance__choreography", "curr_states", "kb", "created_at" ]
 
-    readonly_fields = ["rei",]
+    list_filter = [ "created_at", ]
+    readonly_fields = ["rei", "created_at" ]
 
     def rei(self, obj : EngineOffChain):
         return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None
@@ -149,9 +154,10 @@ class EngineOffChain(admin.ModelAdmin):
 @admin.register(EngineOnChain)
 class EngineOnChain(admin.ModelAdmin):
     
-    list_display = [ "running_instance", "running_instance__choreography", ]
+    list_display = [ "running_instance", "running_instance__choreography", "created_at", ]
 
-    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size" ]
+    list_filter = [ "created_at", "blockchain_configuration" ]
+    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size", "created_at" ]
 
     def rei(self, obj : EngineOnChain):
         return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None

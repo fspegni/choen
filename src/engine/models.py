@@ -4,6 +4,7 @@ from django.utils.translation import gettext as _
 from django.utils import timezone
 from eth_account import Account
 from web3 import Web3, HTTPProvider
+from web3.exceptions import Web3RPCError 
 #from web3.middleware import SignAndSendRawMiddlewareBuilder
 #from web3.middleware.signing import NonceManager
 
@@ -27,7 +28,6 @@ import traceback
 import requests
 from functools import wraps
 
-
 class Configuration(models.Model):
 
     label = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("label"))
@@ -41,6 +41,13 @@ class Configuration(models.Model):
         verbose_name = _("configuration")
         verbose_name_plural = _("configurations")
 
+    @property
+    def w3(self):
+        w3 = getattr(self, "_w3", None)
+        if not w3:
+            self._w3 = self.get_w3()
+
+        return self._w3
 
     def __str__(self):
         short_url = self.url if len(self.url) < 20 else self.url[:20] + "..."
@@ -65,13 +72,58 @@ class Configuration(models.Model):
 
         return w3
 
+    def _sendTransaction(self, transaction, callback=None):
+
+        #breakpoint()
+
+        # Send the transaction
+        #tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
+
+        tx_hash = None
+        retries = 3
+
+        #breakpoint()
+        while tx_hash is None and retries > 0:
+
+            try:
+
+                nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
+                transaction["nonce"] = nonce
+
+                # Sign the transaction
+                sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
+                
+                tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
+
+            except Web3RPCError as err:
+                retries = retries - 1
+                if str(err).contains("nonce too low"):
+                    print(f"Nonce too low. Try again. Details: {err} ...")
+                else:
+                    raise err
+
+        if not tx_hash:
+            raise Exception(f"Cannot sign transaction after several retries.")
+            
+        
+        # NB cannot sign the transaction explicitly, otherwise the nonce must be computed manually; this is
+        #    left to the middlewares (i.e. NonceManager and SignAndSendRawMiddleware)
+        #tx_hash = self.w3.eth.send_transaction(transaction)
+        
+        print(f"Transaction hash: {tx_hash.hex()}. Wait for validation ...")
+        # Wait for the transaction to be mined, and get the transaction receipt
+        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=600)
+        print(f"Transaction validated. Receipt: {tx_receipt}")
+
+        #breakpoint()
+        if callback:
+            callback(tx_hash, tx_receipt)
+
+        return tx_receipt
+
+
+
 class RunningInstance(models.Model):
-
-#    class EngineType(models.IntegerChoices):
-#        OFF_CHAIN = 0
-#        ON_CHAIN = 1
-
-#    engine_type = models.IntegerField(choices=EngineType.choices, default=EngineType.OFF_CHAIN, help_text=_("the on-chain engine uses the distributed ledger, while the off-chain engine uses only local data structures (mostly for testing purposes)"))
 
     blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
 
@@ -79,15 +131,11 @@ class RunningInstance(models.Model):
     choreography = models.ForeignKey(Choreography, null=True, blank=False, on_delete=models.DO_NOTHING)
     mpst = models.ForeignKey(MPST, null=True, blank=False, on_delete=models.DO_NOTHING)
     running = models.BooleanField(default=False)
-#    enforcer = PickledObjectField(blank=True, null=True) 
 
-    # off-chain engine fields
-
-    #input_events = models.TextField(null=True, blank=True)
-    #output_events = models.TextField(null=True, blank=True)
     input_events = models.JSONField(default=[], verbose_name=_("input events"))
     output_events = models.JSONField(default=[], verbose_name=_("output events"))
-    
+ 
+    created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the running instance has been created"))
 
     class Meta:
         verbose_name = _("running instance")
@@ -135,7 +183,7 @@ class RunningInstance(models.Model):
 #            self._execution_started = enforcer.engine.get_execution_started()
 #            self.execution_started = datetime.now() # FS this is true when a new enforcer has been deployed, it may be not true in case of an enforcer attached to a running smart contract
 
-    @property
+##    @property
 ##    def configuration(self):
 ##        # TODO rename field: blockchain_configuration -> configuration
 ##        return self.blockchain_configuration
@@ -186,173 +234,85 @@ class RunningInstance(models.Model):
         self._enforcer = None
         self._rei = None
 
-####    def _set_enforcer(self):
-####        from enforcer import Enforcer
-####
-####        if not self.choreography:
-####            raise Exception("Cannot set enforcer if a choreography is not attached to the current running instance")
-####
-####        automaton = self.choreography.to_nfa()
-####        #if self.engine_type == self.EngineType.OFF_CHAIN:
-####        if self.blockchain_configuration is None:
-####            #engine = EngineOffChain(automaton)    
-####            engine = EngineOffChain.create_engine(automaton)
-####        else:
-####
-####            def handle_transactions(tx_hash, tx_receipt):
-####
-####                #breakpoint()
-####        
-####                t = Transaction()
-####                t.tx_hash = tx_hash.hex()
-####                t.block_hash = tx_receipt["blockHash"].hex()  
-####                t.running_instance = self
-####                t.initiator_address = tx_receipt["from"]
-####                t.gas_used = tx_receipt["gasUsed"]
-####                t.contract_address = tx_receipt["contractAddress"]
-####                t.block_number = tx_receipt["blockNumber"]
-####                t.save()
-####       
-####            #breakpoint()
-#####            engine = EngineOnChain(automaton, self.blockchain_configuration.url, int(self.blockchain_configuration.chain_id), self.blockchain_configuration.address, self.blockchain_configuration.private_key, handle_transactions)
-####            engine = EngineOnChain.create_engine(automaton, self.blockchain_configuration, handle_transactions)
-####
-####            c_nfa = Contract.objects.filter(running_instance=self, label="nfa")
-####            c_enforcer = Contract.objects.filter(running_instance=self, label="enforcer")
-####
-####            breakpoint()
-####
-####            if len(c_nfa) > 0 and len(c_enforcer) > 0:
-####                engine.load_smart_contracts(c_nfa[0].contract_address, c_nfa[0].abi, c_enforcer[0].contract_address, c_enforcer[0].abi)
-####            else:
-####                engine.deploy_smart_contracts()    
-####                c_nfa = Contract.objects.create(label="nfa", running_instance=self, contract_address=engine.nfa_address, abi=engine.nfa_abi, bytecode=engine.nfa_bytecode)           
-####                c_enforcer = Contract.objects.create(label="enforcer", running_instance=self, contract_address=engine.enforcer_address, abi=engine.enforcer_abi, bytecode=engine.enforcer_bytecode)           
-####                engine.contract_nfa = c_nfa
-####                engine.contract_enforcer = c_nfa
-####                engine.save()
-####
-####        self._enforcer = Enforcer(engine)
-####
-##
-## FS try to make this DEPRECATED ; TODO finish implementation/testing
-##
-##    def save(self, *args, **kwargs):
-##
-##
-##        if self.engine_type == self.EngineType.ON_CHAIN and not self.blockchain_configuration:
-##            raise ValueError("On-chain engine require a valid configuration")
-##
-##        if self.engine_type == self.EngineType.ON_CHAIN and self._enforcer is not None:
-##
-##            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on save)...")
-##            old_engine = self.enforcer.engine
-##            #self.enforcer.engine = None # FS no setter -> exception
-##            self.enforcer.set_engine(None)
-##            super().save(*args, **kwargs)
-##            #self.enforcer.engine = old_engine # FS no setter -> exception
-##            self.enforcer.set_engine(old_engine)
-##        else:
-##            super().save(*args, **kwargs)
 
     def append_input(self, new_input):
-##        if not self.input_events:
-##            self.input_events = new_input.strip()
-##        else:
-##            self.input_events = self.input_events + " " + new_input.strip()
         if not self.input_events:
             self.input_events = []
 
-        #breakpoint()
         self.input_events.extend(re.split(r'[ ]+', new_input.strip()))
         self.save()
 
     def append_output(self, new_output):
-##        if not self.output_events:
-##            self.output_events = new_output.strip()
-##        else:
-##            self.output_events = self.output_events + " " + new_output.strip()
         if not self.output_events:
             self.output_events = []
 
         self.output_events.extend(re.split(r'[ ]+', str(new_output)))#.strip()))
         self.save()
 
-##    def attach(self, enforcer_contract_address):
-##
-##        raise Exception("TODO")
-##
-##        breakpoint()
-##
-##        if self.execution_ended:
-##            raise Exception("Cannot attach the running instance to a contract: it has already been executed")
-##        self.running = True
-##
-##        # 1. ensure the smart contract of the enforcer does not exist in the db
-##        c_enforcer = Contract.objects.filter(contract_address=enforcer_contract_address).first()
-##        if c_enforcer:
-##            raise Exception(f"The smart contract ({c_enforcer}) already exists in the database. Associated running instance: {c_enforcer.running_instance}")
-##
-##        # 2. prepare a new proxy to the smart contract for the enforcer and link it to the
-##        #    current working instance but do not save it (the running instance is not saved 
-##        #    yet) 
-##        c_enforcer = Contract()
-##        c_enforcer.label = "enforcer"
-##        c_enforcer.contract_address = enforcer_contract_address
-##        c_enforcer.running_instance = self
-##
-##        # 3. fetch the nfa contract address using the enforcer smart contract already deployed
-##        #    on the blockchain
-##        nfa_contract_address = self.w3.eth.contract(
-##                    address = enforcer_address,
-##                    abi = self.nfa_abi
-##                ).functions.nfaAddress().call()
-##
-##        # 4. ensure a smart contract for the nfa does not already exist in the database
-##        c_nfa = Contract.objects.filter(contract_address=nfa_contract_address).first()
-##        if c_nfa:
-##            raise Exception(f"The smart contract ({c_nfa}) already exists in the database. Associated running instance: {c_enforcer.running_instance}")
-##
-##        # 5. create a proxy for the smart contract running the nfa linked to the enforcer
-##        #    smart contract
-##        c_nfa = Contract()
-##        c_nfa.label = "nfa"
-##        c_nfa.contract_address = nfa_contract_address
-##        c_nfa.running_instance = self
-##
-##        # 6. save the current running instance (self) and the related smart contracts linked 
-##        #    to it
-##
-##        with transaction.atomic():
-##            self.save()
-##            c_enforcer.save()
-##            c_nfa.save()
-##
-##
-##    def start(self):
-##
-##        if self.execution_ended:
-##            raise Exception("Cannot start the running instance: it has already been executed")
-##        self.running = True
-##        self.execution_started = timezone.now()
-##
-##        self.save() # FS it was in the if-else branches, it has been here (refactoring)
-##
-##        #breakpoint()
-##
-#####        if self.engine_type == self.EngineType.ON_CHAIN and self._enforcer:
-#####    
-#####            print(f"WARNING: ON_CHAIN engine type detected; not saved on database (on start)...")
-#####            old_engine = self.enforcer.engine
-#####            #self.enforcer.engine = None
-#####            self.enforcer.set_engine(None)
-#####            #self.save()
-#####            #self.enforcer.engine = old_engine
-#####            self.enforcer.set_engine(old_engine)
-#####        #else:
-#####        #    self.save()
-#####
-##
+    def setup_onchain(self, blockchain_configuration : Configuration, **kwargs):
+
+        if not blockchain_configuration:
+            raise Exception("Expected non-null blockchain configuration")
+
+        engine_offchain = getattr(self, "engineoffchain", None)
+        engine_onchain = getattr(self, "engineonchain", None)
+
+        assert engine_offchain is None, "Cannot run setup_onchain on an off-chain engine"
+
+
+        self.blockchain_configuration = blockchain_configuration
+
+        self.save()
+
+        if engine_onchain:
+            contract_nfa = engine_onchain.contract_nfa
+            contract_enforcer = engine_onchain.contract_enforcer
+
+            engine_onchain.attach_smart_contracts(contract_nfa, contract_enforcer) # TODO test this
+
+        else:
+
+            engine_onchain = EngineOnChain.create_engine(self)
+            assert engine_onchain is not None
+    
+        log_file = kwargs.get("log_file", None) 
+        if log_file:
+            if not os.path.exists(log_file):
+                with open(log_file, "w", encoding="utf-8") as f:
+                    f.write("Run;Blockchain;Time;Transaction;Contract Address;Gas Used;Cost;Execution Time\n")
+
+            engine_onchain.set_log_file(log_file)
+
+
+        return engine
+    
+
+    def setup_offchain(self, **kwargs):
+
+        if self.pk is None:
+            raise Exception("This method can be invoked only after saving the instance a first time")
+
+        engine_offchain = getattr(self, "engineoffchain", None)
+        engine_onchain = getattr(self, "engineonchain", None)
+
+        assert engine_onchain is None, "Cannot run setup_onchain on an off-chain engine"
+
+        #breakpoint()
+        if not engine_offchain:
+    
+            engine_offchain = EngineOffChain.create_engine(self)
+    
+            assert engine_offchain is not None       
+    
+            log_file = kwargs.get("log_file", None) 
+            if log_file:
+                engine_offchain.set_log_file(log_file)
+
+        return engine_offchain
+
+    def start(self):
+        self.running = True
+        self.save()
 
     def stop(self):
         if not self.running:
@@ -368,14 +328,6 @@ class RunningInstance(models.Model):
 
 class Engine:
 
-##    def __init__(self, nfa : nfa.NFA):
-##
-##        assert nfa is not None, f"Expected not-null nfa to build an enforcer engine"
-##
-##        self._debug : bool = True
-##        self._nfa = nfa
-##        self._history = []
-##
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._nfa = None
@@ -393,14 +345,12 @@ class Engine:
     @property
     def nfa(self):
         return self._nfa
-#        raise Exception("This is an abstract method, you should implement it")
 
     def set_nfa(self, nfa):
         self._nfa = nfa
 
     @property
     def history(self):
-#        return self._history
         raise Exception("This is an abstract method, you should implement it")
 
 ##    def set_debug(self, debug: bool):
@@ -495,16 +445,18 @@ class Engine:
 
 
 
-class EngineOffChain(Engine,models.Model):
+class EngineOffChain(Engine, models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
     curr_states = models.JSONField(default=[], verbose_name=_("current states"))
-    history = models.JSONField(default=[], verbose_name=_("current states"))
+    history = models.JSONField(default=[], verbose_name=_("history"))
     buffer = models.JSONField(default={}, verbose_name=_("buffer"))
     kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
 
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+
+    created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
 #    def __init__(self, nfa : nfa.NFA):
     @staticmethod
@@ -597,6 +549,7 @@ class EngineOffChain(Engine,models.Model):
         #breakpoint()
         self._append_history(out, self.get_curr_states(), list(map(lambda i: f"{i[2]}:{i[0]}?{i[1]}({i[3]})" ,self.get_buffer_items())))
 
+        #breakpoint()
         self.save()
         return out
 
@@ -632,37 +585,7 @@ class EngineOffChain(Engine,models.Model):
         self.save()
         return out
 
-#
-#    @property
-#    def buffer(self) -> dict:
-#        return self._buffer
-
-#    @property
-#    def curr_states(self) -> str:
-#        return self._curr_states
-
     # UTILS
-##
-##    def _buffer_add(self, precondition, actor : str, message : str, knowledge):
-##
-##        # TODO what to do with precondition and knowledge?
-##        actor_buffer = self.buffer.get(actor, {})
-##        message_counter = actor_buffer.get(message, 0)
-##        actor_buffer[message] = message_counter + 1
-##        self.buffer[actor] = actor_buffer
-##
-##    def _buffer_remove(self, actor : str, message : str):
-##
-##        actor_buffer = self.buffer.get(actor, {})
-##        message_counter = actor_buffer.get(message, 0)
-##        assert message_counter >= 0
-##
-##        if message_counter <= 0:
-##            raise Exception(f"No message {message} to remove for actor {actor}")
-##        
-##        actor_buffer[message] = message_counter - 1
-##        self.buffer[actor] = actor_buffer
-##
 
     def _buffer_add(self, precondition, actor : str, message : str, knowledge):
 
@@ -691,26 +614,6 @@ class EngineOffChain(Engine,models.Model):
         raise Exception(f"No message {message} to remove for actor {actor} with given precondition and knowledge")
         
     
-##    def buffer_find_usable_event(self):
-##        found = None
-###        print("in _buffer_find_usable_message...")
-##
-###        print(f"Buffer: {self._buffer}")
-##        for actor, actor_buffer in self.buffer.items():
-###            print(f"Actor: {actor} - Actor buffer: {actor_buffer}")
-##            for message, counter in actor_buffer.items():
-###                print(f"Message: {message} - Counter: {counter}")
-##                if counter > 0:
-##                    event = f"{actor}{message}"
-##                    for s in self.curr_states:
-##                        if self._nfa.transitions_from(s, event):
-##                            #found = (actor, message)
-##                            #return found
-##                            return None, event, None # TODO at the moment we do not return any precondition nor knowledge
-##        
-##        raise Enforcer.NoMessageFound("No usable message found")
-##
-
     def buffer_find_usable_event(self):
 
         from enforcer import Enforcer
@@ -796,15 +699,6 @@ class EngineOffChain(Engine,models.Model):
         
         res = (s in self.curr_states)
         return res
-##
-##    def get_buffer_items(self):
-##        items = []
-##
-##        for actor,actor_buffer in self.buffer.items():
-##            for message,counter in actor_buffer.items():
-##                for i in range(counter):
-##                    items.append((actor, message))
-##        return items
 
     def get_buffer_items(self):
         items = []
@@ -862,20 +756,6 @@ class EngineOffChain(Engine,models.Model):
         #return m is not None
         return False #True
 
-##    def condition_rule_send_buffered(self, precondition, event):
-##
-##        m = re.match("^[^!?]+\![^!?]+$", event) 
-##        if not m:
-##            return False
-##
-##        if not self.check_sat(precondition):
-##            return False
-##
-##        # TODO check (FS)
-##
-##        self._debug_log(f"(* Condition rule send buffered: {precondition} -> {event} *)")
-##        return True
-##
 
     def condition_rule_receive_now(self, precondition, event):
 
@@ -913,21 +793,6 @@ class EngineOffChain(Engine,models.Model):
                 return True
 
         return False #True
-##
-##    def condition_rule_receive_buffered(self, precondition, event):
-##
-##        m = re.match("^[^!?]+\?[^!?]+$", event) 
-##        if not m:
-##            return False
-##
-##        if not self.check_sat(precondition):
-##            return False
-##
-##        # TODO check (FS)
-##
-##        self._debug_log(f"(* Condition rule receive buffered: {precondition} -> {event} *)")
-##        return True
-##
 
 
     # RULES below
@@ -1047,11 +912,12 @@ class EngineOffChain(Engine,models.Model):
 class Contract(models.Model):
 
     contract_address =models.CharField(max_length=100, null=True, blank=False, verbose_name=_("contract address"))
-    #running_instance = models.ForeignKey(RunningInstance, null=True, blank=False, on_delete=models.SET_NULL, verbose_name=_("running instance"))
+#    running_instance = models.ForeignKey(RunningInstance, null=True, blank=False, on_delete=models.SET_NULL, verbose_name=_("running instance"))
+    blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
     label = models.CharField(max_length=100, verbose_name=_("label"))
     abi = models.JSONField(null=True, blank=False, verbose_name=_("abi"))
     bytecode = models.TextField(null=True, blank=False, verbose_name=_("bytecode"))
-   
+    deployed_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the contract has been deployed"))
 
     class Meta:
         verbose_name = _("contract")
@@ -1059,7 +925,27 @@ class Contract(models.Model):
         unique_together = (("contract_address",),)# ("label", "running_instance"))
 
     def __str__(self):
-        return f"{self.contract_address}/{self.label}/{self.id}"
+        return f"{self.label} : {self.contract_address}/{self.label}/{self.id}"
+
+
+    def create_w3_contract(self):
+ 
+        assert self.blockchain_configuration is not None, "Expected non-empty blockchain Configuration"
+        assert self.abi is not None, "Missing ABI"
+        assert self.bytecode is not None, "Missing bytecode"
+
+        return self.blockchain_configuration.w3.eth.contract(abi=self.abi, bytecode=self.bytecode)
+
+
+    def attach_w3_contract(self):
+ 
+        assert self.blockchain_configuration is not None, "Expected non-empty blockchain Configuration"
+        assert self.abi is not None, "Missing ABI"
+        #assert self.bytecode is not None, "Missing bytecode"
+        assert self.contract_address is not None, "Missing contract address"
+
+        #return self.blockchain_configuration.w3.eth.contract(abi=self.abi, bytecode=self.bytecode)
+        return self.blockchain_configuration.w3.eth.contract(address=self.contract_address, abi=self.abi)
 
     @property
     def running_instance(self):
@@ -1073,6 +959,146 @@ class Contract(models.Model):
     def bytecode_size(self):
         return len(self.bytecode) if self.bytecode else 0
 
+
+    def deploy(self, arguments=None, callback=None): #, contract_name : str, libraries=None, arguments=None):
+        
+        assert self.abi is not None, "Missing abi, cannot deploy"
+        assert self.bytecode is not None, "Missing bytecode, cannot deploy"
+
+        assert self.blockchain_configuration is not None, "Expected non-empty blockchain configuration"
+
+        bc = self.blockchain_configuration    
+        #abi = self.get_abi(contract_name)
+
+        #libraries = libraries or {}
+        #bytecode = self.get_bytecode(contract_name, **libraries)
+
+        w3 = bc.get_w3()
+        w3_contract = self.create_w3_contract()
+        #contract = w3.eth.contract(abi=self.abi, bytecode=self.bytecode)
+
+        gas_price = w3.eth.gas_price
+        print(f"Gas price: {gas_price}")
+
+        block_gas_limit = w3.eth.get_block("latest")["gasLimit"]
+        print(f"Block Gas Limit: {block_gas_limit}")
+
+        balance = w3.eth.get_balance(bc.address)
+        balance_eth = w3.from_wei(balance, 'ether')
+        print(f"Account: {bc.address} . Balance (before deployment): {balance_eth} ETH")
+
+        start_time = time.time()
+        # build transaction
+        #if (address == None):
+        tx = {
+            "chainId": w3.eth.chain_id, #self.chain_id,
+            #"gasPrice": gas_price, #self.w3.eth.gas_price,
+            "gas": int(0.9 * block_gas_limit), #60000000,
+            "from": bc.address,
+            "maxFeePerGas": int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER),
+            "maxPriorityFeePerGas": w3.eth.max_priority_fee,
+
+        }
+        print(f"Transaction parameters: {tx}")
+        #breakpoint()
+        if (arguments == None):
+#            transaction = contract.constructor().buildTransaction(
+            transaction = w3_contract.constructor().build_transaction(tx)
+        else:
+#            transaction = contract.constructor(address).buildTransaction(
+#            transaction = contract.constructor(address).build_transaction(
+            transaction = w3_contract.constructor(*arguments).build_transaction(tx)
+
+        #breakpoint()
+        gas = w3.eth.estimate_gas(transaction)
+        print(f"Estimated gas: {gas}.")
+#        transaction.update({
+#            "maxFeePerGas": int(gas_prices * settings.GAS_MAX_FEE_MULTIPLIER),
+#            "maxPriorityFeePerGas": int(gas_prices * settings.GAS_PRIORITY_FEE_MULTIPLIER),
+#            #"gas": gas * settings.GAS_MULTIPLIER    
+#        })
+
+        transaction.update({"gas": int(gas * settings.GAS_MULTIPLIER)})
+
+        transaction_estimate_cost = round(w3.from_wei(gas * gas_price, "ether"), 6)
+
+        print(f"GAS price (estimate): {gas_price} wei")
+        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH")
+
+        build_time = time.time() - start_time
+        print(f"\nDeploying contract {self.label} (bytecode: {len(self.bytecode)} bytes) ...")
+        tx_receipt = bc._sendTransaction(transaction, callback=callback)
+
+        gas_price_actual = tx_receipt.effectiveGasPrice
+        transaction_actual_cost = round(w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
+
+        print(f"GAS price (actual): {gas_price_actual} wei")
+        print(f"Transaction cost (actual): {transaction_actual_cost} ether")
+
+        balance = w3.eth.get_balance(bc.address)
+        balance_eth = w3.from_wei(balance, 'ether')
+        print(f"Account: {bc.address} . Balance (after deployment): {balance_eth} ETH")
+
+        execution_time = time.time() - start_time
+
+        #self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, transaction_actual_cost, round(execution_time,3), f"Contract Creation")
+        #self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
+        print(f"Done! Contract {self.label} deployed to {tx_receipt.contractAddress}\n")
+
+        self.contract_address = tx_receipt.contractAddress
+        self.save()
+
+        return w3_contract
+        #return tx_receipt.contractAddress, contract
+
+    def transact(self, function_name, function_args=None):
+
+        bc = self.blockchain_configuration
+        w3_contract = self.attach_w3_contract()
+        the_function = getattr(w3_contract.functions, function_name)
+        if not the_function:
+            raise ValueError(f"Cannot find function '{function_name}'")
+
+        function_args = function_args or []
+        transaction = the_function(*function_args).build_transaction({
+                        "chainId": self.w3.eth.chain_id, #self.chain_id,
+                        "from": bc.address,
+                        "gasPrice": self.w3.eth.gas_price,
+                    })
+        build_time = time.time() - start_time
+
+        print(f"\nProcess check ...")
+        tx_receipt = self.blockchain_configuration._sendTransaction(transaction) #, callback=self._transaction_callback)
+        execution_time = time.time() - start_time
+
+        return None # TODO refactor this, use events to get the intended output
+
+
+    def invoke(self, function_name, function_args=None):
+
+        #breakpoint()
+        try:
+            w3_contract = self.attach_w3_contract()#self.blockchain_configuration)
+            
+            if not hasattr(w3_contract.functions, function_name):
+                raise Exception(f"Smart contract does not have the specified function: {function_name}")
+
+            the_function = getattr(w3_contract.functions, function_name)
+            function_args = function_args or []
+            res = the_function(*function_args).call()
+            return res
+
+        except Exception as err:
+            #breakpoint()
+            raise Exception(f"Error invoking smart contract function: {function_name}. Details: {err}")
+            #print(f"Error invoking Enforcer contract function: {function_name}")
+            #traceback.print_exc()
+            #return None
+
+
+
+
+
 class EngineOnChain(Engine,models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
@@ -1082,6 +1108,9 @@ class EngineOnChain(Engine,models.Model):
     contract_enforcer = models.OneToOneField(Contract, null=True, on_delete=models.SET_NULL, verbose_name=_("contract enforcer"), related_name="enforcer_engine")
 
     stats = models.JSONField(default = [])
+    created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
+
+ 
 
 #    def __init__(self, nfa : nfa.NFA, chain_url : str, chain_id : int, wallet_address : str, private_key : str, transaction_callback = None, deploy_callback = None):
 
@@ -1092,6 +1121,9 @@ class EngineOnChain(Engine,models.Model):
 
         self._debug : bool = True
         self._runID = uuid.uuid4()
+
+    def __str__(self):
+        return f"{self.created_at} : {self.running_instance}"
 
     @property
     def contract_nfa_size(self):
@@ -1110,22 +1142,8 @@ class EngineOnChain(Engine,models.Model):
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
         nfa = ri.choreography.to_nfa(optimize=True)
-        #nfa.remove_epsilon_transitions()
-        #nfa.remove_unreachable_states()
 
         blockchain_configuration = ri.blockchain_configuration
-#        super().__init__(nfa)
-
-##        assert wallet_address is not None, "You must configure your wallet address before continuing"
-##        assert private_key is not None, "You must configure your wallet private key before continuing"
-##        assert chain_url is not None, "You must configure your blockchain URL before continuing"
-##        assert chain_id is not None, "You must configure your blockchain chain ID before continuing"
-##
-##        self._chain_url = chain_url 
-##        self._chain_id = chain_id
-##        self._wallet_address = wallet_address
-##        self._private_key = private_key
-##
 
         e = EngineOnChain()
         e._nfa = nfa
@@ -1142,7 +1160,6 @@ class EngineOnChain(Engine,models.Model):
         account = blockchain_configuration.get_account()
         balance = e._w3.eth.get_balance(account.address) 
         print(f"Account: {account.address} . Balance: {e.w3.from_wei(balance, 'ether')} ETH")
-        #e._stats = []
 
         #breakpoint()
         e._transaction_callback = transaction_callback
@@ -1154,84 +1171,49 @@ class EngineOnChain(Engine,models.Model):
         return e
 
 
-##    def load_smart_contracts(self, nfa_address, nfa_abi, enforcer_address, enforcer_abi):
-##
-##        self._nfa_abi = nfa_abi
-##        self._nfa_address = nfa_address
-##        self._enforcer_abi = enforcer_abi
-##        self._enforcer_address = enforcer_address
-##
-
-    def deploy_smart_contracts(self):
+    def deploy_smart_contracts(self): #, ri:RunningInstance=None):
 
         if not self._nfa:
             raise Exception("No NFA has been set for this purpose")
 
-        scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
-        compiled_sol = scg.createSmartContract().compile(debug=self._debug)
-        
-        #breakpoint()
-        self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "_NFA")
-        
-        self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
-
-        len_enforcer = len(self._enforcer_bytecode)
-        #len_nfa  = len(self._nfa_bytecode)
-
-        #print(f"NFA contract: {len_nfa} bytes")
-        print(f"Enforcer contract: {len_enforcer} bytes")
-        #print(f"Total bytecode to deploy: {len_nfa + len_enforcer} bytes")
-
+        if not self.blockchain_configuration:
+            raise Exception("No blockchain configuration has been set. Cannot continue")
     
-        #breakpoint()
+        scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
+        sc : SmartContract = scg.createSmartContract()
+        sc.compile(debug=self._debug)
+    
+        # 0. deploy the Utils library
+        sc_utils_abi = sc.get_abi("Utils")
+        sc_utils_bytecode = sc.get_bytecode("Utils")
+        sc_utils = Contract.objects.create(abi=sc_utils_abi, bytecode=sc_utils_bytecode, label="Utils", blockchain_configuration=self.blockchain_configuration) # TODO finish here
+        sc_utils.deploy()
+
+        print(f"Utils library deployed ({sc_utils.contract_address}) ...")    
+
         # 1. deploy NFA contracta
-        # TODO skip, no need to deploy NFA contract ...
-        #self._nfa_address = self.deployContractNFA(self._nfa_abi, self._nfa_bytecode)
-        #print(f"NFA contract deployed ...")    
+        sc_nfa_abi = sc.get_abi("_NFA")
+        sc_nfa_bytecode = sc.get_bytecode("_NFA", { "Utils": sc_utils.contract_address })
+        sc_nfa = Contract.objects.create(abi=sc_nfa_abi, bytecode=sc_nfa_bytecode, label="_NFA", blockchain_configuration=self.blockchain_configuration)
+        sc_nfa.deploy() #self.blockchain_configuration)
 
-        # 2. init NFA transitions    
-        #self.w3.eth.contract(
-        #        address = self._nfa_address,
-        #        abi = self._nfa_abi
-        #    ).functions.initTransitions().call()
-        #print(f"NFA transitions initialized ...")
+        self._nfa_address = sc_nfa.contract_address
+        print(f"NFA contract deployed ({sc_nfa.contract_address}) ...")    
 
-        # 3. deploy Enforcer contract (passing address of NFA contract)
-        #self._enforcer_address = self.deployContractEnforcer(self._enforcer_abi, self._enforcer_bytecode) #, self._nfa_address)
-        self._enforcer_address = self.__deployContract("Enforcer", self._enforcer_abi, self._enforcer_bytecode) #, self._nfa_address)
-
-        self._enforcer_contract = self.w3.eth.contract(
-                address = self._enforcer_address,
-                abi = self._enforcer_abi
-            )
-
-        print(f"Enforcer contract deployed ...")
-
-        self._nfa_address = self._invoke_enforcer_function("getNFA")
+        # 2. deploy Enforcer contracta
+        sc_enforcer_abi = sc.get_abi("Enforcer")
+        sc_enforcer_bytecode = sc.get_bytecode("Enforcer", { "Utils": sc_utils.contract_address })
+        sc_enforcer = Contract.objects.create(abi=sc_enforcer_abi, bytecode=sc_enforcer_bytecode, label="Enforcer", blockchain_configuration=self.blockchain_configuration)
+        sc_enforcer.deploy([ sc_nfa.contract_address ])
+        print(f"Enforcer contract deployed ({sc_enforcer.contract_address}) ...")    
 
 
-        self._nfa_contract = self.w3.eth.contract(
-                address = self._nfa_address,
-                abi = self._nfa_abi
-            )
+        self.contract_nfa =sc_nfa
+        self.contract_enforcer = sc_enforcer
+        self.save()
 
-        print(f"NFA address fetched ...")
+    def attach_smart_contracts(self, sc_enforcer_address): #, ri=None):
 
-#        breakpoint()
-
-    def attach_smart_contracts(self, sc_enforcer_address):
-
-        # TODO test and review this code -FS
-
-        #if not self._nfa:
-        #    raise Exception("No NFA has been set for this purpose")
-
-        # compile the smart contracts to get the abi and bytecode for each
-        #scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
-        #compiled_sol = scg.createSmartContract().compile(self._debug)
-        
-        #self._nfa_abi, self._nfa_bytecode = self.__get_abi_and_bytecode(compiled_sol, "NFA")
-        #self._enforcer_abi, self._enforcer_bytecode = self.__get_abi_and_bytecode(compiled_sol, "Enforcer")
         self._nfa_abi = self.contract_nfa.abi
         self._nfa_bytecode = self.contract_nfa.bytecode
         self._enforcer_abi = self.contract_enforcer.abi
@@ -1284,37 +1266,15 @@ class EngineOnChain(Engine,models.Model):
         return 1 + sorted(self._nfa.messages).index(value)
 
     def get_execution_started(self):
-##        start_time = self.w3.eth.contract(
-##                address = self.enforcer_address,
-##                abi = self.enforcer_abi
-##            ).functions.getStartTime().call()
-##        return datetime.fromtimestamp(start_time)
-        start_time = self._invoke_enforcer_function("getStartTime")
-        
+        assert self.contract_enforcer is not None
+        start_time = self.contract_enforcer.invoke("getStartTime")
         return datetime.fromtimestamp(start_time)
 
 
     def get_execution_ended(self):
-##        try:
-##            enforcer_address = self.enforcer_address
-##            enforcer_abi = self.enforcer_abi
-##
-##            if enforcer_address and enforcer_abi:
-##                end_time = self.w3.eth.contract(
-##                    address = enforcer_address,
-##                    abi = enforcer_abi
-##                ).functions.getEndTime().call()    
-##        
-##                return datetime.fromtimestamp(end_time) if end_time else None
-##            else:
-##                print(f"Enforcer contract not ready for function invokation")
-##                return None
-##        except Exception:
-##            print(f"Error invoking smart contract function:")
-##            traceback.print_exc()
-##            return None
+        assert self.contract_enforcer is not None
+        end_time = self.contract_enforcer.invoke("getEndTime")
 
-        end_time = self._invoke_enforcer_function("getEndTime")
         return datetime.fromtimestamp(end_time) if end_time else None
 
     @property
@@ -1325,6 +1285,7 @@ class EngineOnChain(Engine,models.Model):
 
         return self._w3
     
+
     @property
     def chain_id(self) -> int:
         return self.blockchain_configuration.chain_id if self.blockchain_configuration else None
@@ -1365,14 +1326,6 @@ class EngineOnChain(Engine,models.Model):
     def enforcer_address(self) -> str:
         return self.contract_enforcer.contract_address if self.contract_enforcer else None
 
-    def __get_abi_and_bytecode(self, compiled_sol, contract : str):
-        #get bytecode
-        bytecode = compiled_sol["contracts"]["smart_contract.sol"][contract]["evm"]["bytecode"]["object"]
-        
-        #get abi
-        abi = json.loads(compiled_sol["contracts"]["smart_contract.sol"][contract]["metadata"])["output"]["abi"]
-
-        return abi, bytecode
 
     def __log(self, contractAddress, gasUsed, cost, executionTime, type = None):
         if self.log_file:
@@ -1385,241 +1338,63 @@ class EngineOnChain(Engine,models.Model):
         #breakpoint()
         self.stats.append([type, contractAddress, gasUsed, float(cost), executionTime])
     
-    def __sendTransaction(self, transaction):
-
-        #breakpoint()
-
-        # Send the transaction
-        #tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.rawTransaction)
-
-        tx_hash = None
-        retries = 3
-
-        #breakpoint()
-        while tx_hash is None and retries > 0:
-
-            try:
-
-                nonce = self.w3.eth.get_transaction_count(self.address, "pending") # FS added pending, trying to solve the "nonce too low" problem
-                transaction["nonce"] = nonce
-
-                # Sign the transaction
-                sign_transaction = self.w3.eth.account.sign_transaction(transaction, private_key = self.private_key)
-                
-                tx_hash = self.w3.eth.send_raw_transaction(sign_transaction.raw_transaction)
-
-            except web3.exceptions.Web3RPCError as err:
-                retries = retries - 1
-                if str(err).contains("nonce too low"):
-                    print(f"Nonce too low. Try again. Details: {err} ...")
-                else:
-                    raise err
-
-        if not tx_hash:
-            raise Exception(f"Cannot sign transaction after several retries.")
-            
-        
-        # NB cannot sign the transaction explicitly, otherwise the nonce must be computed manually; this is
-        #    left to the middlewares (i.e. NonceManager and SignAndSendRawMiddleware)
-        #tx_hash = self.w3.eth.send_transaction(transaction)
-        
-        print(f"Transaction hash: {tx_hash.hex()}. Wait for validation ...")
-        # Wait for the transaction to be mined, and get the transaction receipt
-        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=600)
-        print(f"Transaction validated. Receipt: {tx_receipt}")
-
-        #breakpoint()
-        if self._transaction_callback:
-            self._transaction_callback(tx_hash, tx_receipt)
-
-        return tx_receipt
-
-    def __deployContract(self, contract_name : str, abi, bytecode, arguments = None): #address = None):
-        #create the contract
-        contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
-
-        gas_price = self.w3.eth.gas_price
-        print(f"Gas price: {gas_price}")
-
-        block_gas_limit = self.w3.eth.get_block("latest")["gasLimit"]
-        print(f"Block Gas Limit: {block_gas_limit}")
-
-        balance = self.w3.eth.get_balance(self.address)
-        balance_eth = self.w3.from_wei(balance, 'ether')
-        print(f"Account: {self.address} . Balance (before deployment): {balance_eth} ETH")
-
-        start_time = time.time()
-        # build transaction
-        #if (address == None):
-        tx = {
-            "chainId": self.w3.eth.chain_id, #self.chain_id,
-            #"gasPrice": gas_price, #self.w3.eth.gas_price,
-            "gas": int(0.9 * block_gas_limit), #60000000,
-            "from": self.address,
-            "maxFeePerGas": int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER),
-            "maxPriorityFeePerGas": self.w3.eth.max_priority_fee,
-
-        }
-        print(f"Transaction parameters: {tx}")
-        #breakpoint()
-        if (arguments == None):
-#            transaction = contract.constructor().buildTransaction(
-            transaction = contract.constructor().build_transaction(tx)
-        else:
-#            transaction = contract.constructor(address).buildTransaction(
-#            transaction = contract.constructor(address).build_transaction(
-            transaction = contract.constructor(*arguments).build_transaction(tx)
-
-        #breakpoint()
-        gas = self.w3.eth.estimate_gas(transaction)
-        print(f"Estimated gas: {gas}.")
-#        transaction.update({
-#            "maxFeePerGas": int(gas_prices * settings.GAS_MAX_FEE_MULTIPLIER),
-#            "maxPriorityFeePerGas": int(gas_prices * settings.GAS_PRIORITY_FEE_MULTIPLIER),
-#            #"gas": gas * settings.GAS_MULTIPLIER    
-#        })
-
-        transaction.update({"gas": int(gas * settings.GAS_MULTIPLIER)})
-
-        transaction_estimate_cost = round(self.w3.from_wei(gas * gas_price, "ether"), 6)
-
-        print(f"GAS price (estimate): {gas_price} wei")
-        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH")
-
-        build_time = time.time() - start_time
-        self._debug_log(f"\nDeploying contract {contract_name} (bytecode: {len(bytecode)} bytes) ...")
-        tx_receipt = self.__sendTransaction(transaction)
-
-        gas_price_actual = tx_receipt.effectiveGasPrice
-        transaction_actual_cost = round(self.w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
-
-        print(f"GAS price (actual): {gas_price_actual} wei")
-        print(f"Transaction cost (actual): {transaction_actual_cost} ether")
-
-        balance = self.w3.eth.get_balance(self.address)
-        balance_eth = self.w3.from_wei(balance, 'ether')
-        print(f"Account: {self.address} . Balance (after deployment): {balance_eth} ETH")
-
-        execution_time = time.time() - start_time
-
-        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, transaction_actual_cost, round(execution_time,3), f"Contract Creation")
-        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
-        self._debug_log(f"Done! Contract deployed to {tx_receipt.contractAddress}\n")
-        return tx_receipt.contractAddress
-##
-## stale code -FS
-## 
-##    def deployContractNFA(self, abi, bytecode):
-##        return self.__deployContract("_NFA", abi, bytecode)
-##    
-##    def deployContractEnforcer(self, abi, bytecode): #, nfa_address : str):
-##        return self.__deployContract("Enforcer", abi, bytecode) #, arguments=(nfa_address,))
-##
 
     @property
     def buffer(self):
         return self.get_buffer_items()
 
-    def _invoke_contract_function(self, contract, function_name, function_args=None):
-
-        #breakpoint()
-        try:
-
-            if not contract:
-                raise Exception(f"No contract specified")
-
-            if not hasattr(contract.functions, function_name):
-                raise Exception(f"Smart contract does not have the specified function: {function_name}")
-
-            the_function = getattr(contract.functions, function_name)
-            function_args = function_args or []
-            res = the_function(*function_args).call()
-            return res
-
-        except Exception as err:
-            #breakpoint()
-            raise Exception(f"Error invoking smart contract function: {function_name}. Details: {err}")
-            #print(f"Error invoking Enforcer contract function: {function_name}")
-            #traceback.print_exc()
-            #return None
-
-
-
-    def _invoke_enforcer_function(self, function_name, function_args=None):
-        if not self._enforcer_contract:
-            raise Exception(f"No enforcer contract defined. Not ready for this method")
-        return self._invoke_contract_function(self._enforcer_contract, function_name, function_args)
-
-    def _invoke_nfa_function(self, function_name, function_args=None):
-        if not self._nfa_contract:
-            raise Exception(f"No NFA contract defined. Not ready for this method")
-
-        return self._invoke_contract_function(self._nfa_contract, function_name, function_args)
-            
-
     # INTERFACE methods
 
     def ended(self):
-        return self._invoke_nfa_function("isEnded")
+        assert self.contract_nfa is not None
+        return self.contract_nfa.invoke("isEnded")
 
     def get_all_states(self):
-        #return self._invoke_nfa_function("getStates")
-        return self._invoke_enforcer_function("getNFAStates")
+        assert self.contract_enforcer is not None
+        return self.contract_enforcer.invoke("getNFAStates")
 
     def get_curr_states(self):
-        #return self._invoke_nfa_function("getCurrentStates")
-        return self._invoke_enforcer_function("getNFACurrentStates")
+
+        assert self.contract_enforcer is not None
+        self.contract_enforcer.invoke("getNFACurrentStates")
 
     def get_transitions(self):
         return self._nfa.transitions # TODO FS
 
     def is_state_final(self, s):
-
+        assert self.contract_nfa is not None
         state_encoded = self._encode_state(s)
-        return self._invoke_nfa_function("isFinal", [state_encoded])
+        return self.contract_nfa.invoke("isFinal", [state_encoded])
 
     def is_state_initial(self, s):  
 
+        assert self.contract_nfa is not None
         state_encoded = self._encode_state(s)
-        return self._invoke_nfa_function("isInitial", [state_encoded])
+        return self.contract_nfa.invoke("isInitial", [state_encoded])
 
     def is_state_current(self, s):
     
+        assert self.contract_nfa is not None
         state_encoded = self._encode_state(s)
-
-        return self._invoke_nfa_function("isCurrent", [state_encoded])
+        return self.contract_nfa.invoke("isCurrent", [state_encoded])
 
     def get_buffer_items(self):
-##        # TODO refactor this code to use self._invoke_enforcer_function ...
-##        enforcer = self.w3.eth.contract(
-##                address = self.enforcer_address,
-##                abi = self.enforcer_abi
-##            )
-##
-##        actors = enforcer.functions.getActors().call()
-##
-##        messages = enforcer.functions.getMessages().call()
-##
-##        items = []
-##
-##        for actor in actors:
-##            for message in messages:
-##                # TODO this code should be fixed; the buffer does not contain a counter, anymore
-##                counter = enforcer.functions.get_buffer_item(actor, message).call()
-##                for i in range(counter):
-##                    items.append((actor, message))
-##        return items
-        return self._invoke_enforcer_function("getBuffer")
+        assert self.contract_enforcer is not None
+        self.contract_enforcer.invoke("getBuffer")
 
     def get_kb(self):
-        return self._invoke_enforcer_function("getKB")
+
+        assert self.contract_enforcer is not None
+        self.contract_enforcer.invoke("getKB")
 
 
     #PROCESSORS
 
     def process_input(self, precondition, event, knowledge):
 
-        if not self._enforcer_contract:
+        # TODO this should be refactored
+        #if not self._enforcer_contract:
+        if not self.contract_enforcer:
             raise Exception(f"No enforcer contract defined. Not ready for this method")
 
         start_time = time.time()
@@ -1637,32 +1412,8 @@ class EngineOnChain(Engine,models.Model):
             self._debug_log(f"Symbol not recognized: {event}")
             return None
 
-#        transaction = self._enforcer_contract.functions.process_input(precondition or "", event, knowledge or []).build_transaction({
-        transaction = self._enforcer_contract.functions.process_input(agent, action, message).build_transaction({
-                        "chainId": self.w3.eth.chain_id, #self.chain_id,
-                        "from": self.address,
-                        "gasPrice": self.w3.eth.gas_price,
-                    })
+        out = self.contract_enforcer.transact("process_input", [ [], agent, action, message, [] ]) # TODO empty precondition, and empty knowledge at the moment
         build_time = time.time() - start_time
-
-        #event = f"{actor}{action}{message}"
-        #if precondition:
-        #    event = f"{precondition}:{event}"
-        #if knowledge:
-        #    event = f"{event}({knowledge})"
-
-        self._debug_log(f"\nProcess input {precondition}:{event}({knowledge}) ...")
-        tx_receipt = self.__sendTransaction(transaction)
-        execution_time = time.time() - start_time
-        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
-        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3), f"Process input: {event}")
-#        return enforcer.events.outputEvent().processReceipt(tx_receipt)
-        logs = self._enforcer_contract.events.outputEvent().process_receipt(tx_receipt)
-
-        self._debug_log(logs[0].args.debug)
-        #breakpoint()
-        out = logs[0].args.messageOut
-        out = None if out == "None" else out
 
         self.save()
         return out
@@ -1670,32 +1421,36 @@ class EngineOnChain(Engine,models.Model):
 
     def process_check(self):
 
-        if not self._enforcer_contract:
+        #if not self._enforcer_contract:
+        if not contract_enforcer:
             raise Exception(f"No enforcer contract defined. Not ready for this method")
 
         start_time = time.time()
 #        transaction = enforcer.functions.process_check().buildTransaction({
-        transaction = self._enforcer_contract.functions.process_check().build_transaction({
-                        "chainId": self.w3.eth.chain_id, #self.chain_id,
-                        "from": self.address,
-                        "gasPrice": self.w3.eth.gas_price,
-                    })
-        build_time = time.time() - start_time
 
-        self._debug_log(f"\nProcess check ...")
-        tx_receipt = self.__sendTransaction(transaction)
-        execution_time = time.time() - start_time
-        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-        logs = self._enforcer_contract.events.outputEvent().process_receipt(tx_receipt)
+        out = self.contract_enforcer.transact("process_check")
 
-        if len(logs) > 0:
-            self._debug_log(logs[0].args.debug)
-            out = logs[0].args.messageOut
-            out = None if out == "None" else out
-        else:
-            out = None
-
+##        transaction = self._enforcer_contract.functions.process_check().build_transaction({
+##                        "chainId": self.w3.eth.chain_id, #self.chain_id,
+##                        "from": self.address,
+##                        "gasPrice": self.w3.eth.gas_price,
+##                    })
+##        build_time = time.time() - start_time
+##
+##        self._debug_log(f"\nProcess check ...")
+##        tx_receipt = self.blockchain_configuration._sendTransaction(transaction, callback=self._transaction_callback)
+##        execution_time = time.time() - start_time
+##        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
+##        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
+##        logs = self._enforcer_contract.events.outputEvent().process_receipt(tx_receipt)
+##
+##        if len(logs) > 0:
+##            self._debug_log(logs[0].args.debug)
+##            out = logs[0].args.messageOut
+##            out = None if out == "None" else out
+##        else:
+##            out = None
+##
         self.save()
         return out
 

@@ -8,7 +8,7 @@ import json
 import shutil
 import datetime
 import requests
-
+import re
 
 class Compileable(object):
 
@@ -130,6 +130,24 @@ class Function(Compileable):
 }}
 """
 
+
+class Library(Compileable):
+
+    def __init__(self, name : str):
+        self._name : str = name
+        self._functions : list = []
+
+    def add_function(self, f : Function):
+            
+        self._functions.append(f)
+
+    def compile(self):
+        function_bodies = "\n".join(map(lambda f: f.compile() + "\n" , self._functions))
+        return f"""library {self._name} {{
+            {function_bodies}
+        }}
+        """
+    
 
 class Constructor(Function):
 
@@ -370,6 +388,7 @@ class SmartContract(Compileable):
     def __init__(self, version: str):
         self._version = version
         self._imports = []
+        #self._libraries : list = []
         self._functions : list = []
         self._attributes : list = []
         self._libraries : dict = {}
@@ -378,6 +397,12 @@ class SmartContract(Compileable):
         self._enums : dict = {}
         self._structures : dict = {}
         self._types : dict = {}
+    
+
+        # information populated after the compilation
+        self._compiled_sol = None
+
+
 
     def add_verbatim(self, verbatim):
         self._verbatim = verbatim
@@ -437,15 +462,65 @@ class SmartContract(Compileable):
     def add_import(self, i : str):
         self._imports.append(i)
 
-    def add_library(self, name: str, url : str):
+    def add_library(self, name: str, library_or_url : Library | str):
         if name in self.libraries:
             raise Exception(f"A library with name {name} already exists")
-        self._libraries[name] = '\n'.join(str(line) for line in requests.get(url).text.splitlines()[38::])
+
+        #if isinstance(library_or_url, str):
+        #    self._libraries[name] = '\n'.join(str(line) for line in requests.get(library_or_url).text.splitlines()[38::])
+        if isinstance(library_or_url, Library):
+            self._libraries[name] = library_or_url
+        else:
+            raise ValueError(f"Library of unknown type. Expected : string or Library. Passed: {library_or_url}")
 
     def add_contract(self, c : Contract):
         if c.name in self._contracts:
             raise Exception(f"A contract with name {c.name} already exists")
         self._contracts[c.name] = c
+
+    def get_abi(self, contract_name:str):
+        if not contract_name:
+            raise ValueError("Expected non-empty contract name")
+
+        if not self._compiled_sol:
+            raise Exception("You must compile the smart contract before invoking this method")
+
+        return json.loads(self._compiled_sol["contracts"]["smart_contract.sol"][contract_name]["metadata"])["output"]["abi"]
+
+
+    def get_bytecode(self, contract_name:str, libraries=None):
+        if not contract_name:
+            raise ValueError("Expected non-empty contract name")
+
+        if not self._compiled_sol:
+            raise Exception("You must compile the smart contract before invoking this method")
+
+ 
+        compiled_sol = self._compiled_sol
+
+        #get bytecode
+        bytecode = compiled_sol["contracts"]["smart_contract.sol"][contract_name]["evm"]["bytecode"]["object"]
+
+        if libraries:
+            for lib_name, lib_address in libraries.items():
+                linkRef_positions = compiled_sol["contracts"]["smart_contract.sol"][contract_name]["evm"]["bytecode"]["linkReferences"]["smart_contract.sol"][lib_name]
+                if lib_name not in compiled_sol["contracts"]["smart_contract.sol"]:
+                    raise ValueError(f"Libray name not found in compiled code: {lib_name}")
+                #lib_bytecode = compiled_sol["contracts"]["smart_contract.sol"][lib_name]["evm"]["bytecode"]["object"]
+                for pos in linkRef_positions:
+                    #breakpoint()
+                    start = pos["start"] * 2
+                    length = pos["length"] * 2
+                    bytecode = bytecode[:start] + lib_address[2:] + bytecode[start+length:] # lib_address[2:] -> omit the initial 0x...
+
+
+        assert re.fullmatch(r"^[0-9a-fA-F]+$", bytecode) # only hex chars allowed in bytecode
+
+        return bytecode
+
+    @property
+    def compiled_sol(self):
+        return self._compiled_sol
 
     def compile(self, prefix:str="smart_contract", debug:bool=False):
 
@@ -460,10 +535,11 @@ class SmartContract(Compileable):
         print(f"Using solc v{settings.SOLC_VERSION} ...")
 
         imports_text = "\n".join(map(lambda i: f"import '{i}';", self._imports))
-        libraries_text = "\n".join(map(lambda l: l+"\n", self.libraries.values()))
-        functions_text = "\n".join(map(lambda f: f.compile()+"\n", self.functions)) 
-        attributes_text = "\n".join(map(lambda c: c.compile()+"\n", self.attributes)) 
-        contracts_text = "\n".join(map(lambda c: c.compile()+"\n", self.contracts.values())) 
+        #breakpoint()
+        libraries_text = "\n".join(map(lambda l: l.compile() + "\n", self.libraries.values()))
+        functions_text = "\n".join(map(lambda f: f.compile() + "\n", self.functions)) 
+        attributes_text = "\n".join(map(lambda c: c.compile() + "\n", self.attributes)) 
+        contracts_text = "\n".join(map(lambda c: c.compile() + "\n", self.contracts.values())) 
         #breakpoint()
         types_text = "\n".join(map(lambda i: f"type {i[0]} is {i[1]};", self._types.items()))
         enums_text = "\n".join(map(lambda c: c.compile()+"\n", self.enumerations))    
@@ -506,8 +582,8 @@ pragma abicoder v2;
                 print("\nSmart contract saved at: ",tmp_path,"\n")
 
         try:
-            compiled_sol = solcx.compile_standard(
-                {
+
+            solc_configuration = {
                     "language": "Solidity",
                     "sources": 
                         {
@@ -526,23 +602,18 @@ pragma abicoder v2;
                         },
                         #"libraries": {"strings.sol"}
                     },
-                },
+                }
+
+            self._compiled_sol = solcx.compile_standard(
+                solc_configuration,
                 # TODO add a setting parameter for solc version
                 solc_version = settings.SOLC_VERSION, #"0.8.0",
                 allow_paths = ["."]
             )
 
-        
-
-            return compiled_sol
-
         except Exception as err:
             print(f"Errors compiling smart-contract code: {err}")    
-
-
-        return None
-
-
+            self._compiled_sol = None
 
 
         

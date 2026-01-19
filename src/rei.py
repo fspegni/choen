@@ -597,3 +597,40 @@ def MPSTToRei(mpst:MPST, handle_task=None, node: dict = None):
 
         print(mpst.root)
             
+
+
+class Filter:
+
+    def __init__(self, initiators=None, actions=None, targets=None, messages=None):
+        self._initiators = set(initiators or [])
+        self._actions = set(actions or [])
+        self._targets = set(targets or [])
+        self._messages = set(messages or [])
+    
+    @property
+    def initiators(self):
+        return self._initiators
+    
+    @property
+    def actions(self):
+        return self._actions
+    
+    @property
+    def targets(self):
+        return self._targets
+    
+    @property
+    def messages(self):
+        return self._messages
+    
+    def combine(self, f):
+    
+        if not f:
+            raise ValueError("Expected non-empty filter as argument")
+    
+    
+        self._initiators = self._initiators.union(f.initiators)
+        self._actions = self._actions.union(f.actions)
+        self._targets = self._targets.union(f.targets)
+        self._messages = self._messages.union(f.messages)
+ 
