@@ -1,7 +1,7 @@
 from rest_framework import routers, serializers, viewsets
 
 from bpmn_parser.models import Choreography
-
+import traceback
 
 class ChoreographySerializer(serializers.HyperlinkedModelSerializer):
 
@@ -13,7 +13,14 @@ class ChoreographySerializer(serializers.HyperlinkedModelSerializer):
         read_only = [ "rei", ]
 
     def get_rei_text(self, obj):
-        return str(obj.to_rei())
+        rei_text = "N/N"
+        try:
+            rei_text = str(obj.to_rei())
+        except Exception as err:
+            rei_text = f"Error: {err}"
+            traceback.print_exc()
+
+        return rei_text
 
 class ChoreographyViewSet(viewsets.ModelViewSet):
 

@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 #from django.utils.translation import ugettext as _
 from django.utils.translation import gettext as _
 from django.utils.html import format_html
@@ -8,6 +8,9 @@ from django import forms
 from django.core.exceptions import ValidationError
 from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOnChain, EngineOffChain
 from django.contrib.admin import SimpleListFilter
+from django.urls import reverse
+
+import traceback
 
 class ConfigurationForm(forms.ModelForm):
 
@@ -56,12 +59,27 @@ class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
     list_filter = [ "blockchain_configuration", "running", IsOnChainFilter, "created_at", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
-    fields = [ "label", "blockchain_configuration", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", ]
+    fields = [ "label", "blockchain_configuration", "choreography", "running", "execution_started", "execution_ended", "rei", "automaton", "input_events", "output_events", "enforcer_states", "enforcer_buffer", "engine" ]
 
-    readonly_fields = [ "blockchain_configuration", "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", ]
+    readonly_fields = [ "blockchain_configuration", "execution_started", "execution_ended", "rei", "automaton", "enforcer_states",  "input_events", "output_events", "enforcer_buffer", "engine" ]
 
     change_actions = [ "action_start", "action_stop", ]
     changelist_actions = [ "action_start_all", "action_stop_all", ]
+
+    def engine(self, obj : RunningInstance):
+
+        #breakpoint()
+        if obj is not None:
+            if obj.engineonchain:
+                url = reverse("admin:engine_engineonchain_change", args=[obj.engineonchain.pk])
+                return format_html('<a href="{}">{}</a>', url, obj.engineonchain)
+            elif obj.engineoffchain:
+                url = reverse("admin:engine_engineoffchain_change", args=[obj.engineoffchain.pk])
+                return format_html('<a href="{}">{}</a>', url, obj.engineonchain)
+
+        return "-"
+    engine.short_description = "Engine"
+
 
     @admin.display(boolean=True, description="Is onchain")
     def is_onchain(self, obj):
@@ -134,11 +152,53 @@ class ContractAdmin(admin.ModelAdmin):
         return obj.bytecode_size
     bytecode_size.short_description = _("bytecode size")
 
+
+class IsPendingFilter(SimpleListFilter):
+
+    title = "Is pending"
+    parameter_name = "is_pending"
+        
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", _("Yes")),
+            ("no", _("No"))
+        )
+
+    def queryset(self, request, queryset):
+
+        if self.value() == "yes":
+            return queryset.exclude(transaction_hash=None).filter(receipt_hash=None)
+        elif self.value() == "no":
+            return queryset.exclude(receipt_hash=None)
+        else:
+            return queryset
+
+
+
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
 
-    list_display = [ "tx_hash", "block_number", ] #"running_instance", ]
-    search_fields = [ "tx_hash", "block_hash", "block_number",  ] #"running_instance__configuration__address", ]
+    list_filter = [ "blockchain_configuration", IsPendingFilter ]
+    list_display = [ "nonce", "blockchain_configuration", "transaction_hash", "receipt_hash", "is_pending", ] #"running_instance", ]
+    search_fields = [ "transaction_hash", "receipt_hash" ] #"running_instance__configuration__address", ]
+
+    actions = [ "check_receipts", ]
+
+    @admin.display(boolean=True, description="Is pending")
+    def is_pending(self, obj):
+        return obj.is_pending
+
+    @admin.action(description="Check transaction receipts")
+    def check_receipts(self, request, queryset):
+        for tx in queryset:
+            try:
+                tx.check_receipt()
+                messages.success(request, f"Transaction is valid: {tx}")
+            except Exception as err:
+                traceback.print_exc()
+                messages.error(request, f"Error checking validity: {tx} : {err}")
+
+
 
 @admin.register(EngineOffChain)
 class EngineOffChain(admin.ModelAdmin):
@@ -157,9 +217,19 @@ class EngineOnChain(admin.ModelAdmin):
     list_display = [ "running_instance", "running_instance__choreography", "created_at", ]
 
     list_filter = [ "created_at", "blockchain_configuration" ]
-    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size", "created_at" ]
+    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size", "created_at", "curr_states", "buffer", "kb" ]
 
     def rei(self, obj : EngineOnChain):
         return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None
 
+    def curr_states(self, obj : EngineOnChain):
 
+        return obj.get_curr_states()
+
+    def buffer(self, obj : EngineOnChain):
+    
+        return obj.get_buffer_items()
+
+    def kb(self, obj : EngineOnChain):
+
+        return obj.get_kb()

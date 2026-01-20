@@ -96,8 +96,10 @@ class Enforcer:
     def _parse_event(self, text):
         #m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+)([?!])([a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
         #breakpoint()
-        m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+[?!][a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
+        #m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([a-zA-Z0-9_]+[?!][a-zA-Z0-9_]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
+        m = re.match(r"^(([a-zA-Z0-9&|!\(\)]+):)?([^!?]+[?!][^!?]+)(\(([a-zA-Z0-9_,]+)\))?$", text)
 
+        #breakpoint()
         if not m:
             #breakpoint()
             raise Exception(f"Event has an unrecognized format")
@@ -148,6 +150,7 @@ from enforcer import *
 from bpmn_parser.models import *
 from mpst.models import MPST
 
+# TODO merge this model with the UI env (a regular dictionary)
 class Model:
 
     def __init__(self):
@@ -797,6 +800,7 @@ class CmdStop(UICommand):
             raise Exception("No running instance to stop")
 
         ri.stop()
+        self.ui._model.set_object("ri", None)
  
 class CmdPause(UICommand):
   
@@ -851,6 +855,7 @@ class CmdStart(UICommand):
         onchain_private_key = self.ui.get_env("ONCHAIN_PRIVATE_KEY")
  
 
+        #breakpoint()
         if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
 
             conf_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
@@ -935,7 +940,7 @@ class CmdLoadInstance(UICommand):
                 # 1. load instance
                 ri : RunningInstance = RunningInstance.objects.get(id=ri_id)
 
-                breakpoint()
+                #breakpoint()
                 #automaton = ri.choreography.to_nfa()
 
                 # 2. load the environment from the running instance blockchain configuration
@@ -954,7 +959,7 @@ class CmdLoadInstance(UICommand):
 
 
                     log_file = self.ui.get_env("LOG_FILE", None)
-                    engine = ri.setup_onchain(conf, log_file=log_file)
+                    engine = ri.setup_onchain(ri.blockchain_configuration, log_file=log_file)
 
 ##                    self.setup_onchain_running_instance(ri, contract_address) # automaton, contract_address, ri.blockchain_configuration)
 ##
@@ -1047,6 +1052,7 @@ class CmdDump(UICommand):
                     print("You must start the enforcer, before dumping its current states")
                     return
 
+                #breakpoint()
                 for s in self.ui._enforcer.engine.get_curr_states():
                     label = str(s)
                     if self.ui._enforcer.engine.is_state_initial(s):
@@ -1102,15 +1108,17 @@ class CmdDump(UICommand):
                     print("You must start the enforcer, before dumping its buffer")
                     return
 
-                for actor,message,precondition,knowledge in self.ui._enforcer.engine.get_buffer_items():
-                    msg = f"* {precondition or 'T'} -> {actor}{message}({knowledge or 'nil'})"
+                bitems = self.ui._enforcer.engine.get_buffer_items() or []
+                #for actor,message,precondition,knowledge in bitems:
+                for precondition, (actor, action, message), knowledge in bitems:
+                    msg = f"* {precondition or 'T'} -> ({actor},{action},{message})({knowledge or 'nil'})"
                     print(msg)
             
             elif args[0] == "rei":
-                rei : Choreography = self.ui._model.get_object("rei")
+                rei : REI = self.ui._model.get_object("rei")
 
-                if not c:
-                    print("You must load a choreography, before dumping its rei")
+                if not rei:
+                    print("You must load a REI, before dumping it")
                     return
 
                 print("\nREI: \n")
@@ -1172,8 +1180,14 @@ class CmdDump(UICommand):
 
                 ri = self.ui._model.get_object("ri")
                 if not ri:
-                    print("N/N")
-                else:
+                    if len(args) > 1:
+                        ri = RunningInstance.objects.filter(pk=args[1]).first()
+                        if not ri:
+                            print(f"No running instance found with id={args[1]}")
+                    else:
+                        print("No running instance and you have not specified a Running Instance id")
+                    
+                if ri:
                     in_events = " ".join(ri.input_events) if ri.input_events else ""
                     out_events = " ".join(ri.output_events) if ri.output_events else ""
 
@@ -1279,6 +1293,17 @@ class CmdSave(UICommand):
             print("Arguments not recognized")
 
 
+class CmdEnvReset(UICommand):
+
+    _description = "Clean the environment and reset the status of the tool"
+
+    def execute(self, *args, **kwargs):
+
+        resp = input("Are you sure you want to reset the environment of the tool? [y/N]")
+        if resp.lower() == "y": 
+            self.ui._env = {}         
+            self.ui._model = Model()
+
 class CmdEnv(UICommand):
 
     _description = "Get/Set/List the environment and model variables"
@@ -1301,7 +1326,7 @@ class CmdEnv(UICommand):
 
             all_keys = list(self.ui.env_keys) + list(self.ui._model.names)
 
-            max_len = max(map(len, all_keys)) + 3
+            max_len = max(map(len, all_keys), default=0) + 3
             for k,v in self.ui.env:
                 v = self.ui.display_env(k)
                 print(f"{k.ljust(max_len,'.')} = {v}")
@@ -1383,6 +1408,7 @@ class UI:
             "save"  : CmdSave(self),
             "env"   : CmdEnv(self),
             "env_unset": CmdEnvUnset(self),
+            "env_reset": CmdEnvReset(self),
             "load_config"   : CmdLoadConfiguration(self),
             "get_balance"   : CmdGetBalance(self),
             "build_contracts"   : CmdBuildContracts(self),

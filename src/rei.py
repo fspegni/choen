@@ -1,6 +1,10 @@
 from bpmn_parser.models import Choreography, ElementType
 from mpst.models import MPST, GlobalType
 
+def sanitize(text):
+
+    return text.replace(" ", "_").replace("-", "_").replace("/", "_").replace("&", "_")
+
 def expect_node_type(cho:Choreography, node:ElementType, ntypes, limit_node=None):
 
     if isinstance(ntypes, str):
@@ -388,7 +392,7 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 
             gw_closure = None
             for curr in cho_next:
-                rei_branch, closure = ChoToRei(cho, handle_task, curr, node, new_limit_node) # NOTE: the current node (of type GW_EX_LOOP_OPEN) becomes the limit_node for the ChoToRei translation applied on the ecurrent branch
+                rei_branch, closure = ChoToRei(cho, handle_task, curr, node, new_limit_node) # NOTE: the current node (of type GW_EX_LOOP_OPEN) becomes the limit_node for the ChoToRei translation applied on the current branch
 
                 #print(f"CHOTOREI: {node.attrib['id']} : branch: {str(rei_branch)} : closure = {closure}")
                 #expect_node_type(cho, closure, [ "GW_EX_LOOP_CLOSE" ], new_limit_node)
@@ -474,7 +478,7 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
             for curr in cho_next:
                 rei_branch, closure = ChoToRei(cho, handle_task, curr, node, limit_node)
                 expect_node_type(cho, closure, ["GW_INC_CLOSE",None], limit_node)
-                assert gw_closure is None or gw_closure == closure
+                assert gw_closure is None or gw_closure == closure, f"gw_closure ({gw_closure}) != closure ({closure})"
                 gw_closure = closure
                 
                 if rei_branch:
@@ -522,18 +526,18 @@ def render_receive (cho:Choreography, node:ElementType):
 
 #    symbol = node.attrib["id"] 
     res = None
-    initiator = cho.initiator(node).attrib["name"].replace(" ","_")
+    initiator = sanitize(cho.initiator(node).attrib["name"]) #.replace(" ","_")
     recipients = cho.recipients(node)
     assert len(recipients) == 1, "At the moment we allow only one recipient per task" # TODO this limitation can be easily overcome: one can introduce the interleaving among all the recipients
-    target = recipients[0].attrib["name"].replace(" ", "_")
+    target = sanitize(recipients[0].attrib["name"]) #.replace(" ", "_")
 
     n_messages = len(messages)
     if n_messages == 2:
-        m_request = messages[1].replace(" ","_")
-        m_response = messages[0].replace(" ","_")
+        m_request = sanitize(messages[1]) #.replace(" ","_")
+        m_response = sanitize(messages[0]) #.replace(" ","_")
         res = Conc(Symbol(f"{target}?{m_request}"), Symbol(f"{initiator}?{m_response}"))
     elif n_messages == 1:
-        m_request = messages[0].replace(" ","_")
+        m_request = sanitize(messages[0]) #.replace(" ","_")
         res = Symbol(f"{target}?{m_request}")
     elif n_messages == 0:
         res = Symbol(node.attrib["id"])
@@ -553,20 +557,20 @@ def render_send_receive (cho:Choreography, node:ElementType):
 
 #    symbol = node.attrib["id"] 
     res = None
-    initiator = cho.initiator(node).attrib["name"].replace(" ","_")
+    initiator = sanitize(cho.initiator(node).attrib["name"]) #.replace(" ","_")
     recipients = cho.recipients(node)
     assert len(recipients) == 1, "At the moment we allow only one recipient per task" # TODO this limitation can be easily overcome: one can introduce the interleaving among all the recipients
-    target = recipients[0].attrib["name"].replace(" ", "_")
+    target = sanitize(recipients[0].attrib["name"]) #.replace(" ", "_")
 
     n_messages = len(messages)
     if n_messages == 2:
-        m_request = messages[1].replace(" ","_")
-        m_response = messages[0].replace(" ","_")
+        m_request = sanitize(messages[1]) #.replace(" ","_")
+        m_response = sanitize(messages[0]) #.replace(" ","_")
         #res = Conc(Symbol(f"{target}?{m_request}"), Symbol(f"{initiator}?{m_response}"))
         #res = Conc(Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}")), Par(Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}")))
         res = Conc(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"), Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}"))
     elif n_messages == 1:
-        m_request = messages[0].replace(" ","_")
+        m_request = sanitize(messages[0]) #.replace(" ","_")
         #res = Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"))
         res = Conc(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"))
     elif n_messages == 0:

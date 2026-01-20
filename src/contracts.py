@@ -186,7 +186,7 @@ class Struct(Compileable):
 
 class Enum(Compileable):
 
-    def __init__(self, name : str, values : list, sep=",\n    "):
+    def __init__(self, name : str, values : list, sep="\n    "):
         self._name = name
         self._values = values
         self._sep = sep
@@ -201,7 +201,15 @@ class Enum(Compileable):
 
     def compile(self):
         #breakpoint()
-        enum_body = (self._sep).join(map(str, self.values))
+        last = len(self.values)-1
+        lines = []
+        for i,v in enumerate(self.values):
+            if i < last:
+                lines.append(f"{str(v)}, // {i}") 
+            else:
+                lines.append(f"{str(v)} // {i}") 
+
+        enum_body = (self._sep).join(lines)
         text = "enum " + self.name + " {\n    " + enum_body + "\n}\n"
         return str(text)
 
@@ -503,6 +511,8 @@ class SmartContract(Compileable):
 
         if libraries:
             for lib_name, lib_address in libraries.items():
+                if not lib_address:
+                    raise Exception(f"Missing contract address for library {lib_name}. Cannot continue")
                 linkRef_positions = compiled_sol["contracts"]["smart_contract.sol"][contract_name]["evm"]["bytecode"]["linkReferences"]["smart_contract.sol"][lib_name]
                 if lib_name not in compiled_sol["contracts"]["smart_contract.sol"]:
                     raise ValueError(f"Libray name not found in compiled code: {lib_name}")

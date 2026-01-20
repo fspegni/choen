@@ -1,0 +1,684 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_SmartGrid_IoT_Choreo" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn2:message id="Msg_AMI_Request" name="Request AMI Snapshot" />
+  <bpmn2:message id="Msg_Meter_Poll" name="Poll Interval Data" />
+  <bpmn2:message id="Msg_Meter_Data" name="Meter Data + Outage Flags" />
+  <bpmn2:message id="Msg_Forecast" name="Nowcast + Short-Term Forecast" />
+  <bpmn2:message id="Msg_Flex_Req" name="Flex Activation Request (kW/kVAR)" />
+  <bpmn2:message id="Msg_DER_Dispatch" name="Dispatch Setpoints" />
+  <bpmn2:message id="Msg_DR_Start" name="Start DR Event" />
+  <bpmn2:message id="Msg_DR_Notify" name="DR Command / Customer Notify" />
+  <bpmn2:message id="Msg_Switching" name="Execute Switching Plan" />
+  <bpmn2:message id="Msg_VoltVAR" name="Volt-VAR / Reactive Request" />
+  <bpmn2:message id="Msg_Island_Auth" name="Authorize Islanding Readiness" />
+  <bpmn2:message id="Msg_Island_Handshake" name="Islanding / Sync Handshake" />
+  <bpmn2:message id="Msg_PMU_Verify" name="Stability Verification" />
+  <bpmn2:message id="Msg_Post_AMI" name="Post-Action AMI Confirmation" />
+  <bpmn2:message id="Msg_RampDown" name="Ramp-Down / Return to Schedule" />
+  <bpmn2:message id="Msg_DR_End" name="End DR Event" />
+  <bpmn2:message id="Msg_Status_OK" name="Status OK / Update Interface" />
+  <bpmn2:message id="Msg_Anomaly" name="Anomaly Report (Telemetry Context)" />
+  <bpmn2:message id="Msg_Contain" name="Containment Action / Clearance" />
+  <bpmn2:message id="Msg_Ticket" name="Trouble Ticket + Location" />
+  <bpmn2:message id="Msg_Onsite" name="Onsite Safe-to-Operate" />
+  <bpmn2:message id="Msg_Restore" name="Restoration Confirmation" />
+  <bpmn2:choreography id="Choreo_SmartGrid" name="IoT Smart Grid Choreography (AND / OR / XOR + Loop)">
+    <bpmn2:participant id="Part_SCADA" name="DSO Control Center (SCADA/EMS)" />
+    <bpmn2:participant id="Part_HES" name="AMI Head-End System (HES)" />
+    <bpmn2:participant id="Part_Meters" name="Smart Meters (AMI Field)" />
+    <bpmn2:participant id="Part_Weather" name="Weather / Forecast Service" />
+    <bpmn2:participant id="Part_DER" name="DER Aggregator (VPP)" />
+    <bpmn2:participant id="Part_MGC" name="Microgrid Controller (MGC)" />
+    <bpmn2:participant id="Part_IED" name="Substation Automation (IED/RTU)" />
+    <bpmn2:participant id="Part_PMU" name="PMU/WAMS Platform" />
+    <bpmn2:participant id="Part_DR" name="Demand Response Platform" />
+    <bpmn2:participant id="Part_SOC" name="Cybersecurity SOC" />
+    <bpmn2:participant id="Part_Crew" name="Field Maintenance Dispatch" />
+    <bpmn2:participant id="Part_Market" name="Market/TSO Interface" />
+    <bpmn2:messageFlow id="MF1" sourceRef="Part_SCADA" targetRef="Part_HES" messageRef="Msg_AMI_Request" />
+    <bpmn2:messageFlow id="MF2" sourceRef="Part_HES" targetRef="Part_Meters" messageRef="Msg_Meter_Poll" />
+    <bpmn2:messageFlow id="MF3" sourceRef="Part_Meters" targetRef="Part_HES" messageRef="Msg_Meter_Data" />
+    <bpmn2:messageFlow id="MF4" sourceRef="Part_Weather" targetRef="Part_SCADA" messageRef="Msg_Forecast" />
+    <bpmn2:messageFlow id="MF5" sourceRef="Part_SCADA" targetRef="Part_DER" messageRef="Msg_Flex_Req" />
+    <bpmn2:messageFlow id="MF6" sourceRef="Part_DER" targetRef="Part_MGC" messageRef="Msg_DER_Dispatch" />
+    <bpmn2:messageFlow id="MF7" sourceRef="Part_SCADA" targetRef="Part_DR" messageRef="Msg_DR_Start" />
+    <bpmn2:messageFlow id="MF8" sourceRef="Part_DR" targetRef="Part_Meters" messageRef="Msg_DR_Notify" />
+    <bpmn2:messageFlow id="MF9" sourceRef="Part_SCADA" targetRef="Part_IED" messageRef="Msg_Switching" />
+    <bpmn2:messageFlow id="MF10" sourceRef="Part_SCADA" targetRef="Part_DER" messageRef="Msg_VoltVAR" />
+    <bpmn2:messageFlow id="MF11" sourceRef="Part_SCADA" targetRef="Part_MGC" messageRef="Msg_Island_Auth" />
+    <bpmn2:messageFlow id="MF12" sourceRef="Part_MGC" targetRef="Part_IED" messageRef="Msg_Island_Handshake" />
+    <bpmn2:messageFlow id="MF13" sourceRef="Part_PMU" targetRef="Part_SCADA" messageRef="Msg_PMU_Verify" />
+    <bpmn2:messageFlow id="MF14" sourceRef="Part_SCADA" targetRef="Part_HES" messageRef="Msg_Post_AMI" />
+    <bpmn2:messageFlow id="MF15" sourceRef="Part_SCADA" targetRef="Part_DER" messageRef="Msg_RampDown" />
+    <bpmn2:messageFlow id="MF16" sourceRef="Part_SCADA" targetRef="Part_DR" messageRef="Msg_DR_End" />
+    <bpmn2:messageFlow id="MF17" sourceRef="Part_SCADA" targetRef="Part_Market" messageRef="Msg_Status_OK" />
+    <bpmn2:messageFlow id="MF18" sourceRef="Part_SCADA" targetRef="Part_SOC" messageRef="Msg_Anomaly" />
+    <bpmn2:messageFlow id="MF19" sourceRef="Part_SOC" targetRef="Part_SCADA" messageRef="Msg_Contain" />
+    <bpmn2:messageFlow id="MF20" sourceRef="Part_SCADA" targetRef="Part_Crew" messageRef="Msg_Ticket" />
+    <bpmn2:messageFlow id="MF21" sourceRef="Part_Crew" targetRef="Part_IED" messageRef="Msg_Onsite" />
+    <bpmn2:messageFlow id="MF22" sourceRef="Part_Crew" targetRef="Part_SCADA" messageRef="Msg_Restore" />
+    <bpmn2:endEvent id="EndEvent">
+      <bpmn2:incoming>SF_END</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:parallelGateway id="G_AND_SPLIT" name="AND">
+      <bpmn2:incoming>SF4B</bpmn2:incoming>
+      <bpmn2:outgoing>SF5</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_1mne0rl</bpmn2:outgoing>
+    </bpmn2:parallelGateway>
+    <bpmn2:parallelGateway id="G_AND_JOIN">
+      <bpmn2:incoming>SF6B</bpmn2:incoming>
+      <bpmn2:incoming>Flow_1bezv1x</bpmn2:incoming>
+      <bpmn2:outgoing>SF7</bpmn2:outgoing>
+    </bpmn2:parallelGateway>
+    <bpmn2:inclusiveGateway id="G_OR_SPLIT">
+      <bpmn2:incoming>SF7</bpmn2:incoming>
+      <bpmn2:outgoing>SF8</bpmn2:outgoing>
+      <bpmn2:outgoing>SF_OR_LOW</bpmn2:outgoing>
+      <bpmn2:outgoing>SF_OR_UP1</bpmn2:outgoing>
+    </bpmn2:inclusiveGateway>
+    <bpmn2:inclusiveGateway id="G_OR_JOIN">
+      <bpmn2:incoming>SF9</bpmn2:incoming>
+      <bpmn2:incoming>SF_OR_UP3</bpmn2:incoming>
+      <bpmn2:incoming>Flow_1f34xg5</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_0t9812v</bpmn2:outgoing>
+    </bpmn2:inclusiveGateway>
+    <bpmn2:exclusiveGateway id="G_XOR" name="XOR Stable?">
+      <bpmn2:incoming>SF12B</bpmn2:incoming>
+      <bpmn2:outgoing>SF_OK1</bpmn2:outgoing>
+      <bpmn2:outgoing>SF_NOK1</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:choreographyTask id="CT1" name="Request AMI Snapshot" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF1</bpmn2:incoming>
+      <bpmn2:outgoing>SF2</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_HES</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF1</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT2" name="Poll Interval Data" initiatingParticipantRef="Part_HES">
+      <bpmn2:incoming>SF2</bpmn2:incoming>
+      <bpmn2:outgoing>SF3</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_HES</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_Meters</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF2</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT3" name="Send Meter Data + Flags" initiatingParticipantRef="Part_Meters">
+      <bpmn2:incoming>SF3</bpmn2:incoming>
+      <bpmn2:outgoing>SF4</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_Meters</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_HES</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF3</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT4" name="Provide Nowcast Forecast" initiatingParticipantRef="Part_Weather">
+      <bpmn2:incoming>SF4</bpmn2:incoming>
+      <bpmn2:outgoing>SF4B</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_Weather</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF4</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:sequenceFlow id="SF4B" sourceRef="CT4" targetRef="G_AND_SPLIT" />
+    <bpmn2:choreographyTask id="CT5" name="Request Flex Activation" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF5</bpmn2:incoming>
+      <bpmn2:outgoing>SF6</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_DER</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF5</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT6" name="Dispatch DER Setpoints" initiatingParticipantRef="Part_DER">
+      <bpmn2:incoming>SF6</bpmn2:incoming>
+      <bpmn2:outgoing>SF6B</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_DER</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_MGC</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF6</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:sequenceFlow id="SF6B" sourceRef="CT6" targetRef="G_AND_JOIN" />
+    <bpmn2:choreographyTask id="CT7" name="Start DR Event" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>Flow_1mne0rl</bpmn2:incoming>
+      <bpmn2:outgoing>SF_AND_B2</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_DR</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF7</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT8" name="Notify Customers (DR)" initiatingParticipantRef="Part_DR">
+      <bpmn2:incoming>SF_AND_B2</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_1bezv1x</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_DR</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_Meters</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF8</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT9" name="Execute Switching Plan" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF8</bpmn2:incoming>
+      <bpmn2:outgoing>SF9</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_IED</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF9</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT10" name="Request Volt-VAR Support" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_OR_LOW</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_1f34xg5</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_DER</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF10</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT11" name="Authorize Islanding Readiness" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_OR_UP1</bpmn2:incoming>
+      <bpmn2:outgoing>SF_OR_UP2</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_MGC</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF11</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT12" name="Islanding/Sync Handshake" initiatingParticipantRef="Part_MGC">
+      <bpmn2:incoming>SF_OR_UP2</bpmn2:incoming>
+      <bpmn2:outgoing>SF_OR_UP3</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_MGC</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_IED</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF12</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT13" name="Stability Verification" initiatingParticipantRef="Part_PMU">
+      <bpmn2:incoming>Flow_1073x4g</bpmn2:incoming>
+      <bpmn2:outgoing>SF11</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_PMU</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF13</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT14" name="Post-Action AMI Confirmation" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF11</bpmn2:incoming>
+      <bpmn2:outgoing>SF12B</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_HES</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF14</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT15" name="Ramp-Down / Return to Schedule" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_OK1</bpmn2:incoming>
+      <bpmn2:outgoing>SF_OK2</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_DER</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF15</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT16" name="End DR Event" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_OK2</bpmn2:incoming>
+      <bpmn2:outgoing>SF_OK3</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_DR</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF16</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT17_OK" name="Status OK / Update Interface" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_OK3</bpmn2:incoming>
+      <bpmn2:outgoing>SF_END</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_Market</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF17</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT18" name="Report Anomaly to SOC" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_NOK1</bpmn2:incoming>
+      <bpmn2:outgoing>SF_NOK2</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_SOC</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF18</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT19" name="Containment / Clearance" initiatingParticipantRef="Part_SOC">
+      <bpmn2:incoming>SF_NOK2</bpmn2:incoming>
+      <bpmn2:outgoing>SF_NOK3</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SOC</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF19</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT20" name="Dispatch Field Ticket" initiatingParticipantRef="Part_SCADA">
+      <bpmn2:incoming>SF_NOK3</bpmn2:incoming>
+      <bpmn2:outgoing>SF_NOK4</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_Crew</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF20</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT21" name="Onsite Safe-to-Operate" initiatingParticipantRef="Part_Crew">
+      <bpmn2:incoming>SF_NOK4</bpmn2:incoming>
+      <bpmn2:outgoing>SF_NOK5</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_Crew</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_IED</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF21</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:choreographyTask id="CT22" name="Restoration Confirmation" initiatingParticipantRef="Part_Crew">
+      <bpmn2:incoming>SF_NOK5</bpmn2:incoming>
+      <bpmn2:outgoing>SF_LOOP</bpmn2:outgoing>
+      <bpmn2:participantRef>Part_Crew</bpmn2:participantRef>
+      <bpmn2:participantRef>Part_SCADA</bpmn2:participantRef>
+      <bpmn2:messageFlowRef>MF22</bpmn2:messageFlowRef>
+    </bpmn2:choreographyTask>
+    <bpmn2:sequenceFlow id="SF2" sourceRef="CT1" targetRef="CT2" />
+    <bpmn2:sequenceFlow id="SF3" sourceRef="CT2" targetRef="CT3" />
+    <bpmn2:sequenceFlow id="SF4" sourceRef="CT3" targetRef="CT4" />
+    <bpmn2:sequenceFlow id="SF5" sourceRef="G_AND_SPLIT" targetRef="CT5" />
+    <bpmn2:sequenceFlow id="SF6" sourceRef="CT5" targetRef="CT6" />
+    <bpmn2:sequenceFlow id="SF_AND_B2" sourceRef="CT7" targetRef="CT8" />
+    <bpmn2:sequenceFlow id="SF7" sourceRef="G_AND_JOIN" targetRef="G_OR_SPLIT" />
+    <bpmn2:sequenceFlow id="SF8" sourceRef="G_OR_SPLIT" targetRef="CT9" />
+    <bpmn2:sequenceFlow id="SF9" sourceRef="CT9" targetRef="G_OR_JOIN" />
+    <bpmn2:sequenceFlow id="SF_OR_LOW" sourceRef="G_OR_SPLIT" targetRef="CT10" />
+    <bpmn2:sequenceFlow id="SF_OR_UP1" sourceRef="G_OR_SPLIT" targetRef="CT11" />
+    <bpmn2:sequenceFlow id="SF_OR_UP2" sourceRef="CT11" targetRef="CT12" />
+    <bpmn2:sequenceFlow id="SF_OR_UP3" sourceRef="CT12" targetRef="G_OR_JOIN" />
+    <bpmn2:sequenceFlow id="SF11" sourceRef="CT13" targetRef="CT14" />
+    <bpmn2:sequenceFlow id="SF12B" sourceRef="CT14" targetRef="G_XOR" />
+    <bpmn2:sequenceFlow id="SF_OK1" name="OK" sourceRef="G_XOR" targetRef="CT15" />
+    <bpmn2:sequenceFlow id="SF_OK2" sourceRef="CT15" targetRef="CT16" />
+    <bpmn2:sequenceFlow id="SF_OK3" sourceRef="CT16" targetRef="CT17_OK" />
+    <bpmn2:sequenceFlow id="SF_END" sourceRef="CT17_OK" targetRef="EndEvent" />
+    <bpmn2:sequenceFlow id="SF_NOK1" name="NOK" sourceRef="G_XOR" targetRef="CT18" />
+    <bpmn2:sequenceFlow id="SF_NOK2" sourceRef="CT18" targetRef="CT19" />
+    <bpmn2:sequenceFlow id="SF_NOK3" sourceRef="CT19" targetRef="CT20" />
+    <bpmn2:sequenceFlow id="SF_NOK4" sourceRef="CT20" targetRef="CT21" />
+    <bpmn2:sequenceFlow id="SF_NOK5" sourceRef="CT21" targetRef="CT22" />
+    <bpmn2:sequenceFlow id="SF_LOOP" name="Re-Verify" sourceRef="CT22" targetRef="Gateway_083ji2q" />
+    <bpmn2:startEvent id="StartEvent">
+      <bpmn2:outgoing>SF1</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:sequenceFlow id="SF1" sourceRef="StartEvent" targetRef="CT1" />
+    <bpmn2:sequenceFlow id="Flow_1bezv1x" sourceRef="CT8" targetRef="G_AND_JOIN" />
+    <bpmn2:sequenceFlow id="Flow_1mne0rl" sourceRef="G_AND_SPLIT" targetRef="CT7" />
+    <bpmn2:inclusiveGateway id="Gateway_083ji2q">
+      <bpmn2:incoming>Flow_0t9812v</bpmn2:incoming>
+      <bpmn2:incoming>SF_LOOP</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_1073x4g</bpmn2:outgoing>
+    </bpmn2:inclusiveGateway>
+    <bpmn2:sequenceFlow id="Flow_0t9812v" sourceRef="G_OR_JOIN" targetRef="Gateway_083ji2q" />
+    <bpmn2:sequenceFlow id="Flow_1073x4g" sourceRef="Gateway_083ji2q" targetRef="CT13" />
+    <bpmn2:sequenceFlow id="Flow_1f34xg5" sourceRef="CT10" targetRef="G_OR_JOIN" />
+  </bpmn2:choreography>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_SmartGrid">
+    <bpmndi:BPMNPlane id="BPMNPlane_SmartGrid" bpmnElement="Choreo_SmartGrid">
+      <bpmndi:BPMNShape id="EndEvent_di" bpmnElement="EndEvent">
+        <dc:Bounds x="3372" y="339" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_AND_SPLIT_di" bpmnElement="G_AND_SPLIT" isMarkerVisible="true">
+        <dc:Bounds x="1050" y="330" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1063" y="306" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_AND_JOIN_di" bpmnElement="G_AND_JOIN" isMarkerVisible="true">
+        <dc:Bounds x="1590" y="330" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_OR_SPLIT_di" bpmnElement="G_OR_SPLIT" isMarkerVisible="true">
+        <dc:Bounds x="1680" y="330" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1696" y="306" width="17" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_OR_JOIN_di" bpmnElement="G_OR_JOIN" isMarkerVisible="true">
+        <dc:Bounds x="1990" y="330" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2006" y="306" width="17" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_XOR_di" bpmnElement="G_XOR" isMarkerVisible="true">
+        <dc:Bounds x="2530" y="330" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2522" y="306" width="65" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT1_di" bpmnElement="CT1">
+        <dc:Bounds x="130" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT1_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT1_di">
+        <dc:Bounds x="130" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT1_bot" bpmnElement="Part_HES" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT1_di">
+        <dc:Bounds x="130" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT2_di" bpmnElement="CT2">
+        <dc:Bounds x="360" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT2_top" bpmnElement="Part_HES" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT2_di">
+        <dc:Bounds x="360" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT2_bot" bpmnElement="Part_Meters" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT2_di">
+        <dc:Bounds x="360" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT3_di" bpmnElement="CT3">
+        <dc:Bounds x="590" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT3_top" bpmnElement="Part_Meters" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT3_di">
+        <dc:Bounds x="590" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT3_bot" bpmnElement="Part_HES" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT3_di">
+        <dc:Bounds x="590" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT4_di" bpmnElement="CT4">
+        <dc:Bounds x="820" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT4_top" bpmnElement="Part_Weather" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT4_di">
+        <dc:Bounds x="820" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT4_bot" bpmnElement="Part_SCADA" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT4_di">
+        <dc:Bounds x="820" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SF4B_di" bpmnElement="SF4B">
+        <di:waypoint x="1020" y="355" />
+        <di:waypoint x="1050" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="CT5_di" bpmnElement="CT5">
+        <dc:Bounds x="1130" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT5_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT5_di">
+        <dc:Bounds x="1130" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT5_bot" bpmnElement="Part_DER" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT5_di">
+        <dc:Bounds x="1130" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT6_di" bpmnElement="CT6">
+        <dc:Bounds x="1360" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT6_top" bpmnElement="Part_DER" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT6_di">
+        <dc:Bounds x="1360" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT6_bot" bpmnElement="Part_MGC" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT6_di">
+        <dc:Bounds x="1360" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SF6B_di" bpmnElement="SF6B">
+        <di:waypoint x="1560" y="355" />
+        <di:waypoint x="1590" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="CT7_di" bpmnElement="CT7">
+        <dc:Bounds x="990" y="535" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT7_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT7_di">
+        <dc:Bounds x="990" y="535" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT7_bot" bpmnElement="Part_DR" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT7_di">
+        <dc:Bounds x="990" y="625" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT8_di" bpmnElement="CT8">
+        <dc:Bounds x="1320" y="535" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT8_top" bpmnElement="Part_DR" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT8_di">
+        <dc:Bounds x="1320" y="535" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT8_bot" bpmnElement="Part_Meters" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT8_di">
+        <dc:Bounds x="1320" y="625" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT9_di" bpmnElement="CT9">
+        <dc:Bounds x="1760" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT9_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT9_di">
+        <dc:Bounds x="1760" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT9_bot" bpmnElement="Part_IED" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT9_di">
+        <dc:Bounds x="1760" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT10_di" bpmnElement="CT10">
+        <dc:Bounds x="1680" y="625" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT10_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT10_di">
+        <dc:Bounds x="1680" y="625" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT10_bot" bpmnElement="Part_DER" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT10_di">
+        <dc:Bounds x="1680" y="715" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT11_di" bpmnElement="CT11">
+        <dc:Bounds x="1630" y="85" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT11_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT11_di">
+        <dc:Bounds x="1630" y="85" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT11_bot" bpmnElement="Part_MGC" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT11_di">
+        <dc:Bounds x="1630" y="175" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT12_di" bpmnElement="CT12">
+        <dc:Bounds x="1890" y="85" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT12_top" bpmnElement="Part_MGC" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT12_di">
+        <dc:Bounds x="1890" y="85" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT12_bot" bpmnElement="Part_IED" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT12_di">
+        <dc:Bounds x="1890" y="175" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT13_di" bpmnElement="CT13">
+        <dc:Bounds x="2220" y="45" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT13_top" bpmnElement="Part_PMU" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT13_di">
+        <dc:Bounds x="2220" y="45" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT13_bot" bpmnElement="Part_SCADA" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT13_di">
+        <dc:Bounds x="2220" y="135" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT14_di" bpmnElement="CT14">
+        <dc:Bounds x="2300" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT14_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT14_di">
+        <dc:Bounds x="2300" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT14_bot" bpmnElement="Part_HES" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT14_di">
+        <dc:Bounds x="2300" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT15_di" bpmnElement="CT15">
+        <dc:Bounds x="2610" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT15_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT15_di">
+        <dc:Bounds x="2610" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT15_bot" bpmnElement="Part_DER" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT15_di">
+        <dc:Bounds x="2610" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT16_di" bpmnElement="CT16">
+        <dc:Bounds x="2840" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT16_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT16_di">
+        <dc:Bounds x="2840" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT16_bot" bpmnElement="Part_DR" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT16_di">
+        <dc:Bounds x="2840" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT17OK_di" bpmnElement="CT17_OK">
+        <dc:Bounds x="3070" y="300" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT17OK_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT17OK_di">
+        <dc:Bounds x="3070" y="300" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT17OK_bot" bpmnElement="Part_Market" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT17OK_di">
+        <dc:Bounds x="3070" y="390" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT18_di" bpmnElement="CT18">
+        <dc:Bounds x="2380" y="535" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT18_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT18_di">
+        <dc:Bounds x="2380" y="535" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT18_bot" bpmnElement="Part_SOC" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT18_di">
+        <dc:Bounds x="2380" y="625" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT19_di" bpmnElement="CT19">
+        <dc:Bounds x="2840" y="490" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT19_top" bpmnElement="Part_SOC" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT19_di">
+        <dc:Bounds x="2840" y="490" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT19_bot" bpmnElement="Part_SCADA" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT19_di">
+        <dc:Bounds x="2840" y="580" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT20_di" bpmnElement="CT20">
+        <dc:Bounds x="3070" y="490" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT20_top" bpmnElement="Part_SCADA" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT20_di">
+        <dc:Bounds x="3070" y="490" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT20_bot" bpmnElement="Part_Crew" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT20_di">
+        <dc:Bounds x="3070" y="580" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT21_di" bpmnElement="CT21">
+        <dc:Bounds x="3300" y="490" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT21_top" bpmnElement="Part_Crew" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT21_di">
+        <dc:Bounds x="3300" y="490" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT21_bot" bpmnElement="Part_IED" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT21_di">
+        <dc:Bounds x="3300" y="580" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT22_di" bpmnElement="CT22">
+        <dc:Bounds x="3530" y="490" width="200" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT22_top" bpmnElement="Part_Crew" isMessageVisible="true" participantBandKind="top_initiating" choreographyActivityShape="CT22_di">
+        <dc:Bounds x="3530" y="490" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CT22_bot" bpmnElement="Part_SCADA" isMessageVisible="false" participantBandKind="bottom_non_initiating" choreographyActivityShape="CT22_di">
+        <dc:Bounds x="3530" y="580" width="200" height="20" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SF2_di" bpmnElement="SF2">
+        <di:waypoint x="330" y="355" />
+        <di:waypoint x="360" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF3_di" bpmnElement="SF3">
+        <di:waypoint x="560" y="355" />
+        <di:waypoint x="590" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF4_di" bpmnElement="SF4">
+        <di:waypoint x="790" y="355" />
+        <di:waypoint x="820" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF5_di" bpmnElement="SF5">
+        <di:waypoint x="1100" y="355" />
+        <di:waypoint x="1130" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF6_di" bpmnElement="SF6">
+        <di:waypoint x="1330" y="355" />
+        <di:waypoint x="1360" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_AND_B2_di" bpmnElement="SF_AND_B2">
+        <di:waypoint x="1191" y="590" />
+        <di:waypoint x="1319" y="590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF7_di" bpmnElement="SF7">
+        <di:waypoint x="1640" y="355" />
+        <di:waypoint x="1680" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF8_di" bpmnElement="SF8">
+        <di:waypoint x="1730" y="355" />
+        <di:waypoint x="1760" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF9_di" bpmnElement="SF9">
+        <di:waypoint x="1960" y="355" />
+        <di:waypoint x="1990" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OR_LOW_di" bpmnElement="SF_OR_LOW">
+        <di:waypoint x="1705" y="380" />
+        <di:waypoint x="1705" y="503" />
+        <di:waypoint x="1650" y="503" />
+        <di:waypoint x="1650" y="680" />
+        <di:waypoint x="1679" y="680" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OR_UP1_di" bpmnElement="SF_OR_UP1">
+        <di:waypoint x="1705" y="330" />
+        <di:waypoint x="1705" y="263" />
+        <di:waypoint x="1730" y="263" />
+        <di:waypoint x="1730" y="196" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OR_UP2_di" bpmnElement="SF_OR_UP2">
+        <di:waypoint x="1831" y="140" />
+        <di:waypoint x="1889" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OR_UP3_di" bpmnElement="SF_OR_UP3">
+        <di:waypoint x="1990" y="195" />
+        <di:waypoint x="1990" y="263" />
+        <di:waypoint x="2015" y="263" />
+        <di:waypoint x="2015" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF11_di" bpmnElement="SF11">
+        <di:waypoint x="2320" y="156" />
+        <di:waypoint x="2320" y="228" />
+        <di:waypoint x="2400" y="228" />
+        <di:waypoint x="2400" y="299" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF12B_di" bpmnElement="SF12B">
+        <di:waypoint x="2500" y="355" />
+        <di:waypoint x="2530" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OK1_di" bpmnElement="SF_OK1">
+        <di:waypoint x="2580" y="355" />
+        <di:waypoint x="2610" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OK2_di" bpmnElement="SF_OK2">
+        <di:waypoint x="2810" y="355" />
+        <di:waypoint x="2840" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_OK3_di" bpmnElement="SF_OK3">
+        <di:waypoint x="3040" y="355" />
+        <di:waypoint x="3070" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_END_di" bpmnElement="SF_END">
+        <di:waypoint x="3271" y="359" />
+        <di:waypoint x="3372" y="359" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_NOK1_di" bpmnElement="SF_NOK1">
+        <di:waypoint x="2555" y="380" />
+        <di:waypoint x="2555" y="458" />
+        <di:waypoint x="2310" y="458" />
+        <di:waypoint x="2310" y="590" />
+        <di:waypoint x="2379" y="590" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2313" y="510" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_NOK2_di" bpmnElement="SF_NOK2">
+        <di:waypoint x="2581" y="590" />
+        <di:waypoint x="2710" y="590" />
+        <di:waypoint x="2710" y="545" />
+        <di:waypoint x="2839" y="545" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_NOK3_di" bpmnElement="SF_NOK3">
+        <di:waypoint x="3040" y="545" />
+        <di:waypoint x="3070" y="545" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_NOK4_di" bpmnElement="SF_NOK4">
+        <di:waypoint x="3270" y="545" />
+        <di:waypoint x="3300" y="545" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_NOK5_di" bpmnElement="SF_NOK5">
+        <di:waypoint x="3500" y="545" />
+        <di:waypoint x="3530" y="545" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_LOOP_di" bpmnElement="SF_LOOP">
+        <di:waypoint x="3629" y="601" />
+        <di:waypoint x="3620" y="920" />
+        <di:waypoint x="2110" y="920" />
+        <di:waypoint x="2110" y="380" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2348" y="816" width="46" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="StartEvent_di" bpmnElement="StartEvent">
+        <dc:Bounds x="32" y="334" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SF1_di" bpmnElement="SF1">
+        <di:waypoint x="68" y="355" />
+        <di:waypoint x="129" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1bezv1x_di" bpmnElement="Flow_1bezv1x">
+        <di:waypoint x="1521" y="590" />
+        <di:waypoint x="1615" y="590" />
+        <di:waypoint x="1615" y="380" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1mne0rl_di" bpmnElement="Flow_1mne0rl">
+        <di:waypoint x="1075" y="380" />
+        <di:waypoint x="1075" y="458" />
+        <di:waypoint x="920" y="458" />
+        <di:waypoint x="920" y="590" />
+        <di:waypoint x="989" y="590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Gateway_0p0m6c2_di" bpmnElement="Gateway_083ji2q">
+        <dc:Bounds x="2085" y="330" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0t9812v_di" bpmnElement="Flow_0t9812v">
+        <di:waypoint x="2040" y="355" />
+        <di:waypoint x="2085" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1073x4g_di" bpmnElement="Flow_1073x4g">
+        <di:waypoint x="2110" y="330" />
+        <di:waypoint x="2110" y="100" />
+        <di:waypoint x="2219" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1f34xg5_di" bpmnElement="Flow_1f34xg5">
+        <di:waypoint x="1881" y="680" />
+        <di:waypoint x="2015" y="680" />
+        <di:waypoint x="2015" y="380" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn2:definitions>
