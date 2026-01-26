@@ -19,9 +19,11 @@ ElementType=ET.Element
 
 class Choreography(models.Model):
 
-    name = models.TextField(max_length=100, null=True, blank=True)
-    resource = models.FileField(upload_to=settings.UPLOAD_ROOT)
-
+    name = models.TextField(max_length=100, null=True, blank=True, verbose_name=_("name"))
+    resource = models.FileField(upload_to=settings.UPLOAD_ROOT, verbose_name=_("resource"))
+    enabled = models.BooleanField(default=True, verbose_name=_("enabled"))
+    details = models.TextField(null=True, blank=True, verbose_name=_("details"))
+ 
     class Meta:
     
         verbose_name = _("choreography")
@@ -390,8 +392,9 @@ class Choreography(models.Model):
             incoming = self.incoming(node)
             outgoing = self.outgoing(node)
 
+            #breakpoint()
             if len(incoming) == 1 and len(outgoing) > 1:
-
+            
                 ancestors = self.ancestors(node, limit_node)
                 if node in ancestors:
                     res = "GW_EX_LOOP_CLOSE"
