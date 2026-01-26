@@ -608,7 +608,7 @@ pragma abicoder v2;
                             "runs": 40000        # or 10000–50000 depending on your needs
                         },
                         "outputSelection": {
-                            "*": {"*": ["abi", "metadata", "evm.bytecode", "evm.sourceMap"]}
+                            "*": {"*": ["abi", "metadata", "evm.bytecode", "evm.sourceMap", "evm.deployedBytecode" ]}
                         },
                         #"libraries": {"strings.sol"}
                     },
@@ -620,6 +620,24 @@ pragma abicoder v2;
                 solc_version = settings.SOLC_VERSION, #"0.8.0",
                 allow_paths = ["."]
             )
+            #breakpoint()
+    
+            for filename, file_data in self._compiled_sol["contracts"].items():
+                print(f"* {filename}:")
+                len_bytecode_creation_total = 0
+                len_bytecode_runtime_total = 0
+                
+                for contract_name, contract_data in file_data.items():
+                    len_bytecode_creation = len(contract_data["evm"]["bytecode"]["object"])
+                    len_bytecode_runtime = len(contract_data["evm"]["deployedBytecode"]["object"])
+                    len_bytecode_creation_total = len_bytecode_creation_total + len_bytecode_creation
+                    len_bytecode_runtime_total = len_bytecode_runtime_total + len_bytecode_runtime
+                    print(f"  + {contract_name}:")
+                    print(f"    creation : {len_bytecode_creation} B")
+                    print(f"    runtime  : {len_bytecode_runtime} B")
+
+                print(f"> creation (total): {len_bytecode_creation_total} B")
+                print(f"> runtime (total): {len_bytecode_runtime_total} B")
 
         except Exception as err:
             print(f"Errors compiling smart-contract code: {err}")    
