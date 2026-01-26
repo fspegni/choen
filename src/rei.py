@@ -1,9 +1,11 @@
 from bpmn_parser.models import Choreography, ElementType
 from mpst.models import MPST, GlobalType
+import re
 
 def sanitize(text):
 
-    return text.replace(" ", "_").replace("-", "_").replace("/", "_").replace("&", "_")
+    return re.sub(r"[^a-zA-Z0-9]", "_", text)
+    #return text.replace(" ", "_").replace("-", "_").replace("/", "_").replace("&", "_").replace(",","_").replace("(","_").replace(")","_")
 
 def expect_node_type(cho:Choreography, node:ElementType, ntypes, limit_node=None):
 
@@ -11,6 +13,9 @@ def expect_node_type(cho:Choreography, node:ElementType, ntypes, limit_node=None
         ntypes = [ ntypes] 
 
     real_ntype = cho.node_type(node, limit_node)
+
+    if real_ntype not in ntypes:
+        breakpoint()
     assert real_ntype in ntypes, f"Expected node of type '{ntypes}'. Found: Node: {node} - Type: {real_ntype}"
 
 
@@ -455,9 +460,8 @@ def ChoToRei(cho:Choreography, handle_task=None, node:ElementType=None, match:El
 
             if gw_closure:
                 gw_closure_next = cho.next(gw_closure, limit_node)
-                assert len(gw_closure_next) == 1
-                #assert len(cho.next(gw_closure)) == 1
 
+                assert len(gw_closure_next) == 1, f"Expected one gw_closure_next for {gw_closure}. Found: {gw_closure_next}"
                 #rei_rest, match_rest = ChoToRei(cho, handle_task, cho.next(gw_closure)[0], match, limit_node)
                 rei_rest, match_rest = ChoToRei(cho, handle_task, gw_closure_next[0], match, limit_node)
 

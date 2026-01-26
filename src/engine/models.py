@@ -309,7 +309,7 @@ class RunningInstance(models.Model):
 
         else:
 
-            engine_onchain = EngineOnChain.create_engine(self)
+            engine_onchain = EngineOnChain.create_engine(self, the_filter=kwargs.get("filter", None))
             assert engine_onchain is not None
 
             engine_onchain.deploy_smart_contracts()
@@ -339,7 +339,7 @@ class RunningInstance(models.Model):
         #breakpoint()
         if not engine_offchain:
     
-            engine_offchain = EngineOffChain.create_engine(self)
+            engine_offchain = EngineOffChain.create_engine(self, the_filter=kwargs.get("filter", None))
     
             assert engine_offchain is not None       
     
@@ -364,6 +364,66 @@ class RunningInstance(models.Model):
         self.running = False
         self.save()
 
+class Filter:
+
+    def match(self, agent, action, message):
+        # by default, an instance of Filter is a dummy filter, accepting everything
+        return True
+
+    def apply(self, agent, action, message):
+        if self.match(agent, action, message):
+            return symbol
+        else:
+            return None
+
+class ActionFilter(Filter):
+
+    ACTIONS = [ "!", "?" ]
+
+    def __init__(self, agent:str=None, action:str=None, message:str=None):
+
+        if action and action not in self.ACTIONS:
+            raise ValueError(f"Unsupported filter action ({self.ACTIONS}). Passed: {action}")
+
+        self._agent = None if not agent or agent == "*" else agent
+        self._action = None if not action or action == "*" else action
+        self._message = None if not message or message == "*" else message
+
+
+
+    def __str__(self):
+        x = self._agent or "*"
+        o = self._action or "*"
+        #y = self._target or "*"
+        v = self._message or "*"
+        return f"<{x},{o},{v}>"
+    
+    def match(self, agent:str, action:str, message:str):
+
+        if action and action not in self.ACTIONS:
+            raise ValueError(f"Unsupported action ({self.ACTIONS}). Passed: {action}")
+
+        agent_ok = self._agent is None or self._agent == agent
+        action_ok = self._action is None or self._action == action
+        message_ok = self._message is None or self._message == message
+
+        return agent_ok and action_ok and message_ok
+
+class UnionFilter(Filter):
+
+    def __init__(self, filters):
+        if not filters:
+            raise Exception("Expected filters")
+
+        for curr in filters:
+            if not isinstance(curr, Filter):
+                raise Exception(f"Expected filter of type Filter. Passed: {curr}")
+
+        self._filter = filters
+
+    def match(self, agent:str, action:str, message:str):
+        return any(lambda curr: curr.match(agent, action, message), self._filters)
+
 
 class Engine:
 
@@ -371,7 +431,17 @@ class Engine:
         super().__init__(*args, **kwargs)
         self._nfa = None
         self._log_file = None
+        self._filter = Filter()
 
+    @property
+    def filter(self):
+        return self._filter
+
+    def set_filter(self, the_filter : Filter):
+        if not the_filter:
+            raise Exception("Expected non-null filter")
+
+        self._filter = the_filter
 
     @property
     def log_file(self):
@@ -499,7 +569,7 @@ class EngineOffChain(Engine, models.Model):
 
 #    def __init__(self, nfa : nfa.NFA):
     @staticmethod
-    def create_engine(ri : RunningInstance): #nfa : nfa.NFA): #, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
+    def create_engine(ri : RunningInstance, the_filter : Filter = None): #nfa : nfa.NFA): #, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
 #        super().__init__(nfa)
         e = EngineOffChain()
@@ -514,6 +584,10 @@ class EngineOffChain(Engine, models.Model):
         e.curr_states = list(nfa.e_closure(set([ nfa.initial.id ])))
         e._debug : bool = True
         e._stats = []
+    
+        if the_filter:
+            e.set_filter(the_filter)
+
         e.running_instance = ri
         e.kb = []
 
@@ -558,6 +632,10 @@ class EngineOffChain(Engine, models.Model):
         #(precondition, actor, action, message, knowledge) = self._parse_event(symbol)
         (actor, action, message) = self._parse_event(event)
 
+        breakpoint()
+        match = self._filter.match(actor, action, message)
+        if not match:
+            return event #None
 
         #event = f"{actor}{action}{message}"
         print(f"Process: {precondition or 'T'} -> {event}({knowledge or 'nil'})")
@@ -1248,7 +1326,7 @@ class EngineOnChain(Engine,models.Model):
         return nfa
 
     @staticmethod
-    def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
+    def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None, the_filter : Filter = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
         nfa = ri.choreography.to_nfa(optimize=True)
 
@@ -1273,6 +1351,9 @@ class EngineOnChain(Engine,models.Model):
         #breakpoint()
         e._transaction_callback = transaction_callback
         e._deploy_callback = deploy_callback
+
+        if the_engine:
+            e.set_engine(the_engine)
 
         e.running_instance = ri
         e.save()
@@ -1543,6 +1624,10 @@ class EngineOnChain(Engine,models.Model):
         #start_time = time.time()
 
         parts = re.split(r'([!?])', event)
+
+        match = self._filter.match(parts[0], parts[1], parts[2])
+        if not match:
+            return None
 
         try:
             if len(parts) != 3:

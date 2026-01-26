@@ -23,7 +23,7 @@ import prompt_toolkit
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import NestedCompleter
 from web3 import Web3
-from engine.models import Contract, Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
+from engine.models import ActionFilter, UnionFilter, Filter, Contract, Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
 
 import random
 import string
@@ -227,6 +227,43 @@ class CmdInit(UICommand):
             else:
                 print(f"Choreography {name} already exists ...")
 
+class CmdSetFilter(UICommand):
+
+    _description = "Set a filter"
+
+
+    def execute(self, *args, **kwargs):
+        if len(args) < 1:
+            raise Exception(f"Missing argument: None | <filter_expression>")
+
+        exp = args[0].strip()
+        if exp == "None":
+            self.ui.set_env("filter", Filter())
+        else:
+            try:
+                #breakpoint()
+                exp_list = exp.split("|")
+                filters_list = []   
+                for exp in exp_list:
+                    exp = exp.strip()
+                    if exp[0] == "<" and exp[-1] == ">":
+                        parts = exp[1:-1].split(",")
+                        source = parts[0].strip()
+                        action = parts[1].strip()
+                        message = parts[2].strip()
+                        
+                        filters_list.append(ActionFilter(source, action, message))
+                
+                num_filters = len(filters_list)
+                if num_filters == 0:
+                    raise Exception(f"Ill-formed list filter expression: {exp_list}")
+                elif num_filters == 1:
+                    self.ui.set_env("filter", filters_list[0])
+                elif num_filters > 0:
+                    self.ui.set_env("filter", UnionFilter(*filters_list))
+                
+            except Exception:
+                raise Exception(f"Ill-formed filter expression: {exp}")
 
 class CmdStep(UICommand):
 
@@ -398,7 +435,7 @@ class CmdListChoreographies(UICommand):
 
     def execute(self, *args, **kwargs):
 
-        print("Available choreographies:")
+        print("Available choreographies: (# states / # transitions / # messages)")
         items = Choreography.objects.all().order_by("name")
     
         #breakpoint()
@@ -412,13 +449,37 @@ class CmdListChoreographies(UICommand):
 
             for c in items:
                 cho_name = c.name.ljust(longest+3,".")
-                nfa = c.to_nfa(optimize=True)
-                nfa_optimized = c.to_nfa(optimize=True,silent=True)
-                no_states = len(nfa.states)
-                no_transitions = len(nfa.transitions)
-                no_states_o = len(nfa_optimized.states)
-                no_transitions_o = len(nfa_optimized.transitions)
-                print(f"* {cho_name} - ({no_states:>3}/{no_states_o:<3} ; {no_transitions:>3}/{no_transitions_o:<3}) -{c.resource}")
+                details = ""
+                try:
+                    if c.enabled:
+                        nfa = c.to_nfa(optimize=True)
+                        nfa_optimized = c.to_nfa(optimize=True,silent=True)
+                        no_states = len(nfa.states)
+                        no_transitions = len(nfa.transitions)
+                        no_messages = len(nfa.messages)
+                        #no_states_o = len(nfa_optimized.states)
+                        #no_transitions_o = len(nfa_optimized.transitions)
+    
+                        details = f"({no_states:>3}/{no_transitions:>3}/{no_messages:>3})" 
+
+                    else:
+                        details = f"(not enabled)"
+                except Exception as err:
+                    no_states = "NN"
+                    no_transitions = "NN"
+                    no_messages = "NN"
+                    details = f"Error: {str(err)}"
+                    c.details = traceback.format_exc()
+                    c.save()
+                    #traceback.print_exc()
+
+                finally:
+                    resource_name = str(c.resource)
+                    if len(resource_name) < 53:
+                        resource_name = resource_name[:50]
+
+                    resource_name = resource_name.ljust(53, ".")
+                    print(f"* {cho_name} - {resource_name:>23} - {details}")
 
 
 class CmdClear(UICommand):
@@ -618,7 +679,6 @@ class CmdBuildContracts(UICommand):
 
         c : Choreography = self.ui._model.get_object("choreography")
         m : MPST = self.ui._model.get_object("mpst")
-
         debug = True
 
         if c and m:
@@ -856,6 +916,10 @@ class CmdStart(UICommand):
  
 
         #breakpoint()
+
+        log_file = self.ui.get_env("LOG_FILE", None)
+        filter = self.ui.get_env("FILTER", None)
+
         if onchain_url and onchain_chain_id and onchain_address and onchain_private_key:
 
             conf_list = Configuration.objects.filter(url=onchain_url, chain_id=onchain_chain_id, address=onchain_address, private_key=onchain_private_key)
@@ -875,13 +939,11 @@ class CmdStart(UICommand):
                 conf.save()
 
 
-            log_file = self.ui.get_env("LOG_FILE", None)
-            engine = ri.setup_onchain(conf, log_file=log_file)
+            engine = ri.setup_onchain(conf, log_file=log_file, filter=filter)
 
         else:
 
-            log_file = self.ui.get_env("LOG_FILE", None)
-            engine = ri.setup_offchain(log_file=log_file)
+            engine = ri.setup_offchain(log_file=log_file, filter=filter)
 
         assert engine is not None
         enforcer = Enforcer(engine)
@@ -1396,6 +1458,7 @@ class UI:
             "pause"  : CmdPause(self), #self.cmd_stop,
             "debug" : CmdDebug(self), #self.cmd_debug,
             "script" : CmdScript(self), #self.cmd_debug,
+            "set_filter": CmdSetFilter(self), 
             "step" : CmdStep(self), #self.cmd_debug,
             "replay" : CmdReplay(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
