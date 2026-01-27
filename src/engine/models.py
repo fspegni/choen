@@ -1352,8 +1352,8 @@ class EngineOnChain(Engine,models.Model):
         e._transaction_callback = transaction_callback
         e._deploy_callback = deploy_callback
 
-        if the_engine:
-            e.set_engine(the_engine)
+        if the_filter:
+            e.set_filter(the_filter)
 
         e.running_instance = ri
         e.save()
@@ -1627,7 +1627,7 @@ class EngineOnChain(Engine,models.Model):
 
         match = self._filter.match(parts[0], parts[1], parts[2])
         if not match:
-            return None
+            return event
 
         try:
             if len(parts) != 3:
