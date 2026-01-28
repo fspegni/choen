@@ -5,7 +5,7 @@ from django.db.models import Q
 import glob
 import json
 from tracemalloc import start
-import nfa
+from nfa import NFA
 import traceback
 import sys
 import os
@@ -1080,6 +1080,20 @@ class CmdRandom(UICommand):
         if not ri:
             raise UICommand.Error("Cannot continue without a running instance")
 
+        end = args[0].strip() if len(args) > 0 else "1"
+
+        if end == "end":
+            while not nfa.is_final(ri.engine.get_curr_states()):
+                self._emit_random_event(nfa, ri)
+        elif end.isdigit():
+
+            for i in range(int(end)):
+                self._emit_random_event(nfa, ri)
+        else:
+            raise UICommand.Error(f"Ill-formed argument: {args[0]}. Expected: end | <positive_integer>")
+    
+    def _emit_random_event(self, nfa : NFA, ri : RunningInstance):
+
         #breakpoint()
         coin = random.randint(0, 100)
         if coin < 5:
@@ -1094,13 +1108,9 @@ class CmdRandom(UICommand):
         elif coin < 55:
         
             # 50% of the times, generate a random event among those accepted in the current states
-            while True:
-                state = random.choice(list(ri.engine.curr_states))
-                transitions = list(nfa.transitions_from(state))
+            enabled_transitions = nfa.enabled_transitions(ri.engine.curr_states)
 
-                if transitions:
-                    random_event = random.choice(transitions).label
-                    break
+            random_event = random.choice(enabled_transitions).label
 
         else:
 
@@ -1110,6 +1120,10 @@ class CmdRandom(UICommand):
 
         ri.append_input(random_event)
         out = ri.enforcer.process_input(random_event)
+        if out:
+            ri.append_output(out)
+
+        out = ri.enforcer.process_check()
         if out:
             ri.append_output(out)
 

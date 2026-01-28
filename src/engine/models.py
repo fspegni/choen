@@ -735,7 +735,7 @@ class EngineOffChain(Engine, models.Model):
 
         assert action in [ "!", "?" ], f"Unexpected action: {action}"
 
-        breakpoint()
+        #breakpoint()
         if not actor in self.buffer:
             raise Exception(f"No event ({actor},{action},{message}) to remove from buffer")
 

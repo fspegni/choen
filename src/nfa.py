@@ -474,6 +474,14 @@ class NFA:
             
         return set(res)
 
+    def enabled_transitions(self, source_list):
+        
+        result = []
+        for s in source_list:
+            result.extend(self.transitions_from(s))
+
+        return result
+
     """
     Return the set of all transitions reaching the passed target state. If a label is specified,
     only thos transitions that share that label are returned.
