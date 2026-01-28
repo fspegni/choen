@@ -372,6 +372,10 @@ class NFA:
         return g
      
     @property
+    def events(self):
+        return self._event_dictionary.keys()
+
+    @property
     def propositions(self):
 
         return set() # TODO implement this ...

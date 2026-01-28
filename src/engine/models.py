@@ -7,6 +7,7 @@ from web3 import Web3, HTTPProvider
 from web3.exceptions import Web3RPCError 
 #from web3.middleware import SignAndSendRawMiddlewareBuilder
 #from web3.middleware.signing import NonceManager
+from django.core.serializers.json import DjangoJSONEncoder
 
 import re
 from picklefield.fields import PickledObjectField
@@ -567,6 +568,8 @@ class EngineOffChain(Engine, models.Model):
 
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
+    stats = models.JSONField(default = [])
+
 #    def __init__(self, nfa : nfa.NFA):
     @staticmethod
     def create_engine(ri : RunningInstance, the_filter : Filter = None): #nfa : nfa.NFA): #, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
@@ -583,7 +586,7 @@ class EngineOffChain(Engine, models.Model):
         e.buffer = {}
         e.curr_states = list(nfa.e_closure(set([ nfa.initial.id ])))
         e._debug : bool = True
-        e._stats = []
+        e.stats = []
     
         if the_filter:
             e.set_filter(the_filter)
@@ -598,9 +601,9 @@ class EngineOffChain(Engine, models.Model):
         return e
     
 
-    @property
-    def stats(self) -> str:
-        return self._stats
+    def _log_stats(self, obj : dict):
+        obj = json.loads(json.dumps(obj, cls=DjangoJSONEncoder))
+        self.stats.append(obj)
 
 
     def get_execution_started(self):
@@ -632,7 +635,7 @@ class EngineOffChain(Engine, models.Model):
         #(precondition, actor, action, message, knowledge) = self._parse_event(symbol)
         (actor, action, message) = self._parse_event(event)
 
-        breakpoint()
+        #breakpoint()
         match = self._filter.match(actor, action, message)
         if not match:
             return event #None
@@ -709,17 +712,24 @@ class EngineOffChain(Engine, models.Model):
 
         assert action in [ "!", "?" ], f"Unexpected action: {action}"
 
+        num_before = len(self.get_buffer_items())
+
         #breakpoint()
-        if not actor in self.buffer:
+        if actor not in self.buffer:
             self.buffer[actor] = {}
 
-        if not action in self.buffer[actor]:
-            self.buffer[actor] = { action: {} }
+        if action not in self.buffer[actor]:
+            self.buffer[actor][action] = {}
 
-        if not message in self.buffer[actor][action]:
+        if message not in self.buffer[actor][action]:
             self.buffer[actor][action][message] = []
 
         self.buffer[actor][action][message].append({"precondition": precondition, "knowledge": knowledge})
+
+        num_after = len(self.get_buffer_items())
+        #if num_after - num_before != 1:
+        #    breakpoint()
+        assert num_after == num_before + 1, f"Expected buffer length after add operation: {num_before+1}. Actual length: {num_after}"
 
     def _buffer_remove(self, precondition, actor : str, action : str, message : str, knowledge):
 
@@ -832,6 +842,7 @@ class EngineOffChain(Engine, models.Model):
         return res
 
     def get_buffer_items(self):
+        #breakpoint()
         items = []
         for actor in self.buffer:
             for action in self.buffer[actor]:
@@ -882,7 +893,7 @@ class EngineOffChain(Engine, models.Model):
         for curr in self._nfa.states:
             enabled_transitions = self._nfa.transitions_from(curr, event)
             if len(enabled_transitions) > 0:
-                self._debug_log(f"(* Condition rule receive delayed *)") #: {precondition or 'T'} -> {event} *)")
+                self._debug_log(f"(* Condition rule send delayed *)") #: {precondition or 'T'} -> {event} *)")
                 return True
 
 
@@ -1007,13 +1018,15 @@ class EngineOffChain(Engine, models.Model):
 
 #    def rule_receive_delayed(self, actor, message):
     def rule_receive_delayed(self, precondition, event, knowledge):
+
+        #breakpoint()  
         # TODO we should buffer the precondition and knowledge
         actor, message = event.split("?")
         self._buffer_add(precondition, actor, "?", message, knowledge)
         return ""
 
     def rule_receive_buffered(self, precondition, actor, message, event, knowledge):
-        
+      
         #_, actor, action, message, _ = self._parse_event(event)
 
         assert actor in self.buffer and "?" in self.buffer[actor] and message in self.buffer[actor]["?"]
@@ -1150,19 +1163,23 @@ class Contract(models.Model):
         block_gas_limit = w3.eth.get_block("latest")["gasLimit"]
         print(f"Block Gas Limit: {block_gas_limit}")
 
-        balance = w3.eth.get_balance(bc.address)
-        balance_eth = w3.from_wei(balance, 'ether')
+        balance_before = w3.eth.get_balance(bc.address)
+        balance_eth = w3.from_wei(balance_before, 'ether')
         print(f"Account: {bc.address} . Balance (before deployment): {balance_eth} ETH")
 
-        #start_time = time.time()
+        ts_begin = datetime.now() #time.time()
         # build transaction
         #if (address == None):
+
+        gas = int(0.9 * block_gas_limit)
+        max_fee_per_gas = int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER)
+
         tx = {
             "chainId": w3.eth.chain_id, #self.chain_id,
             #"gasPrice": gas_price, #self.w3.eth.gas_price,
-            "gas": int(0.9 * block_gas_limit), #60000000,
+            "gas": gas, #60000000,
             "from": bc.address,
-            "maxFeePerGas": int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER),
+            "maxFeePerGas": max_fee_per_gas,
             "maxPriorityFeePerGas": w3.eth.max_priority_fee,
 
         }
@@ -1177,7 +1194,8 @@ class Contract(models.Model):
             transaction = w3_contract.constructor(*arguments).build_transaction(tx)
 
         #breakpoint()
-        gas = w3.eth.estimate_gas(transaction)
+        gas_transaction_estimate = w3.eth.estimate_gas(transaction)
+        gas = int(gas_transaction_estimate * settings.GAS_MULTIPLIER)
         print(f"Estimated gas: {gas}.")
 #        transaction.update({
 #            "maxFeePerGas": int(gas_prices * settings.GAS_MAX_FEE_MULTIPLIER),
@@ -1185,14 +1203,14 @@ class Contract(models.Model):
 #            #"gas": gas * settings.GAS_MULTIPLIER    
 #        })
 
-        transaction.update({"gas": int(gas * settings.GAS_MULTIPLIER)})
+        transaction.update({"gas": gas })
 
         transaction_estimate_cost = round(w3.from_wei(gas * gas_price, "ether"), 6)
 
         print(f"GAS price (estimate): {gas_price} wei")
         print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH")
 
-        #build_time = time.time() - start_time
+        ts_build_end = datetime.now() #time.time() - start_time
         print(f"\nDeploying contract {self.label} (bytecode: {len(self.bytecode)} bytes) ...")
         #tx_receipt = bc._sendTransaction(transaction, callback=callback)
         tx, tx_receipt = bc._sendTransaction(transaction) # callback=callback)
@@ -1203,11 +1221,11 @@ class Contract(models.Model):
         print(f"GAS price (actual): {gas_price_actual} wei")
         print(f"Transaction cost (actual): {transaction_actual_cost} ether")
 
-        balance = w3.eth.get_balance(bc.address)
-        balance_eth = w3.from_wei(balance, 'ether')
+        balance_after = w3.eth.get_balance(bc.address)
+        balance_eth = w3.from_wei(balance_after, 'ether')
         print(f"Account: {bc.address} . Balance (after deployment): {balance_eth} ETH")
 
-        #execution_time = time.time() - start_time
+        ts_execution_end = datetime.now() #time.time() - start_time
 
         #self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, transaction_actual_cost, round(execution_time,3), f"Contract Creation")
         #self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
@@ -1216,7 +1234,25 @@ class Contract(models.Model):
         self.contract_address = tx_receipt.contractAddress
         self.save()
 
-        return w3_contract
+        stats = {
+            "contract_name": self.label,
+            "contract_address": tx_receipt.contractAddress,
+            "balance_before": balance_before,
+            "balance_after": balance_after,  
+            "transaction_estimate_cost": transaction_estimate_cost,
+            "gas": gas,
+            "gas_price_actual": gas_price_actual,
+            "max_fee_per_gas": max_fee_per_gas,
+            "transaction_actual_cost": transaction_actual_cost,
+            "transaction_type": "deploy",
+            "bytecode_size": len(self.bytecode),
+            "ts_begin": ts_begin,
+            "ts_end": ts_execution_end,
+            "build_time": (ts_build_end - ts_begin).total_seconds() / 1000,
+            "execution_time": (ts_execution_end - ts_build_end).total_seconds() / 1000,
+        }
+
+        return w3_contract, stats
         #return tx_receipt.contractAddress, contract
 
     def transact(self, function_name, function_args=None):
@@ -1285,8 +1321,6 @@ class EngineOnChain(Engine,models.Model):
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
-
-
     stats = models.JSONField(default = [])
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
@@ -1328,7 +1362,10 @@ class EngineOnChain(Engine,models.Model):
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None, the_filter : Filter = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
+        nfa_start = datetime.now()
         nfa = ri.choreography.to_nfa(optimize=True)
+    
+        nfa_end = datetime.now()
 
         blockchain_configuration = ri.blockchain_configuration
 
@@ -1337,6 +1374,8 @@ class EngineOnChain(Engine,models.Model):
         e.blockchain_configuration = blockchain_configuration
         e._w3 : Web3 = blockchain_configuration.get_w3()
         e._debug_log("Connected.")
+        e.stats = [ { "nfa_build_time": float((nfa_end - nfa_start).total_seconds() / 1000) } ]
+
 
         # test network connection, by retrieving the network_id
         network_id = e._w3.net.version
@@ -1356,6 +1395,7 @@ class EngineOnChain(Engine,models.Model):
             e.set_filter(the_filter)
 
         e.running_instance = ri
+
         e.save()
 
         return e
@@ -1376,16 +1416,29 @@ class EngineOnChain(Engine,models.Model):
         # 0. deploy the Utils library
         sc_utils_abi = sc.get_abi("Utils")
         sc_utils_bytecode = sc.get_bytecode("Utils")
-        sc_utils = Contract.objects.create(abi=sc_utils_abi, bytecode=sc_utils_bytecode, label="Utils", blockchain_configuration=self.blockchain_configuration) # TODO finish here
-        sc_utils.deploy()
+        sc_utils = Contract.objects.create(
+                        abi=sc_utils_abi, 
+                        bytecode=sc_utils_bytecode, 
+                        label="Utils", 
+                        blockchain_configuration=self.blockchain_configuration)
+
+        _, utils_stats = sc_utils.deploy()
+
+        self._log_stats(utils_stats)
 
         print(f"Utils library deployed ({sc_utils.contract_address}) ...")    
 
         # 1. deploy NFA contracta
         sc_nfa_abi = sc.get_abi("_NFA")
         sc_nfa_bytecode = sc.get_bytecode("_NFA", { "Utils": sc_utils.contract_address })
-        sc_nfa = Contract.objects.create(abi=sc_nfa_abi, bytecode=sc_nfa_bytecode, label="_NFA", blockchain_configuration=self.blockchain_configuration)
-        sc_nfa.deploy() #self.blockchain_configuration)
+        sc_nfa = Contract.objects.create(
+                        abi=sc_nfa_abi, 
+                        bytecode=sc_nfa_bytecode, 
+                        label="_NFA", 
+                        blockchain_configuration=self.blockchain_configuration)
+
+        _, nfa_stats = sc_nfa.deploy() #self.blockchain_configuration)
+        self._log_stats(nfa_stats)
 
         self._nfa_address = sc_nfa.contract_address
         print(f"NFA contract deployed ({sc_nfa.contract_address}) ...")    
@@ -1393,10 +1446,15 @@ class EngineOnChain(Engine,models.Model):
         # 2. deploy Enforcer contracta
         sc_enforcer_abi = sc.get_abi("Enforcer")
         sc_enforcer_bytecode = sc.get_bytecode("Enforcer", { "Utils": sc_utils.contract_address })
-        sc_enforcer = Contract.objects.create(abi=sc_enforcer_abi, bytecode=sc_enforcer_bytecode, label="Enforcer", blockchain_configuration=self.blockchain_configuration)
-        sc_enforcer.deploy([ sc_nfa.contract_address ])
-        print(f"Enforcer contract deployed ({sc_enforcer.contract_address}) ...")    
+        sc_enforcer = Contract.objects.create(
+                        abi=sc_enforcer_abi, 
+                        bytecode=sc_enforcer_bytecode, 
+                        label="Enforcer", 
+                        blockchain_configuration=self.blockchain_configuration)
 
+        _, enforcer_stats = sc_enforcer.deploy([ sc_nfa.contract_address ])
+        self._log_stats(enforcer_stats)
+        print(f"Enforcer contract deployed ({sc_enforcer.contract_address}) ...")    
 
         self.contract_nfa =sc_nfa
         self.contract_enforcer = sc_enforcer
@@ -1556,10 +1614,10 @@ class EngineOnChain(Engine,models.Model):
                     #f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
                     #f.write("\n")
     
-    def __add_statistics(self, contractAddress, gasUsed, cost, executionTime, type = None):
-        #breakpoint()
-        self.stats.append([type, contractAddress, gasUsed, float(cost), executionTime])
-    
+    def _log_stats(self, obj : dict):
+
+        obj = json.loads(json.dumps(obj, cls=DjangoJSONEncoder))
+        self.stats.append(obj)
 
     @property
     def buffer(self):

@@ -102,7 +102,7 @@ class Enforcer:
         #breakpoint()
         if not m:
             #breakpoint()
-            raise Exception(f"Event has an unrecognized format")
+            raise Exception(f"Event has an unrecognized format: {text}")
 
         #breakpoint()
         #_, precondition, actor, action, message, _, knowledge = m.groups()
@@ -173,6 +173,9 @@ class Model:
 
 class UICommand:
 
+    class Error(Exception):
+        pass
+    
     _description = ""
 
     def __init__(self, ui):
@@ -336,7 +339,7 @@ class CmdReplay(UICommand):
             raise Exception("Path already exists: {path}. Cannot overwrite at the moment")
 
         with open(path, "w+") as the_script:
-            for line in self.ui.ri.output_events:
+            for line in self.ui.ri.input_events:
                 the_script.write(line + "\n")
 
         print(f"Script file saved at position: {path}")
@@ -891,7 +894,7 @@ class CmdStart(UICommand):
         #    cho = Choreography.objects.get(name=args[0])
 
         if not cho and not mpst:
-            raise Exception("You must load a choreography or a MPST or start a choreography")
+            raise UICommand.Error("You must load a choreography or a MPST or start a choreography")
 
     
         #breakpoint()
@@ -903,7 +906,7 @@ class CmdStart(UICommand):
         elif mpst:
             ri.mpst = mpst
         else:
-            raise Exception("You must pass either a MPST or a Choreography")
+            raise UICommand.Error("You must pass either a MPST or a Choreography")
             
         ri.label = cho.name if cho else mpst.name
 
@@ -1068,19 +1071,47 @@ class CmdRandom(UICommand):
 
     def execute(self, *args, **kwargs):
 
+        nfa = self.ui._model.get_object("nfa")
+        if not nfa:
+            raise UICommand.Error("Cannot continue without a loaded NFA")
+
         ri = self.ui._model.get_object("ri")
-        if ri:
-    
- 
-            actor = random_string(10)
-            msg = random_string(10)
+
+        if not ri:
+            raise UICommand.Error("Cannot continue without a running instance")
+
+        #breakpoint()
+        coin = random.randint(0, 100)
+        if coin < 5:
+
+            # 5% of the times, generate a completely random event
+
+            actor = random.choice(list(nfa.agents))  #random_string(10)
+            msg = random.choice(list(nfa.messages)) #random_string(10)
             action = random.choice(["?","!"])
             random_event = f"{actor}{action}{msg}"
 
-            ri.append_input(random_event)
-            out = ri.enforcer.process_input(random_event)
-            if out:
-                ri.append_output(out)
+        elif coin < 55:
+        
+            # 50% of the times, generate a random event among those accepted in the current states
+            while True:
+                state = random.choice(list(ri.engine.curr_states))
+                transitions = list(nfa.transitions_from(state))
+
+                if transitions:
+                    random_event = random.choice(transitions).label
+                    break
+
+        else:
+
+            # 45% of the times, pick an actual event of the nfa
+
+            random_event = random.choice(list(nfa.events))
+
+        ri.append_input(random_event)
+        out = ri.enforcer.process_input(random_event)
+        if out:
+            ri.append_output(out)
 
 class CmdDump(UICommand):
 
@@ -1126,15 +1157,28 @@ class CmdDump(UICommand):
 
             elif args[0] == "transitions":
                 print("\nTransitions (*=enabled): \n")
-                if self.ui._enforcer is None:
-                    print("You must start the enforcer, before dumping its transitions")
-                    return
-    
+
+                nfa : NFA = self.ui._model.get_object("nfa")
+                if not nfa:
+                    raise UICommand.Error("Unexpected error generating NFA from the current choreography")
+
+ 
+                is_current_state = lambda s: s == nfa.initial
+
+                if self.ui._enforcer is not None:
+                    is_current_state = lambda s: self.ui._enforcer.engine.is_state_current(s)
+
+##                if self.ui._enforcer is None:
+##                    print("You must start the enforcer, before dumping its transitions")
+##                    return
+   
                 #breakpoint()
-                for t in self.ui._enforcer.engine.get_transitions():
+                #for t in self.ui._enforcer.engine.get_transitions():
+                for t in nfa.transitions:
 
                     t_repr = str(t)
-                    if self.ui._enforcer.engine.is_state_current(t.source):
+                    #if self.ui._enforcer.engine.is_state_current(t.source):
+                    if is_current_state(t.source):
                         t_repr = f" * {t_repr}"
                     else:
                         t_repr = f"   {t_repr}"
@@ -1180,8 +1224,7 @@ class CmdDump(UICommand):
                 rei : REI = self.ui._model.get_object("rei")
 
                 if not rei:
-                    print("You must load a REI, before dumping it")
-                    return
+                    raise UICommand.Error("You must load a REI, before dumping it")
 
                 print("\nREI: \n")
 #                print(self.ui._rei)
@@ -1192,14 +1235,12 @@ class CmdDump(UICommand):
 
                 c : Choreography = self.ui._model.get_object("choreography")
                 if not c:
-                    print("You must load a choreography, before dumping its nfa")
-                    return
+                    raise UICommand.Error("You must load a choreography, before dumping its nfa")
 
 
                 nfa : NFA = self.ui._model.get_object("nfa")
                 if not nfa:
-                    print("Unexpected error generating NFA from the current choreography")
-                    return
+                    raise UICommand.Error("Unexpected error generating NFA from the current choreography")
 
                 #optimize = len(args) > 1 and args[1] == "reduced"
                 
@@ -1288,11 +1329,11 @@ class CmdStats(UICommand):
 
     def execute(self, *args, **kwargs):
         if self.ui._enforcer is None:
-            print("You must start the enforcer, before getting statistics")
-            return
+            raise UICommand.Error("You must start the enforcer, before getting statistics")
+
         if not self.ui._enforcer._onChain:
-            print("Statistics for off-chain Engine are not available.")
-            return
+            raise UICommand.Error("Statistics for off-chain Engine are not available.")
+
         self.ui.__print_stats()
         """if (args[0] == "-save"):
             with open(f'test_ganache.csv', 'a', encoding="utf-8") as f:
@@ -1303,8 +1344,8 @@ class CmdHistory(UICommand):
 
     def execute(self, *args, **kwargs):
         if self.ui._enforcer is None:
-            print("You must start the enforcer, before getting statistics")
-            return
+            raise UICommand.Error("You must start the enforcer, before getting statistics")
+
         for h in self.ui._enforcer.history:
             for key, value in h.items():
                 print(f"{key} : {value}")
@@ -1344,8 +1385,7 @@ class CmdSave(UICommand):
 
                 #breakpoint()
                 if not self.ui._enforcer:
-                    printF(f"Enforcer not started, yet")
-                    return
+                    raise UICommand.Error(f"Enforcer not started, yet")
 
                 g = self.ui._enforcer._engine._nfa.to_dot()
                 g.render(directory=outdir, filename=filename, outfile=outfile, format=format)
@@ -1660,7 +1700,10 @@ class UI:
         handler = self._registry.get(cmd, None)
 
         if handler:
-            handler.execute(*cmd_args, rest=rest)
+            try:
+                handler.execute(*cmd_args, rest=rest)
+            except UICommand.Error as err:
+                print(f"Command error: {err}")
         else:
             print(f"ERROR: Command not recognized: {cmd} {' ' .join(cmd_args)}")
 
