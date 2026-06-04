@@ -165,10 +165,6 @@ At the moment the choreography diagrams are generated using the following online
 
 https://bpt-lab.org/chor-js-demo/
 
-# BRAIN 2023
-
-The interested reader can find an example of use of the ChoEn tool using the running example submitted at the [BRAIN 2023 workshop](https://sites.google.com/view/brain-2023?pli=1) at the [following page](BRAIN2023.md).
-
 ---
 
 # Footnotes
