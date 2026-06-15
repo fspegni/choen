@@ -1,6 +1,6 @@
-This repository contains a blockchain-based Choreography Enforcer (CHOEN). The application takes as input a BPMN 2.0 Choreography diagram, and synthesize a Solidity smart contract that act as an enforcer of actors trying to implement the choreography in their production processes.
+This repository contains a blockchain-based Choreography Enforcer. The application takes as input a BPMN 2.0 Choreography diagram, and synthesize a Solidity smart contract that act as an enforcer of actors trying to implement the choreography in their production processes.
 
-CHOEN is still a prototype. The current stable version is based on a comand-line interface (CLI) where the user inputs the simulated events and observes whether the enforcer allows such events or not (perhaps they will be delayed, or postponed indefinitely). In future versions, a REST API interface will allow to seemlessly integrate it with (local or remotely connected) third party apps.
+The tool is still a prototype. The current stable version is based on a comand-line interface (CLI) where the user inputs the simulated events and observes whether the enforcer allows such events or not (perhaps they will be delayed, or postponed indefinitely). In future versions, a REST API interface will allow to seemlessly integrate it with (local or remotely connected) third party apps.
 
 # Preliminaries
 
@@ -19,7 +19,7 @@ You can follow this guide: https://code.visualstudio.com/docs/python . Remember 
 
 # First execution
 
-The first time you execute the CHOEN tool, the required Python libraries must be installed, and a database must be initialized. Use the following commands:
+The first time you execute the tool, the required Python libraries must be installed, and a database must be initialized. Use the following commands:
 ```
 $ workon <your_venv>
 (your_venv) $ pip install -r requirements.txt
@@ -39,17 +39,17 @@ At the moment, some tests have not been aligned with the most recent changes in 
 
 # Using the enforcer
 
-The CHOEN tool has two prompts:
+The tool has two prompts:
 - `>>` is the **outer** prompt
 - `+>` is the **inner** prompt
 
-The *outer* prompt is used to setup the CHOEN enforcer with operations such as selecting the BPMN choreography to be enforced, synthesize and compile the enforcing smart contract, setup the blockchain parameters and start the enforcer. 
+The *outer* prompt is used to setup the enforcer with operations such as selecting the BPMN choreography to be enforced, synthesize and compile the enforcing smart contract, setup the blockchain parameters and start the enforcer. 
 
 The *inner* prompt is used to input the (simulated) events and observe whether the enforcer returns them immediately (thus allowing their immediate execution) or delays them. A delayed output means that an event is acceptable provided that previous events are observed. An output may even been postponed indefinitely, because the preconditions (i.e. other events) are never observed. Note that since the enforcer is generated from a BPMN choreography, when we speak of events we mean an exchange of messages among the actors of the choreography itself.
 
 The tool starts executing with the outer prompt. The `start` command (see below) switches from the outer prompt to the inner one. When executing in the inner prompt, the `/stop` command (see the `stop`) brings back the tool to the outer command. 
 
-The CHOEN tool is launched with the following command:
+The tool is launched with the following command:
 ```
 (your_venv) $ django-admin cli
 ```
