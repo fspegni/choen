@@ -213,7 +213,6 @@ class NFA:
 
     def remove_epsilon_transitions(self, silent=True):
 
-
         class Continue(Exception):
             pass
 
@@ -274,63 +273,6 @@ class NFA:
             except Continue:
                 pass   
 
-    def remove_epsilon_transitions_old(self):
-        # TODO this method does not work; need to be fixed!
-
-        class Continue(Exception):
-            pass
-
-        #breakpoint()
-        idx = 1
-        while True:
-
-            try:
-                print(f"Iteration no. {idx} : # transitions = {len(self.transitions)} ...")
-                #breakpoint()
-                idx = idx + 1
-                for t in self.transitions:
-                    if not t.label and not self.is_initial(t.source) and not self.is_final(t.target):   
-                        to_add_transitions = []
-                        to_remove_transitions = []
-    
-                        # epsilon-transition found (TODO at the moment we do not remove e-transitions from initial/to final states)
-                        e_source = t.source
-                        e_target = t.target
-    
-                        to_remove_transitions.append(t)
-    
-                        incoming = self.transitions_to(e_source)
-                        #if len(incoming) == 0:
-                        #    breakpoint()
-                        for curr in incoming:
-                        
-                            if len(self.transitions_to(e_target)) == 1:
-                                to_remove_transitions.append(curr)          
-    
-                            new_t = Transition(curr.source, e_target, curr.label)
-                            to_add_transitions.append(new_t)
-    
-                        #breakpoint()
-                        for t in to_add_transitions:
-                            self.add_transition(t.source, t.target, t.label)
-                            print(f"Added: {t} ...")
-    
-                        for t in to_remove_transitions:
-                            #self.remove_transition(t.source, t.target, t.label)    
-                            self.remove_transition(t)
-                            print(f"Removed: {t} ...")
-
-                        #breakpoint()
-                        raise Continue() # use this special exception in order to continue with the iteration of the other loop
-
-
-                # if it reaches here, no epsilon transition was found in the list of transitions; nothing to do anymore
-                print(f"Iteration no. {idx} : EXIT : # transitions = {len(self.transitions)} ...")
-                #breakpoint()
-                return
-    
-            except Continue:
-                pass
 
     def remove_unreachable_states(self, silent=True):
         
@@ -907,6 +849,50 @@ class NFA:
                 result = (state, False)
 
         return result
+
+    # breadth-first search method
+    def bfs(self, source=None):
+
+        if not source:
+            source = self._initial
+        
+        discovered = { source: None }
+
+        level = [ source ] # we use level as a queue ...
+        while len(level) > 0:
+            u = level.pop(0) # dequeue ...
+            #for t in ... (outgoing transitions from u ) ... 
+            for t in self.transitions_from(u):
+
+                if t.target.id not in discovered:
+                    discovered[t.target.id] = t
+                    level.append(t.target.id) # enqueue ...
+
+        return discovered
+
+    def smooth_paths(self, source=None, targets=None):
+
+        if not source:
+            source = self._initial
+
+        if not targets:
+            targets = self._final
+
+        discovered = self.bfs(source)
+        paths = []
+        #for curr in self._final:
+        for curr in targets:
+        
+            curr_path = []
+            while curr in discovered and curr != source:
+                curr_path.append(discovered[curr]) #.target)
+                curr = discovered[curr].source.id
+
+            if curr_path:
+                paths.append(reversed(curr_path))
+        
+        return paths
+
 
 def ReiToNFA(rei : REI) -> NFA:
 

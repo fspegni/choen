@@ -1,9 +1,13 @@
+from decimal import Decimal
 from django.db import models
 #from django.utils.translation import ugettext as _
 from django.utils.translation import gettext as _
 from django.utils import timezone
 from eth_account import Account
 from web3 import Web3, HTTPProvider
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+
 from web3.exceptions import Web3RPCError 
 #from web3.middleware import SignAndSendRawMiddlewareBuilder
 #from web3.middleware.signing import NonceManager
@@ -75,8 +79,24 @@ class Configuration(models.Model):
         return account
 
     def get_w3(self):
+            
+        # setup a session with retries, to handle occasional disconnections or issues on the network stack
+        session = requests.Session()
+        retries = Retry(
+            total=5,
+            backoff_factor=0.5,          # 0.5, 1, 2, 4, 8s between retries
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST"],     # web3 calls are POST
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retries, pool_connections=10, pool_maxsize=10)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+       
+        provider = Web3.HTTPProvider(self.url, session=session, request_kwargs={'timeout': 30})
+
         print(f"\nConnecting to {self.url} ...")
-        w3 = Web3(Web3.HTTPProvider(self.url, request_kwargs={'timeout': 30}))
+        w3 = Web3(provider)
 
         # NB not needed; w3 v7.5 now computes nonce automatically if you don't specify
         # Add automatic nonce management
@@ -247,7 +267,14 @@ class RunningInstance(models.Model):
 
     @property
     def nfa(self):
-        return self._enforcer.engine.nfa if self._enforcer else None
+        nfa = None
+        if self._enforcer and self._enforcer.engine:
+            nfa = self._enforcer.engine.nfa
+        elif self.engine:   
+            nfa = self.engine.nfa
+        return nfa
+
+        #return self._enforcer.engine.nfa if self._enforcer else None
 
     @property
     def enforcer_states(self):
@@ -284,7 +311,14 @@ class RunningInstance(models.Model):
         if not self.output_events:
             self.output_events = []
 
-        self.output_events.extend(re.split(r'[ ]+', str(new_output)))#.strip()))
+        #self.output_events.extend(re.split(r'[ ]+', str(new_output)))#.strip()))
+        if isinstance(new_output, str):
+            self.output_events.extend(re.split(r'[ ]+', str(new_output)))#.strip()))
+        elif isinstance(new_output, list):
+            self.output_events.extend(new_output)
+        else:
+            self.output_events.append(new_output)
+
         self.save()
 
     def setup_onchain(self, blockchain_configuration : Configuration, **kwargs):
@@ -364,6 +398,33 @@ class RunningInstance(models.Model):
         #self.execution_ended = timezone.now()
         self.running = False
         self.save()
+
+
+    @property
+    def stats(self):
+        bc_configuration = self.blockchain_configuration.label if self.blockchain_configuration else None
+
+        nfa = self.nfa
+        num_states = len(nfa.states) if nfa else None
+        num_transitions = len(nfa.transitions) if nfa else None
+        num_events = len(nfa.events) if nfa else None
+    
+
+        breakpoint()
+        data = { "id": self.id, "engine_id": self.engine.id, "label": self.label, "blockchain_configuration": bc_configuration, "num_states": num_states, "num_transitions": num_transitions, "num_events": num_events }
+
+        if self.engine and self.engine.stats:
+            found = filter(lambda curr: "bytecode_size" in curr, self.engine.stats)
+
+            raise Exception("TODO finish below ...")
+##            for curr in found:
+##                field_name = curr["contract_name"] + "__" + 
+##                data[field_name] = curr["bytecode_size"]
+##            
+
+        return data
+
+
 
 class Filter:
 
@@ -552,7 +613,6 @@ class Engine:
     def rule_receive_buffered(self, precondition, event, knowledge):
 
         raise Exception("This is an abstract method, you should implement it")
-
 
 
 class EngineOffChain(Engine, models.Model):
@@ -1218,6 +1278,8 @@ class Contract(models.Model):
         gas_price_actual = tx_receipt.effectiveGasPrice
         transaction_actual_cost = round(w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
 
+        ts_execution_end = datetime.now() #time.time() - start_time
+
         print(f"GAS price (actual): {gas_price_actual} wei")
         print(f"Transaction cost (actual): {transaction_actual_cost} ether")
 
@@ -1225,7 +1287,6 @@ class Contract(models.Model):
         balance_eth = w3.from_wei(balance_after, 'ether')
         print(f"Account: {bc.address} . Balance (after deployment): {balance_eth} ETH")
 
-        ts_execution_end = datetime.now() #time.time() - start_time
 
         #self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, transaction_actual_cost, round(execution_time,3), f"Contract Creation")
         #self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
@@ -1248,8 +1309,8 @@ class Contract(models.Model):
             "bytecode_size": len(self.bytecode),
             "ts_begin": ts_begin,
             "ts_end": ts_execution_end,
-            "build_time": (ts_build_end - ts_begin).total_seconds() / 1000,
-            "execution_time": (ts_execution_end - ts_build_end).total_seconds() / 1000,
+            "build_time": (ts_build_end - ts_begin).total_seconds(), # / 1000,
+            "execution_time": (ts_execution_end - ts_build_end).total_seconds(), # / 1000,
         }
 
         return w3_contract, stats
@@ -1257,9 +1318,21 @@ class Contract(models.Model):
 
     def transact(self, function_name, function_args=None):
 
+        assert self.blockchain_configuration is not None, "Expected non-empty blockchain configuration"
+
+        bc = self.blockchain_configuration    
+ 
+        w3 : Web3 = bc.get_w3()
+
+        #start_time = time.time()
+        balance_before = w3.eth.get_balance(bc.address)
+        balance_eth = w3.from_wei(balance_before, 'ether')
+        print(f"Account: {bc.address} . Balance (before deployment): {balance_eth} ETH")
+
+        ts_begin = datetime.now()
+
         bc = self.blockchain_configuration
 
-        w3 : Web3 = bc.get_w3()
         w3_contract = self.attach_w3_contract()
         the_function = getattr(w3_contract.functions, function_name)
         if not the_function:
@@ -1269,15 +1342,57 @@ class Contract(models.Model):
         transaction = the_function(*function_args).build_transaction({
                         "chainId": w3.eth.chain_id, #self.chain_id,
                         "from": bc.address,
-                        "gasPrice": w3.eth.gas_price,
+                        "gasPrice": int(w3.eth.gas_price * 1.5),
                     })
+        gas_transaction_estimate = w3.eth.estimate_gas(transaction)
+        gas = int(gas_transaction_estimate * settings.GAS_MULTIPLIER)
+        print(f"Estimated gas: {gas}.")
+
+        transaction.update({"gas": gas })
+
+        gas_price = w3.eth.gas_price
+        transaction_estimate_cost = round(w3.from_wei(gas * gas_price, "ether"), 6)
+
+        print(f"GAS price (estimate): {gas_price} wei")
+        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH")
+
+        balance_after = w3.eth.get_balance(bc.address)
+        balance_eth = w3.from_wei(balance_after, 'ether')
+        print(f"Account: {bc.address} . Balance (after deployment): {balance_eth} ETH")
+
         #build_time = time.time() - start_time
 
         print(f"\nProcess check ...")
         tx, tx_receipt = self.blockchain_configuration._sendTransaction(transaction) #, callback=self._transaction_callback)
+        ts_execution_end = datetime.now()
+
+
+        gas_price_actual = tx_receipt.effectiveGasPrice
+        transaction_actual_cost = round(w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
+
+
+        print(f"GAS price (actual): {gas_price_actual} wei")
+        print(f"Transaction cost (actual): {transaction_actual_cost} ether")
+
+
         #execution_time = time.time() - start_time
 
-        return None # TODO refactor this, use events to get the intended output
+        _stats = { 
+            "contract_name": self.label,
+            "contract_address": tx_receipt.contractAddress,
+            "function_name": function_name,
+            "function_args": function_args,
+            "gas": gas,
+            "gas_price_actual": gas_price_actual,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "transaction_type": "function",
+            "ts_begin": ts_begin,
+            "ts_execution_end": ts_execution_end,
+            "execution_time": (ts_execution_end - ts_begin).total_seconds(), # / 1000,
+        }
+
+        return None, _stats # TODO refactor this, use events to get the intended output
 
 
     def invoke(self, function_name, function_args=None):
@@ -1355,9 +1470,54 @@ class EngineOnChain(Engine,models.Model):
     def nfa(self):
         nfa = getattr(self, "_nfa", None)
         if not nfa:
-            self._nfa = self.running_instance.choreography.to_nfa(optimize=True)
+            nfa = self.running_instance.choreography.to_nfa(optimize=True)
+            self._nfa = nfa
 
         return nfa
+
+    @property
+    def cost_wei(self):
+        res = None
+        if self.stats:
+            res = sum([ curr["balance_before"] - curr["balance_after"] for curr in self.stats if "balance_before" in  curr and "balance_after" in curr ]) #self.stats[0]["balance_before"]
+
+        return res
+
+    @property
+    def cost_eth(self):
+        cost = self.cost_wei
+        return Decimal(cost) / Decimal(10**18) if cost is not None else None
+
+    @property
+    def cost_gas(self):
+        res = None
+
+        if self.stats:
+            res = sum([ curr["gas"] for curr in self.stats if "gas" in curr ])
+
+        return res
+
+    @property
+    def overhead_build(self):
+        res = None
+        if self.stats:
+            res = sum([ curr["build_time"] for curr in self.stats if "build_time" in curr ])
+
+        return res
+
+    @property
+    def overhead_execution(self):
+        res = None
+        if self.stats:
+            res = sum([ curr["execution_time"] for curr in self.stats if "execution_time" in curr ])
+
+        return res
+
+    @property
+    def overhead_total(self):
+        res = (self.overhead_build or 0) + (self.overhead_execution or 0)
+        
+        return res
 
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None, the_filter : Filter = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
@@ -1374,7 +1534,10 @@ class EngineOnChain(Engine,models.Model):
         e.blockchain_configuration = blockchain_configuration
         e._w3 : Web3 = blockchain_configuration.get_w3()
         e._debug_log("Connected.")
-        e.stats = [ { "nfa_build_time": float((nfa_end - nfa_start).total_seconds() / 1000) } ]
+        num_states = len(nfa.states)
+        num_transitions = len(nfa.transitions)
+        num_events = len(nfa.events)
+        e.stats = [ { "nfa_build_time": float((nfa_end - nfa_start).total_seconds()), "nfa_num_states": num_states, "nfa_num_transitions": num_transitions, "nfa_num_events": num_events } ]
 
 
         # test network connection, by retrieving the network_id
@@ -1675,11 +1838,8 @@ class EngineOnChain(Engine,models.Model):
     def process_input(self, precondition, event, knowledge):
 
         # TODO this should be refactored
-        #if not self._enforcer_contract:
         if not self.contract_enforcer:
             raise Exception(f"No enforcer contract defined. Not ready for this method")
-
-        #start_time = time.time()
 
         parts = re.split(r'([!?])', event)
 
@@ -1698,67 +1858,32 @@ class EngineOnChain(Engine,models.Model):
             self._debug_log(f"Symbol not recognized: {event}")
             return None
 
-        out = self.contract_enforcer.transact("process_input", [ [], agent, action, message, [] ]) # TODO empty precondition, and empty knowledge at the moment
-        #build_time = time.time() - start_time
+        output_before = self.contract_enforcer.invoke("getOutput")
+         
+        _, process_input_stats = self.contract_enforcer.transact("process_input", [ [], agent, action, message, [] ]) # TODO empty precondition, and empty knowledge at the moment
 
-        #breakpoint()
+        self._log_stats(process_input_stats)
+
         self.save()
-        return out
+
+        output_after = self.contract_enforcer.invoke("getOutput")
+    
+        return output_after[len(output_before):]
  
 
     def process_check(self):
 
-        #if not self._enforcer_contract:
         if not self.contract_enforcer:
             raise Exception(f"No enforcer contract defined. Not ready for this method")
 
-        #start_time = time.time()
-#        transaction = enforcer.functions.process_check().buildTransaction({
+        output_before = self.contract_enforcer.invoke("getOutput")
+        out, process_check_stats = self.contract_enforcer.transact("process_check")
 
-        out = self.contract_enforcer.transact("process_check")
+        self._log_stats(process_check_stats)
 
-##        transaction = self._enforcer_contract.functions.process_check().build_transaction({
-##                        "chainId": self.w3.eth.chain_id, #self.chain_id,
-##                        "from": self.address,
-##                        "gasPrice": self.w3.eth.gas_price,
-##                    })
-##        build_time = time.time() - start_time
-##
-##        self._debug_log(f"\nProcess check ...")
-##        tx_receipt = self.blockchain_configuration._sendTransaction(transaction, callback=self._transaction_callback)
-##        execution_time = time.time() - start_time
-##        self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-##        self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, self.w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'), round(execution_time,3), f"Process check")
-##        logs = self._enforcer_contract.events.outputEvent().process_receipt(tx_receipt)
-##
-##        if len(logs) > 0:
-##            self._debug_log(logs[0].args.debug)
-##            out = logs[0].args.messageOut
-##            out = None if out == "None" else out
-##        else:
-##            out = None
-##
         self.save()
-        return out
-##
-##
-##class Transaction(models.Model):
-##
-##    tx_hash = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("hash"))
-##    block_hash = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("block hash"))
-##    #running_instance = models.ForeignKey(RunningInstance, null=True, blank=False, on_delete=models.SET_NULL, verbose_name=_("running instance"))
-##
-##    as_of = models.DateTimeField(null=True, blank=False, help_text=_("The time when the transaction was recorded"))
-##    gas_used = models.IntegerField(null=True, help_text=_("gas used"))
-##    contract_address =models.CharField(max_length=100, null=True, blank=False, verbose_name=_("contract address"))
-##    initiator_address =models.CharField(max_length=100, null=True, blank=False, verbose_name=_("initiator address"))
-##    block_number =models.IntegerField(null=True, blank=False, verbose_name=_("block number"))
-##
-##    class Meta:
-##        verbose_name = _("transaction")
-##        verbose_name_plural = _("transactions")
-##        unique_together = (("tx_hash",))
-##
-###    def save(self, *args, **kwargs):
-###        self.as_of = timezone.now()
-###        super().save(self, *args, **kwargs)
+
+        output_after = self.contract_enforcer.invoke("getOutput")
+
+        #return out
+        return output_after[len(output_before):]

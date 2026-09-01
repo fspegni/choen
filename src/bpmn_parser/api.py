@@ -9,7 +9,7 @@ class ChoreographySerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = Choreography
-        fields = [ "id", "name", "resource", "rei" ]
+        fields = [ "id", "name", "resource", "rei", "enabled", "details" ]
         read_only = [ "rei", ]
 
     def get_rei_text(self, obj):

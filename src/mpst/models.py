@@ -93,6 +93,10 @@ class StateVar(IsLocalMixin, IsGlobalMixin):
 
         return str(self._identifier)
 
+    @property
+    def events(self):
+        return set()
+
 
 def get_all_classes():
     import inspect
@@ -209,6 +213,28 @@ class Composition(object):
                 raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
 
         return set(res)
+
+    @property
+    def events(self):
+        #breakpoint()
+        res = []
+        for idx, curr in enumerate(self._arguments):
+            if isinstance(curr, StateVar):
+                #res.append(curr)
+                pass
+            elif isinstance(curr, Composition):
+                #res.extend(curr.state_vars)
+                pass
+            elif isinstance(curr, (MsgExc, MsgSend, MsgRecv)):
+                #pass
+                res.append(curr.label)
+            else:
+                raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
+
+        return set(res)
+
+
+
 
     def reduce(self, pos):
         # return a reduced version of itself by removing the argument at the given position; 
@@ -523,6 +549,11 @@ class End(IsGlobalMixin, IsLocalMixin):
     def state_vars(self):
         return set()
 
+    @property
+    def events(self):
+        return set()
+
+
 
 class Transform:
 
@@ -614,6 +645,9 @@ class Transform:
     def state_vars(self):
         return self.lhs_vars.union(self.rhs_vars)
 
+    @property
+    def events(self):
+        return self.lhs.events.union(self.rhs.events)
 
     def replace_var(self, var : StateVar, var1 : StateVar):
 
@@ -690,10 +724,18 @@ class TypeDef:
  
     @property
     def state_vars(self):
-
         res = set([])
         for t in self.transforms:
             res = res.union(t.state_vars)
+
+        return res
+
+    @property
+    def events(self):
+
+        res = set([])
+        for t in self.transforms:
+            res = res.union(t.events)
 
         return res
 
@@ -875,6 +917,9 @@ class MPST(models.Model):
 
     name = models.TextField(max_length=100, null=True, blank=True)
     resource = models.FileField(upload_to=settings.UPLOAD_ROOT)
+    enabled = models.BooleanField(default=True, verbose_name=_("enabled"))
+    details = models.TextField(null=True, blank=True, verbose_name=_("details"))
+ 
 
     class Meta:
     

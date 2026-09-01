@@ -104,12 +104,20 @@ class Choreography(models.Model):
         return self.root.findall(".//bpmn2:endEvent", NS)
 
     def messages(self, node:ET.Element):
+        initiator = node.attrib["initiatingParticipantRef"]
         messages = node.findall(".//bpmn2:messageFlowRef", NS)
-        res = []
+        
+        msg_request = None
+        msg_response = None
+
         for curr in messages:
             # print(f"Find flow def: {curr} : {curr.text}")
             msg_flow_def_xpath = f".//bpmn2:messageFlow[@id='{curr.text}']"
             msg_flow_def = self.root.find(msg_flow_def_xpath, NS)
+
+            source_ref = msg_flow_def.attrib["sourceRef"]
+            target_ref = msg_flow_def.attrib["targetRef"]
+
             # print(f"Find msg def: {msg_flow_def} : {msg_flow_def.attrib['messageRef']}")
             msg_def_xpath = f"bpmn2:message[@id='{msg_flow_def.attrib['messageRef']}']"
             # print(f"Msg def xpath: {msg_def_xpath}")
@@ -117,7 +125,20 @@ class Choreography(models.Model):
             msg_id = msg_def.attrib["id"]
             msg_name = msg_def.attrib.get("name")
 
-            res.append(msg_name if msg_name else msg_id)
+            #res.append(msg_name if msg_name else msg_id)
+
+            if source_ref == initiator:
+                msg_request = msg_name or msg_id
+            else:
+                msg_response = msg_name or msg_id
+
+        assert msg_response is None or msg_request is not None, f"Unexpected message sequence: response ({msg_response}) without request ({msg_request})"
+
+        res = []
+        if msg_request:
+            res.append(msg_request)
+            if msg_response:
+                res.append(msg_response)
 
         return res
 
@@ -153,19 +174,24 @@ class Choreography(models.Model):
 
         # res = [ participants.pop(p_initiating) ]
 
-        return [ initiating ] + others
+        #return [ initiating ] + others
+        return initiating, others
 
 
     def initiator(self, node:ET.Element):
-        involved = self.involved(node)
-
-        if involved:
-            return involved[0]
-        else:
-            return None
+        #involved = self.involved(node)
+        #
+        #if involved:
+        #    return involved[0]
+        #else:
+        #    return None
+        initiator, _ = self.involved(node)
+        return initiator
 
     def recipients(self, node:ET.Element):
-        return self.involved(node)[1:]
+        #return self.involved(node)[1:]
+        _, recipients = self.involved(node)
+        return recipients
 
 
     def fetch(self, tag:str, **attributes):

@@ -5,7 +5,7 @@ from django.db.models import Q
 import glob
 import json
 from tracemalloc import start
-from nfa import NFA
+from nfa import NFA, InputScanner
 import traceback
 import sys
 import os
@@ -438,9 +438,12 @@ class CmdListChoreographies(UICommand):
 
     def execute(self, *args, **kwargs):
 
-        print("Available choreographies: (# states / # transitions / # messages)")
-        items = Choreography.objects.all().order_by("name")
-    
+        print("Available choreographies: (type / # states / # transitions / # messages)")
+        items_bpmn = Choreography.objects.all().order_by("name")
+        items_mpst = MPST.objects.all() #.order_by("name")
+
+        items = sorted(list(items_bpmn.all()) + list(items_mpst.all()), key=lambda c: c.name)
+
         #breakpoint()
         if len(items) == 0:
             print(f"(* none *)")
@@ -451,10 +454,14 @@ class CmdListChoreographies(UICommand):
                     longest = len(c.name)
 
             for c in items:
+                #breakpoint()
+                curr_type = "BPMN" if c.__class__ == Choreography else "MPST"
                 cho_name = c.name.ljust(longest+3,".")
                 details = ""
                 try:
-                    if c.enabled:
+                    if not c.enabled:
+                        details = f"{curr_type:4} (not enabled)"
+                    elif curr_type == "BPMN":
                         nfa = c.to_nfa(optimize=True)
                         nfa_optimized = c.to_nfa(optimize=True,silent=True)
                         no_states = len(nfa.states)
@@ -463,15 +470,22 @@ class CmdListChoreographies(UICommand):
                         #no_states_o = len(nfa_optimized.states)
                         #no_transitions_o = len(nfa_optimized.transitions)
     
-                        details = f"({no_states:>3}/{no_transitions:>3}/{no_messages:>3})" 
+                        details = f"{curr_type:4} ({no_states:>3}/{no_transitions:>3}/{no_messages:>3})" 
+                    elif curr_type == "MPST":
+                        no_states = len(c.root.state_vars)
+                        no_transitions = len(c.root.transforms)
 
+                        no_messages = len(c.root.events) #"?" #len(nfa.messages)
+
+
+                        details = f"{curr_type:4} ({no_states:>3}/{no_transitions:>3}/{no_messages:>3})" 
                     else:
-                        details = f"(not enabled)"
+                        details = f"{curr_type:4} (Not handled)" 
                 except Exception as err:
                     no_states = "NN"
                     no_transitions = "NN"
                     no_messages = "NN"
-                    details = f"Error: {str(err)}"
+                    details = f"{curr_type:4} (Error: {str(err)})"
                     c.details = traceback.format_exc()
                     c.save()
                     #traceback.print_exc()
@@ -1064,6 +1078,63 @@ class CmdLoadInstance(UICommand):
                 print(f"Cannot find running instance {ri_id}")
                  
 
+class CmdSmooth(UICommand):
+    
+    _description = "Generate a random walk that smoothly reaches a final state"
+
+    def execute(self, *args, **kwargs):
+ 
+        nfa = self.ui._model.get_object("nfa")
+        if not nfa:
+            raise UICommand.Error("Cannot continue without a loaded NFA")
+
+        ri = self.ui._model.get_object("ri")
+
+        if not ri:
+            raise UICommand.Error("Cannot continue without a running instance")
+
+        source = None
+        targets = None
+
+        if len(args) > 0:
+            if args[0] == "~>":
+                targets = args[1:]
+            else:
+                source = args[0]    
+                if len(args) > 1:
+                    if args[1] != "~>":
+                        raise UICommand.Error("Wrong syntax: expected '/smooth' or '/smooth [source] ~> [target1] ... [targetN]'")
+                    if len(args) > 2:
+                        targets = args[2:]
+
+       
+        #breakpoint()
+        paths = nfa.smooth_paths(source=source, targets=targets)
+        
+        if len(paths) == 0:
+            raise UICommand.Error(f"No smooth path available from initial state to target states: {targets or 'Final states'}")
+
+        chosen_path = list(random.choice(paths))
+
+        print("===")
+        print(f"Chosen path ({len(chosen_path)}) :")
+        for transition in chosen_path:
+            print(transition)
+        print("===")
+
+        #breakpoint()
+        for transition in chosen_path:
+    
+            ri.append_input(transition.label)
+            out = ri.enforcer.process_input(transition.label)
+            if out:
+                ri.append_output(out)
+    
+            out = ri.enforcer.process_check()
+            if out:
+                ri.append_output(out)
+    
+        
 
 class CmdRandom(UICommand):
 
@@ -1108,7 +1179,7 @@ class CmdRandom(UICommand):
         elif coin < 55:
         
             # 50% of the times, generate a random event among those accepted in the current states
-            enabled_transitions = nfa.enabled_transitions(ri.engine.curr_states)
+            enabled_transitions = nfa.enabled_transitions(ri.engine.get_curr_states()) #ri.engine.curr_states)
 
             random_event = random.choice(enabled_transitions).label
 
@@ -1117,7 +1188,7 @@ class CmdRandom(UICommand):
             # 45% of the times, pick an actual event of the nfa
 
             random_event = random.choice(list(nfa.events))
-
+    
         ri.append_input(random_event)
         out = ri.enforcer.process_input(random_event)
         if out:
@@ -1126,6 +1197,7 @@ class CmdRandom(UICommand):
         out = ri.enforcer.process_check()
         if out:
             ri.append_output(out)
+
 
 class CmdDump(UICommand):
 
@@ -1331,7 +1403,7 @@ class CmdDump(UICommand):
             elif args[0] == "output":
 
                 ri = self.ui._model.get_object("ri")
-                out_events = " ".join(ri.output_events) if ri and ri.output_events else "N/N"
+                out_events = " ".join(map(str, ri.output_events)) if ri and ri.output_events else "N/N"
                 print(out_events)
 
             else:
@@ -1517,6 +1589,7 @@ class UI:
             "replay" : CmdReplay(self), #self.cmd_debug,
             "help"  : CmdHelp(self), #self.cmd_help,
             "dump"  : CmdDump(self), #self.cmd_dump,
+            "smooth"  : CmdSmooth(self), #self.cmd_dump,
             "random"  : CmdRandom(self), #self.cmd_dump,
             "exit"  : CmdQuit(self), #self.cmd_quit,
             "quit"  : CmdQuit(self), #self.cmd_quit
@@ -1729,7 +1802,7 @@ class UI:
 
         try:
             #breakpoint()
-            iscan = nfa.InputScanner(event_stream)
+            iscan = InputScanner(event_stream)
     
             while not iscan.eof:        
                 event = iscan.scan_input()

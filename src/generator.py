@@ -654,6 +654,8 @@ class EnforcerContractGenerator(Generator):
         #contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
         contract.add_attribute(Variable("chainStartTime", "uint"))    
         contract.add_attribute(Variable("chainEndTime", "uint"))    
+        contract.add_attribute(Variable("input", "Symbol[]"))    
+        contract.add_attribute(Variable("output", "Symbol[]"))    
 
     def create_constructor(self, contract : Contract):
         contract.add_constructor(Constructor([Variable("nfaAddress", "address")],
@@ -686,6 +688,19 @@ class EnforcerContractGenerator(Generator):
                                 #"bytes32[] memory"))
                                 "PROPOSITIONS[] memory"))
 
+
+        contract.add_function(Function("getInput", 
+                                [],
+                                """return input;""",
+                                "public view",
+                                "Symbol[] memory"))
+
+
+        contract.add_function(Function("getOutput", 
+                                [],
+                                """return output;""",
+                                "public view",
+                                "Symbol[] memory"))
 
         contract.add_function(Function("update_kb",
                                 [ Variable("knowledge", "Prop[]", "memory") ],
@@ -878,23 +893,33 @@ string memory debug;
 //bytes32 agent_enc = encoder.encode_AGENT(symbol.agent);
 //bytes32 message_enc = encoder.encode_MESSAGE(symbol.message);
 
+input.push(symbol);
+
+bool dirty = true;
 if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule send now *)";
     out = rule_send_now(precondition, symbol, knowledge /*, symbol_enc */);
 }  else if (condition_rule_send_delayed(precondition, symbol /* , symbol_enc */)) {
     debug = "(* Condition rule send delayed *)";
     out = rule_send_delayed(precondition, symbol, knowledge /* , symbol_enc */);
+    dirty = false;
 } else if (condition_rule_receive_now(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive now *)";
     out = rule_receive_now(precondition, symbol, knowledge /*, symbol_enc */);
 } else if (condition_rule_receive_delayed(precondition, symbol /*, symbol_enc */)) {
     debug = "(* Condition rule receive delayed *)";
     out = rule_receive_delayed(precondition, symbol, knowledge /*, symbol_enc */);
+    dirty = false;
 } else {
-    debug = "No matching condition";
-    out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
+    //debug = "No matching condition";
+    //out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
+    dirty = false;
 }
-emit outputEvent(debug, out);
+//emit outputEvent(debug, out);
+
+if (dirty) {
+    output.push(out);
+}
 
 process_check();
 
@@ -925,11 +950,13 @@ return out;
 							buffer[i] = buffer[buffer.length-1];
 							buffer.pop();
 							dirty = true;
+                            output.push(currSymbol);
 						} else if (currSymbol.action == EVENT_ACTION.recv && condition_rule_receive_now(precondition, currSymbol)) {
 							rule_receive_now(precondition, currSymbol, knowledge);
 							buffer[i] = buffer[buffer.length-1];
 							buffer.pop();
 							dirty = true;
+                            output.push(currSymbol);
 						}
 					}
 				}

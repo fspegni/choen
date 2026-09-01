@@ -525,20 +525,25 @@ def render_receive (cho:Choreography, node:ElementType):
     m_request = None
     m_response = None
 
-    messages = cho.messages(node) # TODO apparently in the BPMN file format, messageflows are represented in reverse order (first the initiating message, next the response message)
-#    print(f"Messages: {messages}")
-
 #    symbol = node.attrib["id"] 
     res = None
-    initiator = sanitize(cho.initiator(node).attrib["name"]) #.replace(" ","_")
-    recipients = cho.recipients(node)
+
+    initiator, recipients = cho.involve(node)
+    initiator = sanitize(initiator.attrib["name"])
+    recipients = map(lambda curr: sanitize(curr.attrib["name"]), recipients)
+
+    #initiator = sanitize(cho.initiator(node).attrib["name"]) #.replace(" ","_")
+    #recipients = cho.recipients(node)
     assert len(recipients) == 1, "At the moment we allow only one recipient per task" # TODO this limitation can be easily overcome: one can introduce the interleaving among all the recipients
-    target = sanitize(recipients[0].attrib["name"]) #.replace(" ", "_")
+    #target = sanitize(recipients[0].attrib["name"]) #.replace(" ", "_")
+    target = recipients[0]
+
+    messages = cho.messages(node)
 
     n_messages = len(messages)
     if n_messages == 2:
-        m_request = sanitize(messages[1]) #.replace(" ","_")
-        m_response = sanitize(messages[0]) #.replace(" ","_")
+        m_request = sanitize(messages[0]) #.replace(" ","_")
+        m_response = sanitize(messages[1]) #.replace(" ","_")
         res = Conc(Symbol(f"{target}?{m_request}"), Symbol(f"{initiator}?{m_response}"))
     elif n_messages == 1:
         m_request = sanitize(messages[0]) #.replace(" ","_")
@@ -556,10 +561,8 @@ def render_send_receive (cho:Choreography, node:ElementType):
     m_request = None
     m_response = None
 
-    messages = cho.messages(node) # TODO apparently in the BPMN file format, messageflows are represented in reverse order (first the initiating message, next the response message)
-#    print(f"Messages: {messages}")
+    messages = cho.messages(node) 
 
-#    symbol = node.attrib["id"] 
     res = None
     initiator = sanitize(cho.initiator(node).attrib["name"]) #.replace(" ","_")
     recipients = cho.recipients(node)
@@ -568,8 +571,9 @@ def render_send_receive (cho:Choreography, node:ElementType):
 
     n_messages = len(messages)
     if n_messages == 2:
-        m_request = sanitize(messages[1]) #.replace(" ","_")
-        m_response = sanitize(messages[0]) #.replace(" ","_")
+        #breakpoint()
+        m_request = sanitize(messages[0]) #.replace(" ","_")
+        m_response = sanitize(messages[1]) #.replace(" ","_")
         #res = Conc(Symbol(f"{target}?{m_request}"), Symbol(f"{initiator}?{m_response}"))
         #res = Conc(Par(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}")), Par(Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}")))
         res = Conc(Symbol(f"{initiator}!{m_request}"), Symbol(f"{target}?{m_request}"), Symbol(f"{target}!{m_response}"), Symbol(f"{initiator}?{m_response}"))

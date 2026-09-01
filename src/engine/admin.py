@@ -214,10 +214,10 @@ class EngineOffChain(admin.ModelAdmin):
 @admin.register(EngineOnChain)
 class EngineOnChain(admin.ModelAdmin):
     
-    list_display = [ "running_instance", "running_instance__choreography", "created_at", ]
+    list_display = [ "running_instance", "running_instance__choreography", "created_at", "cost_gas", "cost_wei", "cost_eth", "overhead_build", "overhead_execution", "overhead_total" ]
 
     list_filter = [ "created_at", "blockchain_configuration" ]
-    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size", "created_at", "curr_states", "buffer", "kb" ]
+    readonly_fields = ["rei", "contract_nfa_size", "contract_enforcer_size", "contracts_size", "created_at", "curr_states", "buffer", "kb", "cost_gas", "cost_wei", "cost_eth", "overhead_build", "overhead_execution", "overhead_total", ]
 
     def rei(self, obj : EngineOnChain):
         return format_html("<pre>{}</pre>", str(obj.running_instance.rei)) if obj.running_instance else None

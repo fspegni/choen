@@ -25,6 +25,7 @@ from rest_framework import routers, serializers, viewsets
 from rest_framework.authtoken import views
 
 from bpmn_parser.api import ChoreographyViewSet
+from mpst.api import MPSTViewSet
 from engine.api import RunningInstanceViewSet
 from bpmn2solidity.api import ChoenAuthToken #choen_login
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -50,6 +51,7 @@ def loginview(request):
 
 router = routers.DefaultRouter()
 router.register(r'choreographies', ChoreographyViewSet)
+router.register(r'mpst', MPSTViewSet)
 router.register(r'runninginstances', RunningInstanceViewSet)
 
 

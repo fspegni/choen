@@ -16,6 +16,8 @@ import os
 
 LOGIN_URL = reverse_lazy("login")
 
+SITE_ID=1
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 MEDIA_ROOT = os.path.join(BASE_DIR, "..", "public", "media")
@@ -37,6 +39,8 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'bpmn2solidity',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.sites',
