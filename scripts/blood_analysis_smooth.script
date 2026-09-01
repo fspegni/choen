@@ -1,0 +1,8 @@
+Gynecologist!data_string_patientData_
+Hospital?data_string_patientData_
+Gynecologist!sample_string_sample_
+Lab?sample_string_sample_
+Lab!result_string_result_
+Gynecologist?result_string_result_
+Gynecologist!bloodResults_string_bloodResults_
+Hospital?bloodResults_string_bloodResults_

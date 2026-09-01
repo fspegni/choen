@@ -1,0 +1,9 @@
+Coffee_machine?products_string_products_
+Coffee_machine!selection_string_product_
+Customer?selection_string_product_
+Customer!cost_uint_amount_
+Coffee_machine?cost_uint_amount_
+Coffee_machine!payment1_address_payable_to_
+Customer?payment1_address_payable_to_
+Coffee_machine!production_string_message__bool_error_
+Customer?production_string_message__bool_error_

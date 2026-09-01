@@ -1,0 +1,12 @@
+Patient!Appointment_request
+Doctor?Appointment_request
+Doctor!Appointment_confirmation
+Patient?Appointment_confirmation
+Patient!Symptoms_list
+Doctor?Symptoms_list
+Doctor!Prescription
+Patient?Prescription
+Patient!Medicine_request
+Pharmacy?Medicine_request
+Pharmacy!Medicine
+Patient?Medicine
