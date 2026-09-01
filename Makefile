@@ -11,7 +11,7 @@ shell:
 	${DC} shell_plus
 
 static:
-	${DC} collectstatic -clear
+	${DC} collectstatic --clear
 
 migrate:
 	${DC} makemigrations
