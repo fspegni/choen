@@ -200,28 +200,33 @@ class UICommand:
 class CmdInit(UICommand):
 
     def execute(self, *args, **kwargs):
-
-        choreographies = [
-            ("diagram", "diagram.bpmn", ),
-            ("diagram_minimal", "diagram_minimal.bpmn"),
-            ("diagram_basic", "diagram_basic.bpmn"),
-            ("diagram_gateways", "diagram_gateways.bpmn", ),
-            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
-            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
-            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
-            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
-            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
-            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
-            ("diagram_construction_industry", "diagram_construction_industry.bpmn"),
-            ("diagram_patient_doctor","diagram_patient_doctor.bpmn"),
-            ("diagram_incident_management", "diagram_incident_management.bpmn")
- 
-        ]
-
-        for name, filename in choreographies:
+##
+##        choreographies = [
+##            ("diagram", "diagram.bpmn", ),
+##            ("diagram_minimal", "diagram_minimal.bpmn"),
+##            ("diagram_basic", "diagram_basic.bpmn"),
+##            ("diagram_gateways", "diagram_gateways.bpmn", ),
+##            ("diagram_gateways_mismatch", "diagram_gateways_mismatch.bpmn", ),
+##            ("diagram_gateways_dangling", "diagram_gateways_dangling.bpmn", ),
+##            ("diagram_gateways_nested", "diagram_gateways_nested.bpmn", ),
+##            ("diagram_gateways_nested_intermediate", "diagram_gateways_nested_with_intermediate_task.bpmn", ),
+##            ("diagram_gateways_nested_inclusive", "diagram_gateways_nested_inclusive.bpmn", ),
+##            ("diagram_gateways_nested_dangling", "diagram_gateways_nested_dangling.bpmn", ),
+##            ("diagram_construction_industry", "diagram_construction_industry.bpmn"),
+##            ("diagram_patient_doctor","diagram_patient_doctor.bpmn"),
+##            ("diagram_incident_management", "diagram_incident_management.bpmn")
+## 
+##        ]
+##
+        #for name, filename in choreographies:
+        for filename in os.listdir(os.path.join(settings.DATA_ROOT, "BPMN")):
+            name = filename.split(".")[0] # remove the final dot extension
+            filepath = Path(settings.DATA_ROOT, "BPMN", filename)
+            #breakpoint()
             attribs = {
                 "name": name,
-                "resource": os.path.join(settings.MEDIA_ROOT, filename),
+                #"resource": os.path.join("BPMN", filename), #os.path.join(settings.MEDIA_ROOT, filename),
+                "resource": File(filepath.open("rb"), name=filename)
             }
             
             c, created = Choreography.objects.get_or_create(name=name, defaults=attribs)
@@ -229,6 +234,24 @@ class CmdInit(UICommand):
                 print(f"Choreography {name} imported ...")
             else:
                 print(f"Choreography {name} already exists ...")
+
+        for filename in os.listdir(os.path.join(settings.DATA_ROOT, "MPST")):
+            name = filename.split(".")[0] # remove the final dot extension
+            filepath = Path(settings.DATA_ROOT, "MPST", filename)
+            #breakpoint()
+            attribs = {
+                "name": name,
+                #"resource": os.path.join("BPMN", filename), #os.path.join(settings.MEDIA_ROOT, filename),
+                "resource": File(filepath.open("rb"), name=filename)
+            }
+            
+            c, created = MPST.objects.get_or_create(name=name, defaults=attribs)
+            if created:
+                print(f"MPST {name} imported ...")
+            else:
+                print(f"MPST {name} already exists ...")
+        
+    
 
 class CmdSetFilter(UICommand):
 
