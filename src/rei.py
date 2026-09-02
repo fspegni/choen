@@ -1,5 +1,5 @@
 from bpmn_parser.models import Choreography, ElementType
-from mpst.models import MPST, GlobalType
+#from mpst.models import MPST, GlobalType
 import re
 
 def sanitize(text):
@@ -602,13 +602,13 @@ def render_send_receive (cho:Choreography, node:ElementType):
 ##
 ##    return Symbol(symbol)
         
-def MPSTToRei(mpst:MPST, handle_task=None, node: dict = None):
-    import rei
-
-    if not node:
-
-        print(mpst.root)
-            
+##def MPSTToRei(mpst:MPST, handle_task=None, node: dict = None):
+##    import rei
+##
+##    if not node:
+##
+##        print(mpst.root)
+##            
 
 
 class Filter:

@@ -404,10 +404,10 @@ class RunningInstance(models.Model):
     def stats(self):
         bc_configuration = self.blockchain_configuration.label if self.blockchain_configuration else None
 
-        nfa = self.nfa
-        num_states = len(nfa.states) if nfa else None
-        num_transitions = len(nfa.transitions) if nfa else None
-        num_events = len(nfa.events) if nfa else None
+        lts = self.lts
+        num_states = len(lts.states) if lts else None
+        num_transitions = len(lts.transitions) if lts else None
+        num_events = len(lts.events) if lts else None
     
 
         breakpoint()
@@ -491,9 +491,37 @@ class Engine:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._nfa = None
+        #self._nfa = None
+        self._lts = None
         self._log_file = None
         self._filter = Filter()
+
+
+    def _parse_event(self, symbol):
+    
+        m = re.match("^([^!?]+)([!?])([^!?]+)$", symbol)
+
+        return m.groups() if m else (None, None, None)
+ 
+
+    def get_all_states(self):
+        #return self._nfa.states
+        return self._lts.states
+
+
+    def get_transitions(self):
+        #return self._nfa.transitions
+        return self._lts.transitions
+
+    def is_state_final(self, s):
+        #return self._nfa.is_final(s)
+        return self._lts.is_final(s)
+
+    def is_state_initial(self, s):  
+        #return self._nfa.is_initial(s)
+        return self._lts.is_initial(s)
+
+
 
     @property
     def filter(self):
@@ -515,10 +543,22 @@ class Engine:
 
     @property
     def nfa(self):
-        return self._nfa
+        if self._lts is not None and not isinstance(self._lts, nfa.NFA):
+            raise Exception("The current LTS is not an NFA")
+
+        #return self._nfa
+        return self._lts
 
     def set_nfa(self, nfa):
-        self._nfa = nfa
+        #self._nfa = nfa
+        self._lts = nfa
+
+    @property
+    def lts(self):
+        return self._lts
+
+    def set_lts(self, lts):
+        self._lts = lts
 
     @property
     def history(self):
@@ -543,22 +583,13 @@ class Engine:
         #return None
         raise Exception("This is an abstract method, you should implement it")
 
-    def get_all_states(self):
-        raise Exception("This is an abstract method, you should implement it")
-
     def get_curr_states(self):
         raise Exception("This is an abstract method, you should implement it")
 
-    def get_transitions(self):
-        raise Exception("This is an abstract method, you should implement it")
-
-    def is_state_final(self, s):
-        raise Exception("This is an abstract method, you should implement it")
-
-    def is_state_initial(self, s):
-        raise Exception("This is an abstract method, you should implement it")
-
     def is_state_current(self, s):
+        raise Exception("This is an abstract method, you should implement it")
+
+    def some_state_is_current(self, states):
         raise Exception("This is an abstract method, you should implement it")
 
     def get_num_states(self):
@@ -615,6 +646,77 @@ class Engine:
         raise Exception("This is an abstract method, you should implement it")
 
 
+
+class EngineOffChainMPST(Engine, models.Model):
+
+    running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
+    curr_states = models.JSONField(default=[], verbose_name=_("current states"))
+    history = models.JSONField(default=[], verbose_name=_("history"))
+    buffer = models.JSONField(default={}, verbose_name=_("buffer"))
+    kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
+
+    execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+    execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+
+    created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
+
+    stats = models.JSONField(default = [])
+
+    @staticmethod
+    def create_engine(ri : RunningInstance, the_filter : Filter = None): 
+
+        e = EngineOffChainMPST()
+
+
+        lts = ri.mpst.root
+
+        e._lts : nfa.LTS = lts
+        e.buffer = {}
+
+        e.curr_states = list(lts.e_closure(set([ lts.initial.id ])))
+        e._debug : bool = True
+        e.stats = []
+    
+        if the_filter:
+            e.set_filter(the_filter)
+
+        e.running_instance = ri
+        e.kb = []
+
+        e.execution_started = timezone.now()
+
+        e.save()
+
+        return e
+    
+
+    def _log_stats(self, obj : dict):
+        obj = json.loads(json.dumps(obj, cls=DjangoJSONEncoder))
+        self.stats.append(obj)
+
+
+    def get_execution_started(self):
+        return self.execution_started
+
+    def get_execution_ended(self):
+        return self.execution_ended
+
+    def _append_history(self, event : str, curr_states : list, buffer : list):
+        self.history.append({
+            "event" : event, 
+            "curr_states" : curr_states, 
+            "buffer" : buffer}
+        )
+   
+    def process_input(self, precondition, event, knowledge):
+
+        raise Exception("Not implemented yet")
+
+
+    def process_check(self):
+
+        raise Exception("Not implemented yet")
+
 class EngineOffChain(Engine, models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
@@ -630,20 +732,17 @@ class EngineOffChain(Engine, models.Model):
 
     stats = models.JSONField(default = [])
 
-#    def __init__(self, nfa : nfa.NFA):
     @staticmethod
-    def create_engine(ri : RunningInstance, the_filter : Filter = None): #nfa : nfa.NFA): #, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
+    def create_engine(ri : RunningInstance, the_filter : Filter = None): 
 
-#        super().__init__(nfa)
         e = EngineOffChain()
 
-        #breakpoint()
         nfa = ri.choreography.to_nfa(optimize=True)
-        #nfa.remove_epsilon_transitions()
-        #nfa.remove_unreachable_states()
 
-        e._nfa : nfa.NFA = nfa
+        e._lts : nfa.LTS = nfa
         e.buffer = {}
+
+        #breakpoint()
         e.curr_states = list(nfa.e_closure(set([ nfa.initial.id ])))
         e._debug : bool = True
         e.stats = []
@@ -678,58 +777,35 @@ class EngineOffChain(Engine, models.Model):
             "curr_states" : curr_states, 
             "buffer" : buffer}
         )
-
-    def _parse_event(self, symbol):
-    
-        m = re.match("^([^!?]+)([!?])([^!?]+)$", symbol)
-
-        return m.groups() if m else (None, None, None)
-    
-    #def process_input(self, symbol):
+   
     def process_input(self, precondition, event, knowledge):
 
         out = None
-        #if self._engine.condition_rule_send(event):
-        #    out = self._engine.rule_send(event)
 
-        #(precondition, actor, action, message, knowledge) = self._parse_event(symbol)
         (actor, action, message) = self._parse_event(event)
 
-        #breakpoint()
         match = self._filter.match(actor, action, message)
         if not match:
-            return event #None
+            return event 
 
-        #event = f"{actor}{action}{message}"
         print(f"Process: {precondition or 'T'} -> {event}({knowledge or 'nil'})")
 
-        #breakpoint()
         if self.condition_rule_send_now(precondition, event):
             out = self.rule_send_now(precondition, event, knowledge)
 
         elif self.condition_rule_send_delayed(precondition, event):
             out = self.rule_send_delayed(precondition, event, knowledge)
 
-        #elif self._engine.condition_rule_receive_now(event):
-        #        out = self._engine.rule_receive_now(event)
         elif self.condition_rule_receive_now(precondition, event):
             out = self.rule_receive_now(precondition, event, knowledge)
 
-        #elif self._engine.condition_rule_receive_delayed(event):
-                # TODO add check that the message may actually be consumed afterwards;
-                # without this check, it does not make sense to implement the rule "Cannot receive" 
-        #    out = self._engine.rule_receive_delayed(event)
         elif self.condition_rule_receive_delayed(precondition, event):
-
-            #breakpoint()
             out = self.rule_receive_delayed(precondition, event, knowledge)
         else:
             self._debug_log("(* No matching condition *)")        
 
-        #breakpoint()
-        self._append_history(out, self.get_curr_states(), []) # TODO refactor this -> list(map(lambda i: f"{i[2]}:{i[0]}?{i[1]}({i[3]})" ,self.get_buffer_items())))
+        self._append_history(out, self.get_curr_states(), []) 
 
-        #breakpoint()
         self.save()
         return out
 
@@ -739,18 +815,12 @@ class EngineOffChain(Engine, models.Model):
         from enforcer import Enforcer
 
         out = None
-        #breakpoint()
         try:
-            #actor, message = self._engine._buffer_find_usable_message()
-
-            #breakpoint()
             precondition, event, knowledge = self.buffer_find_usable_event()
-            #out = self._engine.rule_receive_buffered(actor, message)
 
             (actor, action, message) = self._parse_event(event) #symbol)
 
-            #breakpoint()
-            if action == "!": #message.starts_with("!"):
+            if action == "!": 
                 out = self.rule_send_buffered(precondition, actor, message, event, knowledge)
             elif action == "?":
                 out = self.rule_receive_buffered(precondition, actor, message, event, knowledge)
@@ -759,9 +829,7 @@ class EngineOffChain(Engine, models.Model):
         except Enforcer.NoMessageFound: #Exception:
             pass
 
-        #breakpoint()
-        self._append_history(out, self.get_curr_states(), []) #, TODO refactor this -> list(map(lambda i: f"{i[0]}{i[1]}" ,self.get_buffer_items())))
-
+        self._append_history(out, self.get_curr_states(), []) 
 
         self.save()
         return out
@@ -774,7 +842,6 @@ class EngineOffChain(Engine, models.Model):
 
         num_before = len(self.get_buffer_items())
 
-        #breakpoint()
         if actor not in self.buffer:
             self.buffer[actor] = {}
 
@@ -787,15 +854,12 @@ class EngineOffChain(Engine, models.Model):
         self.buffer[actor][action][message].append({"precondition": precondition, "knowledge": knowledge})
 
         num_after = len(self.get_buffer_items())
-        #if num_after - num_before != 1:
-        #    breakpoint()
         assert num_after == num_before + 1, f"Expected buffer length after add operation: {num_before+1}. Actual length: {num_after}"
 
     def _buffer_remove(self, precondition, actor : str, action : str, message : str, knowledge):
 
         assert action in [ "!", "?" ], f"Unexpected action: {action}"
 
-        #breakpoint()
         if not actor in self.buffer:
             raise Exception(f"No event ({actor},{action},{message}) to remove from buffer")
 
@@ -831,7 +895,8 @@ class EngineOffChain(Engine, models.Model):
                         knowledge = curr["knowledge"]
                     
                         for s in self.curr_states:
-                            if self._nfa.transitions_from(s, event) and self.check_sat(precondition):
+                            #if self._nfa.transitions_from(s, event) and self.check_sat(precondition):
+                            if self._lts.transitions_from(s, event) and self.check_sat(precondition):
                                 return precondition, event, knowledge
                         
         raise Enforcer.NoMessageFound("No usable message found")
@@ -863,7 +928,7 @@ class EngineOffChain(Engine, models.Model):
         if not formula:
             # tautology
             return True
-        #breakpoint()
+
         # at the moment assume the formula is a single proposition
         m = re.match("^(!)?([a-zA-Z0-9]+)", formula)
         if not m:
@@ -877,32 +942,27 @@ class EngineOffChain(Engine, models.Model):
             return prop in self.kb
 
     def ended(self):
-        return self._nfa.is_final(self.curr_states)
-
-    def get_all_states(self):
-        return self._nfa.states
+        #return self._nfa.is_final(self.curr_states)
+        return self._lts.is_final(self.curr_states)
 
     def get_curr_states(self):
         return self.curr_states
 
-    def get_transitions(self):
-        return self._nfa.transitions
-
-    def is_state_final(self, s):
-        return self._nfa.is_final(s)
-
-    def is_state_initial(self, s):  
-        return self._nfa.is_initial(s)
-
     def is_state_current(self, s):
-        if isinstance(s, nfa.State):
-            s = s.id
+        #assert isinstance(s, str), f"Expected string as state name. Passed: {s}"
+        #if isinstance(s, nfa.State):
+        #    s = s.id
         
-        res = (s in self.curr_states)
+        res = isinstance(s, str) and (s in self.curr_states)
         return res
 
+    def some_state_is_current(self, states):
+        res = len(set(map(lambda s: s.id, states)).intersection(self.curr_states)) > 0# and (s in self.curr_states)
+        return res
+
+
+
     def get_buffer_items(self):
-        #breakpoint()
         items = []
         for actor in self.buffer:
             for action in self.buffer[actor]:
@@ -930,7 +990,8 @@ class EngineOffChain(Engine, models.Model):
             return False
 
         for curr in self.curr_states:
-            enabled_transitions = self._nfa.transitions_from(curr, event)
+            #enabled_transitions = self._nfa.transitions_from(curr, event)
+            enabled_transitions = self._lts.transitions_from(curr, event)
 
             if len(enabled_transitions) > 0:
 
@@ -950,16 +1011,16 @@ class EngineOffChain(Engine, models.Model):
 
 
         # TODO restrict the loop below to only states that are reachable from current one
-        for curr in self._nfa.states:
-            enabled_transitions = self._nfa.transitions_from(curr, event)
+        #for curr in self._nfa.states:
+        for curr in self._lts.states:
+            #enabled_transitions = self._nfa.transitions_from(curr, event)
+            enabled_transitions = self._lts.transitions_from(curr, event)
             if len(enabled_transitions) > 0:
                 self._debug_log(f"(* Condition rule send delayed *)") #: {precondition or 'T'} -> {event} *)")
                 return True
 
 
-        #self._debug_log(f"(* Condition rule send delayed: {precondition} -> {event} *)")
-        #return m is not None
-        return False #True
+        return False 
 
 
     def condition_rule_receive_now(self, precondition, event):
@@ -972,7 +1033,8 @@ class EngineOffChain(Engine, models.Model):
             return False
 
         for curr in self.curr_states:
-            enabled_transitions = self._nfa.transitions_from(curr, event)
+            #enabled_transitions = self._nfa.transitions_from(curr, event)
+            enabled_transitions = self._lts.transitions_from(curr, event)
 
             if len(enabled_transitions) > 0:
 
@@ -991,8 +1053,10 @@ class EngineOffChain(Engine, models.Model):
 #            return False
 
         # TODO restrict the loop below to only states that are reachable from current one
-        for curr in self._nfa.states:
-            enabled_transitions = self._nfa.transitions_from(curr, event)
+        #for curr in self._nfa.states:
+        for curr in self._lts.states:
+            #enabled_transitions = self._nfa.transitions_from(curr, event)
+            enabled_transitions = self._lts.transitions_from(curr, event)
             if len(enabled_transitions) > 0:
                 self._debug_log(f"(* Condition rule receive delayed *)") #: {precondition or 'T'} -> {event} *)")
                 return True
@@ -1006,7 +1070,8 @@ class EngineOffChain(Engine, models.Model):
         reached = set()
         for s in self.curr_states:
 
-            s_reached = self._nfa.read_symbol(event, s)
+            #s_reached = self._nfa.read_symbol(event, s)
+            s_reached = self._lts.read_symbol(event, s)
 
             if len(s_reached) == 0:
                 self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
@@ -1025,23 +1090,14 @@ class EngineOffChain(Engine, models.Model):
         self._buffer_add(precondition, actor, "!", message, knowledge)
         return ""
 
-    #def rule_send_buffered(self, precondition, event, knowledge):
     def rule_send_buffered(self, precondition, actor, message, event, knowledge):
         
-        #_, actor, action, message, _ = self._parse_event(event)
-
         assert actor in self.buffer and "!" in self.buffer[actor] and message in self.buffer[actor]["!"]
         
-        #counter = self.buffer[actor][action + message]
-
-        #assert counter > 0
-
-        #event = f"{actor}!{message}"
-        #event = f"{actor}{action}{message}"
-
         reached = set()
         for s in self.curr_states:
-            s_reached = self._nfa.read_symbol(event, s)
+            #s_reached = self._nfa.read_symbol(event, s)
+            s_reached = self._lts.read_symbol(event, s)
 
             if len(s_reached) == 0:
                 self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
@@ -1051,7 +1107,6 @@ class EngineOffChain(Engine, models.Model):
         self._buffer_remove(precondition, actor, "!", message, knowledge)
 
         nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
-        #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
         self.curr_states = list(reached)
 
         self.add_knowledge(knowledge)
@@ -1063,7 +1118,8 @@ class EngineOffChain(Engine, models.Model):
         reached = set()
         for s in self.curr_states:
 
-            s_reached = self._nfa.read_symbol(event, s)
+            #s_reached = self._nfa.read_symbol(event, s)
+            s_reached = self._lts.read_symbol(event, s)
 
             if len(s_reached) == 0:
                 self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
@@ -1076,31 +1132,20 @@ class EngineOffChain(Engine, models.Model):
         self.add_knowledge(knowledge)
         return event
 
-#    def rule_receive_delayed(self, actor, message):
     def rule_receive_delayed(self, precondition, event, knowledge):
 
-        #breakpoint()  
-        # TODO we should buffer the precondition and knowledge
         actor, message = event.split("?")
         self._buffer_add(precondition, actor, "?", message, knowledge)
         return ""
 
     def rule_receive_buffered(self, precondition, actor, message, event, knowledge):
       
-        #_, actor, action, message, _ = self._parse_event(event)
-
         assert actor in self.buffer and "?" in self.buffer[actor] and message in self.buffer[actor]["?"]
-        
-        #counter = self.buffer[actor][action + message]
-
-        #assert counter > 0
-
-        #event = f"{actor}?{message}"
-        #event = f"{actor}{action}{message}"
 
         reached = set()
         for s in self.curr_states:
-            s_reached = self._nfa.read_symbol(event, s)
+            #s_reached = self._nfa.read_symbol(event, s)
+            s_reached = self._lts.read_symbol(event, s)
 
             if len(s_reached) == 0:
                 self._debug_log(f"(* State {s} was not compatible with event {event} and has been discarded... *)")
@@ -1110,7 +1155,6 @@ class EngineOffChain(Engine, models.Model):
         self._buffer_remove(precondition, actor, "?", message, knowledge)
 
         nd_factor = (len(reached) - len(self.curr_states)) / len(self.curr_states)
-        #self._debug_log(f"(* Non-determinism factor: {nd_factor} *)")
         self.curr_states = list(reached)
 
         self.add_knowledge(knowledge)
@@ -1468,12 +1512,20 @@ class EngineOnChain(Engine,models.Model):
 
     @property
     def nfa(self):
-        nfa = getattr(self, "_nfa", None)
-        if not nfa:
-            nfa = self.running_instance.choreography.to_nfa(optimize=True)
-            self._nfa = nfa
+        #nfa = getattr(self, "_nfa", None)
+        lts = getattr(self, "_lts", None)
 
-        return nfa
+        if lts is not None and not isinstance(lts, nfa.NFA):
+            raise Exception(f"LTS is present but is not NFA: {lts}")
+
+        #if not nfa:
+        elif not lts:
+            lts = self.running_instance.choreography.to_nfa(optimize=True)
+            #self._nfa = nfa
+            self._lts = lts
+
+        #return nfa
+        return lts
 
     @property
     def cost_wei(self):
@@ -1530,7 +1582,8 @@ class EngineOnChain(Engine,models.Model):
         blockchain_configuration = ri.blockchain_configuration
 
         e = EngineOnChain()
-        e._nfa = nfa
+        #e._nfa = nfa
+        e._lts = nfa
         e.blockchain_configuration = blockchain_configuration
         e._w3 : Web3 = blockchain_configuration.get_w3()
         e._debug_log("Connected.")
@@ -1566,13 +1619,15 @@ class EngineOnChain(Engine,models.Model):
 
     def deploy_smart_contracts(self): #, ri:RunningInstance=None):
 
-        if not self._nfa:
+        #if not self._nfa:
+        if not self._lts:
             raise Exception("No NFA has been set for this purpose")
 
         if not self.blockchain_configuration:
             raise Exception("No blockchain configuration has been set. Cannot continue")
     
-        scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
+        #scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
+        scg: SmartContractGenerator = SmartContractGenerator(self._lts)
         sc : SmartContract = scg.createSmartContract()
         sc.compile(debug=self._debug)
     
@@ -1647,13 +1702,18 @@ class EngineOnChain(Engine,models.Model):
 
     def _encode_state(self, value):
 
-        if not self._nfa:
-            raise Exception("No NFA has been set for this purpose")
+        assert isinstance(value, str), f"Expected string as state name. Passed: {value}"
 
-        if isinstance(value, nfa.State):
-            value = value.id
+        #if not self._nfa:
+        if not self._lts:
+            #raise Exception("No NFA has been set for this purpose")
+            raise Exception("No LTS has been set for this purpose")
 
-        return sorted(map(lambda s: s.id, self._nfa.states)).index(value)
+#        if isinstance(value, nfa.State):
+#            value = value.id
+
+        #return sorted(map(lambda s: s.id, self._nfa.states)).index(value)
+        return sorted(map(lambda s: s.id, self._lts.states)).index(value)
 
     def _encode_action(self, value):
         
@@ -1676,32 +1736,40 @@ class EngineOnChain(Engine,models.Model):
 
     def _encode_agent(self, value):
 
-        if not self._nfa:
+        #if not self._nfa:
+        if not self._lts:
             raise Exception("No NFA has been set for this purpose")
 
-        return 1 + sorted(self._nfa.agents).index(value)
+        #return 1 + sorted(self._nfa.agents).index(value)
+        return 1 + sorted(self._lts.agents).index(value)
 
     def _decode_agent(self, encoded):
 
-        if not self._nfa:
+        #if not self._nfa:
+        if not self._lts:
             raise Exception("No NFA has been set for this purpose")
 
-        value = sorted(self._nfa.agents)[encoded - 1]
+        #value = sorted(self._nfa.agents)[encoded - 1]
+        value = sorted(self._lts.agents)[encoded - 1]
         return value
        
     def _encode_message(self, value):
 
-        if not self._nfa:
+        #if not self._nfa:
+        if not self._lts:
             raise Exception("No NFA has been set for this purpose")
 
-        return 1 + sorted(self._nfa.messages).index(value)
+        #return 1 + sorted(self._nfa.messages).index(value)
+        return 1 + sorted(self._lts.messages).index(value)
 
     def _decode_message(self, encoded):
 
-        if not self._nfa:
+        #if not self._nfa:
+        if not self._lts:
             raise Exception("No NFA has been set for this purpose")
 
-        return sorted(self._nfa.messages)[encoded - 1]
+        #return sorted(self._nfa.messages)[encoded - 1]
+        return sorted(self._lts.messages)[encoded - 1]
 
     def _decode_buffer_item(self, encoded):
         precondition, ( actor, action, message ) , knowledge = encoded
@@ -1802,7 +1870,8 @@ class EngineOnChain(Engine,models.Model):
         return self.contract_enforcer.invoke("getNFACurrentStates")
 
     def get_transitions(self):
-        return self._nfa.transitions # TODO FS
+        #return self._nfa.transitions # TODO FS
+        return self._lts.transitions # TODO FS
 
     def is_state_final(self, s):
         assert self.contract_nfa is not None

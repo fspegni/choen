@@ -5,7 +5,7 @@ from django.db.models import Q
 import glob
 import json
 from tracemalloc import start
-from nfa import NFA, InputScanner
+from nfa import NFA, LTS, InputScanner
 import traceback
 import sys
 import os
@@ -360,14 +360,25 @@ class CmdScript(CmdStep):
 
         if not os.path.exists(path):
             raise Exception(f"Script path does not exist")
-
-        with open(path, "r") as the_script:
-
-            lines = the_script.readlines()
-            self.ui._model.set_object("script", lines)
-            self.ui._model.set_object("script_position", 0)
-
-        self.execute_steps(steps)
+        elif os.path.isdir(path):
+            #breakpoint()
+            files = sorted(
+                (p for p in Path(path).iterdir() if p.is_file()),
+                key=lambda p: p.name.lower()
+            )
+            for f in files:
+                print(f"* {f.name}")           
+        elif os.path.isfile(path):
+    
+            with open(path, "r") as the_script:
+    
+                lines = the_script.readlines()
+                self.ui._model.set_object("script", lines)
+                self.ui._model.set_object("script_position", 0)
+    
+            self.execute_steps(steps)
+        else:
+            raise Exception(f"Condition not handled")
       
 
 class CmdDebug(UICommand):
@@ -756,6 +767,7 @@ class CmdLoadMPST(UICommand):
         try:
             c : MPST = MPST.objects.get(name=name)
             self.ui._model.set_object("mpst", c)
+            self.ui._model.set_object("lts", c.root)
             print(f"MPST '{name}' loaded ...")
         except Exception as e: # MPST.DoesNotExist as e:
             #breakpoint()
@@ -822,7 +834,8 @@ class CmdLoadChoreography(UICommand):
             self.ui._model.set_object("rei", rei)
 
             nfa : NFA = c.to_nfa(optimize=True)
-            self.ui._model.set_object("nfa", nfa)
+            #self.ui._model.set_object("nfa", nfa)
+            self.ui._model.set_object("lts", nfa)
 
             
             
@@ -1062,10 +1075,12 @@ class CmdLoadInstance(UICommand):
                     self.ui._model.set_object("choreography", ri.choreography)
 
                     nfa : NFA = ri.choreography.to_nfa(optimize=True)
-                    self.ui._model.set_object("nfa", nfa)
+                    #self.ui._model.set_object("nfa", nfa)
+                    self.ui._model.set_object("lts", nfa)
                     engine.set_nfa(nfa)
                 elif ri.mpst:
                     self.ui._model.set_object("mpst", ri.mpst)
+                    self.ui._model.set_object("lts", ri.mpst.root)
                         
                 assert engine is not None
                 enforcer = Enforcer(engine)
@@ -1244,15 +1259,19 @@ class CmdDump(UICommand):
             elif args[0] == "transitions":
                 print("\nTransitions (*=enabled): \n")
 
-                nfa : NFA = self.ui._model.get_object("nfa")
-                if not nfa:
-                    raise UICommand.Error("Unexpected error generating NFA from the current choreography")
+                #breakpoint()
+                #nfa : NFA = self.ui._model.get_object("nfa")
+                lts : LTS = self.ui._model.get_object("lts")
+                if not lts: #nfa:
+                    #raise UICommand.Error("Unexpected error generating NFA from the current choreography")
+                    raise UICommand.Error("Unexpected error generating LTS from the current choreography or MPST")
 
  
-                is_current_state = lambda s: s == nfa.initial
+                is_current_state = lambda s: s == lts.initial #nfa.initial
 
                 if self.ui._enforcer is not None:
-                    is_current_state = lambda s: self.ui._enforcer.engine.is_state_current(s)
+                    #is_current_state = lambda s: self.ui._enforcer.engine.is_state_current(s)
+                    is_current_state = lambda states: self.ui._enforcer.engine.some_state_is_current(states)
 
 ##                if self.ui._enforcer is None:
 ##                    print("You must start the enforcer, before dumping its transitions")
@@ -1260,11 +1279,13 @@ class CmdDump(UICommand):
    
                 #breakpoint()
                 #for t in self.ui._enforcer.engine.get_transitions():
-                for t in nfa.transitions:
+                for t in lts.transitions: #nfa.transitions:
 
                     t_repr = str(t)
                     #if self.ui._enforcer.engine.is_state_current(t.source):
-                    if is_current_state(t.source):
+
+                    #breakpoint()
+                    if is_current_state(t.source.states):
                         t_repr = f" * {t_repr}"
                     else:
                         t_repr = f"   {t_repr}"
@@ -1277,7 +1298,7 @@ class CmdDump(UICommand):
                     print("You must start the enforcer, before dumping its states")
                     return
 
-                for s in self.ui._enforcer.engine.get_all_states():
+                for s in sorted(map(lambda s: s.id, self.ui._enforcer.engine.get_all_states())):
                     label = str(s)
 
                     if self.ui._enforcer.engine.is_state_initial(s):
@@ -1318,6 +1339,7 @@ class CmdDump(UICommand):
                 print(rei)
 
             elif args[0] == "nfa":
+            #elif args[0] == "lts":
 
                 c : Choreography = self.ui._model.get_object("choreography")
                 if not c:

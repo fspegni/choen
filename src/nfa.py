@@ -67,6 +67,10 @@ class State:
     def reset_counter():
         State.counter = 0
 
+    @property
+    def states(self):
+        return set([ self ])
+
 class Transition:
 
     def __init__(self, source:State, target:State, label:str=None):
@@ -194,9 +198,37 @@ class InputScanner:
 
         pos_prev = self._positions.pop()
         return pos_prev
-    
+ 
+class LTS:
 
-class NFA:
+    @property
+    def states(self):   
+        raise Exception("Not implemented yet!")
+
+    def is_initial(self, state) -> bool:
+        raise Exception("Not implemented yet!")
+
+    def is_final(self, state) -> bool:
+        raise Exception("Not implemented yet!")
+
+    @property
+    def transitions(self):
+        raise Exception("Not implemented yet!")
+
+    """
+    Return the set of all transitions departing from the passed source state. If a label is 
+    specified, only those transitions that share that label are returned.
+    """
+    def transitions_from(self, source, label=None, target=None):
+        raise Exception("Not implemented yet!")
+
+    
+    def read_symbol(self, symbol : str, curr_state : str):
+        raise Exception("Not implemented yet!")
+
+
+
+class NFA(LTS):
 
     def __init__(self):
         self._states = {}
@@ -594,7 +626,7 @@ class NFA:
         
         return False
 
-    def is_initial(self, state):
+    def is_initial(self, state) -> bool:
         if isinstance(state, State):
             state = state.id
         

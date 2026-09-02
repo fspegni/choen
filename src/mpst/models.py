@@ -6,6 +6,7 @@ from django.conf import settings
 from collections import defaultdict
 import copy
 import logging
+import nfa
 
 ##
 ## example configuration for printing debug output of rules
@@ -82,6 +83,10 @@ class StateVar(IsLocalMixin, IsGlobalMixin):
     def identifier(self):
         return self._identifier
 
+    @property
+    def id(self):
+        return self.identifier
+
     def __str__(self):
         return self._identifier
 
@@ -96,6 +101,14 @@ class StateVar(IsLocalMixin, IsGlobalMixin):
     @property
     def events(self):
         return set()
+
+    @property
+    def state_vars(self):
+        return set([ self ])
+
+    @property
+    def states(self):
+        return self.state_vars
 
 
 def get_all_classes():
@@ -213,6 +226,10 @@ class Composition(object):
                 raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
 
         return set(res)
+
+    @property
+    def states(self):
+        return self.state_vars
 
     @property
     def events(self):
@@ -550,6 +567,10 @@ class End(IsGlobalMixin, IsLocalMixin):
         return set()
 
     @property
+    def states(self):
+        return self.state_vars
+
+    @property
     def events(self):
         return set()
 
@@ -569,10 +590,18 @@ class Transform:
     @property
     def lhs(self):
         return self._lhs
+    
+    @property
+    def source(self):
+        return self.lhs
 
     @property
     def rhs(self):
         return self._rhs
+    
+    @property
+    def target(self):
+        return self.rhs
 
     def set_lhs(self, lhs : Composition | StateVar):
         self._lhs = lhs
@@ -646,6 +675,10 @@ class Transform:
         return self.lhs_vars.union(self.rhs_vars)
 
     @property
+    def states(self):
+        return self.state_vars
+
+    @property
     def events(self):
         return self.lhs.events.union(self.rhs.events)
 
@@ -701,7 +734,7 @@ class Transform:
 
 
 #class GlobalType:
-class TypeDef:
+class TypeDef(nfa.LTS):
 
     def __init__(self, initial : str | StateVar, transforms : list = [], debug : bool = False):
 
@@ -731,6 +764,13 @@ class TypeDef:
         return res
 
     @property
+    def states(self):
+        return map(lambda sv: sv.id, self.state_vars)
+
+    def e_closure(self, states):
+        return states
+
+    @property
     def events(self):
 
         res = set([])
@@ -757,6 +797,12 @@ class TypeDef:
     @property
     def initial(self):
         return self._initial
+
+    def is_initial(self, state_name):
+        return self._initial.id == state_name
+
+    def is_final(self, state_name):
+        return False # TODO this decision must be checked; do we have final state vars in MPST's Global Types?
 
     def set_initial(self, initial : str | StateVar):
         #breakpoint()
@@ -821,6 +867,10 @@ class TypeDef:
     @property
     def transforms(self):
         return self._transforms
+
+    @property
+    def transitions(self):
+        return self.transforms
 
     ###
     ### See Active Sender computation, Fig. 22, Danielou and Yoshida, 
