@@ -1,0 +1,71 @@
+{
+    "type": "GlobalType",
+    "initial": "x0",
+    "transforms": [
+        {
+            "type": "Transform",
+            "lhs": "x0",
+            "rhs": {
+                "type": "Choice",
+                "op": "+",
+                "arguments": [
+                    "x1",
+                    "x2"
+                ]
+            }
+        },
+        {
+            "type": "Transform",
+            "lhs": "x1",
+            "rhs": {
+                "type": "Concat",
+                "op": ";",
+                "arguments": [
+                    {
+                        "type": "MsgExc",
+                        "sender": "Alice",
+                        "receiver": "Bob",
+                        "label": "Book",
+                        "payload": "str"
+                    },
+                    "x3"
+                ]
+            }
+        },
+        {
+            "type": "Transform",
+            "lhs": "x2",
+            "rhs": {
+                "type": "Concat",
+                "op": ";",
+                "arguments": [
+                    {
+                        "type": "MsgExc",
+                        "sender": "Alice",
+                        "receiver": "Bob",
+                        "label": "Film",
+                        "payload": "str"
+                    },
+                    "x4"
+                ]
+            }
+        },
+        {
+            "type": "Transform",
+            "lhs": {
+                "type": "Merge",
+                "op": "+",
+                "arguments": [
+                    "x3",
+                    "x4"
+                ]
+            },
+            "rhs": "x5"
+        },
+        {
+            "type": "Transform",
+            "lhs": "x5",
+            "rhs": "end"
+        }
+    ]
+}

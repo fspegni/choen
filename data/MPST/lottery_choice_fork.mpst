@@ -1,0 +1,22 @@
+{
+    "type": "GlobalType",
+    "initial": "x0",
+    "transforms": [
+        { "lhs": { "t": "Merge", "a": [ "x0", "x18" ] }, "rhs": "x1" },
+        { "lhs": "x1", "rhs": { "t": "Fork", "a": [ "x2", "x3" ] } },
+        { "lhs": "x2", "rhs": { "t": "Choice", "a": [ "x4", "x5" ] } },
+        { "lhs": "x4", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Charlie", "label": "cwin" }, "x6" ] } },
+        { "lhs": "x5", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Bob", "label": "bwin" }, "x7" ] } },
+        { "lhs": "x6", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Charlie", "receiver": "Bob", "label": "blose" }, "x8" ] } },
+        { "lhs": "x7", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Bob", "receiver": "Charlie", "label": "close" }, "x9" ] } },
+        { "lhs": { "t": "Merge", "a": [ "x8", "x9" ] }, "rhs": "x10" },
+        { "lhs": "x10", "rhs": { "t": "Fork", "a": [ "x11", "x12" ] } },
+        { "lhs": "x11", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Bob", "receiver": "Alice", "label": "sig" }, "x14" ] } },
+        { "lhs": { "t": "Join", "a": [ "x12", "x13" ] }, "rhs": "x15" },    
+        { "lhs": "x3", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Charlie", "receiver": "Dana", "label": "busy" }, "x13" ] } },
+        { "lhs": "x15", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Charlie", "receiver": "Alice", "label": "msg" }, "x16" ] } },
+        { "lhs": { "t": "Join", "a": [ "x14", "x16" ] }, "rhs": "x17" },    
+        { "lhs": "x17", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Dana", "label": "free" }, "x18" ] } }
+    ]
+}
+
