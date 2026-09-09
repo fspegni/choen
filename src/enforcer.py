@@ -1252,6 +1252,8 @@ class CmdDump(UICommand):
             "instance": None,
             "input": None,
             "output": None,
+            "local_types": None,
+            "pruning_relation": None,
         }
 
         return d
@@ -1321,7 +1323,8 @@ class CmdDump(UICommand):
                     print("You must start the enforcer, before dumping its states")
                     return
 
-                for s in sorted(map(lambda s: s.id, self.ui._enforcer.engine.get_all_states())):
+                #breakpoint()
+                for s in sorted(self.ui._enforcer.engine.get_all_states()):
                     label = str(s)
 
                     if self.ui._enforcer.engine.is_state_initial(s):
@@ -1451,6 +1454,61 @@ class CmdDump(UICommand):
                 out_events = " ".join(map(str, ri.output_events)) if ri and ri.output_events else "N/N"
                 print(out_events)
 
+            elif args[0] == "local_types":
+
+                m = self.ui._model.get_object("mpst")
+                if not m:
+                    print(f"No MPST loaded")
+                    return
+
+                ri = self.ui._model.get_object("ri")
+
+                for p in sorted(m.root.participants):
+                    lt = m.root.project(p)
+                    #breakpoint()
+
+
+                    is_current_state = lambda s: s == lt.initial #nfa.initial
+    
+                    if ri and getattr(ri, "engineoffchainmpst"):
+                        is_current_state = lambda states: ri.engineoffchainmpst.some_state_is_current(states, p)
+    
+                    print(f"{p}:")
+                    print(f"    initial: {lt.initial}")
+                    print("    current states: {" + ",".join(map(str, ri.engineoffchainmpst.curr_states[p])) + "}")
+                    for t in lt.transitions: #nfa.transitions:
+    
+                        t_repr = str(t)
+                        #if self.ui._enforcer.engine.is_state_current(t.source):
+    
+                        #breakpoint()
+                        if is_current_state(t.source.states):
+                            t_repr = f" * {t_repr}"
+                        else:
+                            t_repr = f"   {t_repr}"
+    
+                        print(f"    {t_repr}")
+    
+            elif args[0] == "pruning_relation":
+                m = self.ui._model.get_object("mpst")
+                if not m:
+                    print(f"No MPST loaded")
+                    return
+
+                ri = self.ui._model.get_object("ri")
+                if not ri:
+                    print(f"You must start the running engine first")
+                    return
+
+                if not getattr(ri, "engineoffchainmpst"):
+                    print(f"Engine of type not supported for this command")
+                    return
+
+                #breakpoint()
+                for p, pr in sorted(ri.engineoffchainmpst.pruning_relation.items()):
+                    print(f"{p}:")
+                    for state, alt in pr._to_prune.items():
+                        print(f"    {state} |-> {{" + ",".join(list(map(str, alt))) + "}")
             else:
                 print(f"Option not recognized: {' '.join(args)}")
 

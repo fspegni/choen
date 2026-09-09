@@ -7,6 +7,7 @@ from collections import defaultdict
 import copy
 import logging
 import nfa
+import re
 
 ##
 ## example configuration for printing debug output of rules
@@ -72,6 +73,15 @@ class StateVar(IsLocalMixin, IsGlobalMixin):
             return self._identifier == other.identifier
         else:
             return False
+
+    def __lt__(self, other):
+        if isinstance(other, StateVar):
+           other = other.id
+
+        if not isinstance(other, str):
+            return NotImplemented 
+
+        return self.id < other
 
     def __hash__(self):
         return hash(self._identifier)
@@ -357,6 +367,7 @@ class Merge(Composition):
     def __init__(self, *arguments):
         super().__init__("+", *arguments)
 
+
 class MsgSend(IsLocalMixin, IsNotGlobalMixin):
 
     def __init__(self, sender: str, receiver: str, label: str, payload : type | list | tuple): #, continuation : StateVar):
@@ -381,7 +392,19 @@ class MsgSend(IsLocalMixin, IsNotGlobalMixin):
         elif isinstance(self._payload, (list, tuple)):
             payload = ",".join(map(lambda c: c.__name__, self._payload))
     
-        return f"{self._sender}!{self._receiver}[{self._label}]({payload})"
+        return f"{self._sender}!{self._label}({payload})->{self._receiver}"
+
+    def to_json(self):
+        payload = ""
+
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+
+        return { "type": self.__class__.__name__, "sender": self._sender, "receiver": self._receiver, "label": self._label, "payload": payload }
+
+
 
     @property
     def receiver(self):
@@ -426,7 +449,19 @@ class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
         elif isinstance(self._payload, (list, tuple)):
             payload = ",".join(map(lambda c: c.__name__, self._payload))
     
-        return f"{self._receiver}?{self._sender}[{self._label}]({payload})"
+        return f"{self._receiver}?{self._label}({payload})<-{self._sender}"
+
+
+    def to_json(self):
+        payload = ""
+
+        if isinstance(self._payload, type):
+            payload = self._payload.__name__
+        elif isinstance(self._payload, (list, tuple)):
+            payload = ",".join(map(lambda c: c.__name__, self._payload))
+
+        return { "type": self.__class__.__name__, "sender": self._sender, "receiver": self._receiver, "label": self._label, "payload": payload }
+
 
     @property
     def sender(self):
@@ -574,14 +609,238 @@ class End(IsGlobalMixin, IsLocalMixin):
     def events(self):
         return set()
 
+class PruningRelation:
+
+    def __init__(self):
+        self._to_prune = {}
+
+    def __str__(self):
+
+        parts = []
+        for state,alt in sorted(self._to_prune.items()):
+            parts.append(f"{state} -> " + ",".join(map(lambda curr: str(curr), alt)))
+
+        text = ",".join(parts)
+
+        return "{" + text + "}"
+
+    #@property
+    #def to_prune(self):
+    #    return self._to_prune
+
+    def to_prune(self, state):
+        return self._to_prune.get(state, [])
+
+    def add(self, source, to_prune : []):
+        assert len(to_prune) > 0, "Empty to_prune not accepted"
+
+        assert source not in self._to_prune
+
+        self._to_prune[source] = to_prune
+
+    def remove(self, state):
+        #breakpoint()
+        for source1, alternatives in self._to_prune.items():
+            if source1 != state:
+                # remove source from states alternatives to source1
+                self._to_prune[source1].remove(state)
+         
+        if state in self._to_prune:
+            del self._to_prune[state] # remove states alternative to source
+
+    # this method replaces the source (single state) with targets (a list of states)
+    # into the pruning relation; this means that whenever 'source' appeared as an
+    # alternative to some other state 'X', now the targets replace 'source' as 
+    # alternatives to 'X"
+    def update(self, source, targets : []):
+
+        assert len(targets) > 0, "Empty targets not accepted"
+
+        for X, alt in self._to_prune.items():
+            if source in alt:
+
+                #breakpoint() # check that this changes the self._to_prune dictionary
+                alt.remove(source)
+                alt.extend(targets)
+
 
 
 class Transform:
+
+    RE_MSG = r"(\w+)([!?])(\w+)((->|<-)(\w+))?" # Alice!cwin->Charlie ; Charlie?close<-Alice
+
+    select_concat = lambda t: t.is_concat
 
     def __init__(self, lhs : Composition | StateVar, rhs : Composition | StateVar | End):
 
         self._lhs = lhs
         self._rhs = rhs
+
+    def is_enabled(self, states : list[StateVar], event = None):
+
+        if event is None:
+            if self.is_fork or self.is_internal_choice or self.is_external_choice or self.is_concat or self.is_passthrough or self.is_end:
+                return self._lhs in states
+            elif self.is_join:
+                lhs1, lhs2 = self._lhs.arguments
+                return lhs1 in states and lhs2 in states
+            elif self.is_merge:
+                lhs1, lhs2 = self._lhs.arguments
+                return lhs1 in states or lhs2 in states
+            else:
+                raise Exception(f"Cannot check whether this transform is enabled (event is None): {self}")
+        else:
+
+            match = re.match(Transform.RE_MSG, event)
+            if not match:
+                return False
+
+
+            if self.is_concat:
+                rhs1, rhs2 = self._rhs.arguments
+                if self._lhs not in states:
+                    return False
+
+                #breakpoint()
+                actor, action, label, _, direction, actor1 = match.groups()
+                if isinstance(rhs1, MsgSend) and action == "!":
+                    return rhs1.sender == actor and rhs1.label == label and direction == "->" and rhs1.receiver == actor1
+                elif isinstance(rhs1, MsgRecv) and action == "?":
+                    return rhs1.receiver == actor and rhs1.label == label and direction == "<-" and rhs1.sender == actor1
+                else:
+                    return False
+            else:
+                raise Exception(f"Cannot check whether this transform is enabled (task is: {task}): {self}")
+    
+    def apply_fork(self, states: list[StateVar], pr: PruningRelation):
+
+        assert self.is_fork, "Transform is not of type fork"
+        assert self.lhs in states, "Transform not enabled"
+
+        rhs1, rhs2 = self.rhs.arguments
+        states.remove(self.lhs)  
+        if rhs1 not in states:
+            states.append(rhs1)
+        if rhs2 not in states:
+            states.append(rhs2) 
+ 
+        pr.update(self.lhs, [rhs1,rhs2])
+ 
+    def apply_join(self, states: list[StateVar], pr : PruningRelation):
+
+        assert self.is_join, "Transform is not of type join"
+
+        lhs1, lhs2 = self.lhs.arguments
+
+        assert lhs1 in states and lhs2 in states, "Transform not enabled"
+
+        states.remove(lhs1)  
+        states.remove(lhs2)  
+        if self.rhs not in states:
+            states.append(self.rhs)
+
+        pr.update(lhs1, [self.rhs])
+        pr.update(lhs2, [self.rhs])
+        
+    def apply_choice(self, states : list[StateVar], pr : PruningRelation):
+
+        assert self.is_internal_choice or self.is_external_choice, "Transform is not of type internal/external choice"
+
+        rhs1, rhs2 = self.rhs.arguments
+
+        assert self.lhs in states, "Transform not enabled"
+
+        states.remove(self.lhs)
+        if rhs1 not in states:
+            states.append(rhs1)
+        if rhs2 not in states:
+            states.append(rhs2)
+
+        pr.update(self.lhs, [rhs1,rhs2]) 
+
+        #breakpoint()
+        pr.add(rhs1, list(set(pr.to_prune(self.lhs) + [ rhs2 ])))
+        pr.add(rhs2, list(set(pr.to_prune(self.lhs) + [ rhs1 ])))
+     
+    def apply_merge(self, states : list[StateVar], pr : PruningRelation):
+
+        assert self.is_merge, "Transform is not of type merge"
+        
+        lhs1, lhs2 = self.lhs.arguments
+
+        assert lhs1 in states or lhs2 in states, "Transform not enabled"
+
+        if lhs1 in states:
+            states.remove(lhs1)
+            if self.rhs not in states:
+                states.append(self.rhs)
+            pr.update(lhs1, [self.rhs])
+        else:
+            # lhs2 in states
+            states.remove(lhs2)
+            if self.rhs not in states:
+                states.append(self.rhs)
+            pr.update(lhs2, [self.rhs])
+   
+    
+    def apply_passthrough(self, states : list[StateVar], pr : PruningRelation):
+
+        assert self.is_passthrough, "Transform is not of type passthrough"
+
+        assert self.lhs in states, "Transform not enabled"
+
+        states.remove(self.lhs)
+        if self.rhs not in states:
+            states.append(self.rhs)
+
+        if self.lhs != self.rhs:
+            pr.update(self.source, [self.rhs]) 
+
+    def apply_end(self, states : list[StateVar], pr : PruningRelation):
+        
+        assert self.is_end, "Transform is not of type end"
+
+        states.remove(self.lhs)
+        pr.remove(self.lhs)
+    
+    def apply_concat(self, states : list[StateVar], pr : PruningRelation, event):
+        
+        assert self.is_concat, "Transform is not of type Concat"
+
+        rhs1, rhs2 = self.rhs.arguments
+
+        states.remove(self.lhs)
+        if rhs2 not in states:
+            states.append(rhs2)
+
+        # TODO check the encoding below works
+        for alt in pr.to_prune(self.lhs):
+            pr.remove(alt)
+
+        pr.remove(self.lhs)
+
+        # TODO in the future we should do something with the event ...
+
+      
+    def apply(self, states : list[StateVar], pr : PruningRelation, event=None):
+
+        if self.is_fork:
+            return self.apply_fork(states, pr)
+        elif self.is_join:
+            return self.apply_join(states, pr)
+        elif self.is_internal_choice or self.is_external_choice:
+            return self.apply_choice(states, pr)
+        elif self.is_merge:
+            return self.apply_merge(states, pr)
+        elif self.is_passthrough:
+            return self.apply_passthrough(states, pr)
+        elif self.is_end:
+            return self.apply_end(states, pr)
+        elif self.is_concat:
+            return self.apply_concat(states, pr, event)
+        else:
+            raise Exception(f"Don't know how to apply this transform: {self}")
+
 
     @staticmethod
     def clone(t):
@@ -767,9 +1026,6 @@ class TypeDef(nfa.LTS):
     def states(self):
         return map(lambda sv: sv.id, self.state_vars)
 
-    def e_closure(self, states):
-        return states
-
     @property
     def events(self):
 
@@ -871,6 +1127,32 @@ class TypeDef(nfa.LTS):
     @property
     def transitions(self):
         return self.transforms
+
+    def transforms_from(self, source : StateVar, label : str = None, target : StateVar = None):
+
+        def find_matching_event(t):
+            breakpoint()
+            return False
+
+        if not label:
+            return self.find_transform(source, target)
+        else:
+            return self.find_transfrom(source, target, such_that=find_matching_event)
+
+    def transitions_from(self, source : StateVar, label : str = None, target : StateVar = None):
+        return self.transforms_from(source, label, target)
+
+    def enabled_transforms(self, source_list):
+        result = []
+        for s in source_list:
+            result.extend(self.transforms_from(s))
+
+        return result
+
+    def enabled_transitions(self, source_list):
+        return self.enabled_transforms(source_list)
+
+
 
     ###
     ### See Active Sender computation, Fig. 22, Danielou and Yoshida, 
@@ -1532,7 +1814,7 @@ class GlobalType(TypeDef):
         lt = LocalType(init, p_transforms)
 
         for t in replaces:
-            print(f"Replace: {t.lhs}/{t.rhs} ...")
+            #print(f"Replace: {t.lhs}/{t.rhs} ...")
             #breakpoint()
             lt.remove_transform(t)
             lt.replace_var(t.lhs, t.rhs)

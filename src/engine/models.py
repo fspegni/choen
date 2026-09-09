@@ -7,6 +7,7 @@ from eth_account import Account
 from web3 import Web3, HTTPProvider
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
+import random
 
 from web3.exceptions import Web3RPCError 
 #from web3.middleware import SignAndSendRawMiddlewareBuilder
@@ -17,7 +18,7 @@ import re
 from picklefield.fields import PickledObjectField
 from django.core.exceptions import ValidationError
 from bpmn_parser.models import Choreography
-from mpst.models import MPST
+from mpst.models import StateVar, MPST, PruningRelation, Transform
 from django.db import transaction
 from django.conf import settings
 
@@ -374,7 +375,16 @@ class RunningInstance(models.Model):
         #breakpoint()
         if not engine_offchain:
     
-            engine_offchain = EngineOffChain.create_engine(self, the_filter=kwargs.get("filter", None))
+            #breakpoint()
+
+            if self.choreography and self.mpst:
+                raise Exception("Cannot handle a running instance with both a choreography and a MPST")
+            elif self.choreography: 
+                engine_offchain = EngineOffChain.create_engine(self, the_filter=kwargs.get("filter", None))
+            elif self.mpst:
+                engine_offchain = EngineOffChainMPST.create_engine(self, the_filter=kwargs.get("filter", None))
+            else:
+                raise Exception("Cannot handle a running instance with neither a choreography nor a MPST")
     
             assert engine_offchain is not None       
     
@@ -410,7 +420,7 @@ class RunningInstance(models.Model):
         num_events = len(lts.events) if lts else None
     
 
-        breakpoint()
+        #breakpoint()
         data = { "id": self.id, "engine_id": self.engine.id, "label": self.label, "blockchain_configuration": bc_configuration, "num_states": num_states, "num_transitions": num_transitions, "num_events": num_events }
 
         if self.engine and self.engine.stats:
@@ -506,7 +516,7 @@ class Engine:
 
     def get_all_states(self):
         #return self._nfa.states
-        return self._lts.states
+        return self.curr_states
 
 
     def get_transitions(self):
@@ -520,8 +530,6 @@ class Engine:
     def is_state_initial(self, s):  
         #return self._nfa.is_initial(s)
         return self._lts.is_initial(s)
-
-
 
     @property
     def filter(self):
@@ -646,11 +654,17 @@ class Engine:
         raise Exception("This is an abstract method, you should implement it")
 
 
+class StateVarEncoder(DjangoJSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, StateVar):
+            return obj.id
+        return super().default(obj)
+
 
 class EngineOffChainMPST(Engine, models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
-    curr_states = models.JSONField(default=[], verbose_name=_("current states"))
+    curr_states = models.JSONField(default=[], encoder=StateVarEncoder, verbose_name=_("current states"))
     history = models.JSONField(default=[], verbose_name=_("history"))
     buffer = models.JSONField(default={}, verbose_name=_("buffer"))
     kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
@@ -665,30 +679,45 @@ class EngineOffChainMPST(Engine, models.Model):
     @staticmethod
     def create_engine(ri : RunningInstance, the_filter : Filter = None): 
 
+        gt = ri.mpst.root
+
         e = EngineOffChainMPST()
+        e.set_global_type(gt)
 
-
-        lts = ri.mpst.root
-
-        e._lts : nfa.LTS = lts
         e.buffer = {}
 
-        e.curr_states = list(lts.e_closure(set([ lts.initial.id ])))
+        #e.curr_states = list(set([ lts.initial.id ]))
         e._debug : bool = True
         e.stats = []
     
-        if the_filter:
-            e.set_filter(the_filter)
+        # do not add filters for the MPST case (for now)
+        #if the_filter:
+        #    e.set_filter(the_filter)
 
         e.running_instance = ri
         e.kb = []
 
         e.execution_started = timezone.now()
 
+        e.process_check() # let the engine make progress as much as possible, without input
+
         e.save()
 
         return e
     
+    def set_global_type(self, gt):
+
+        self._global_type = gt
+        self._local_types = {}
+        self.curr_states = {}
+        self.pruning_relation = {}
+
+        for p in gt.participants:
+            lt = gt.project(p)
+            self._local_types[p] = lt
+            self.curr_states[p] = [ lt.initial ]
+            self.pruning_relation[p] = PruningRelation()
+
 
     def _log_stats(self, obj : dict):
         obj = json.loads(json.dumps(obj, cls=DjangoJSONEncoder))
@@ -707,15 +736,205 @@ class EngineOffChainMPST(Engine, models.Model):
             "curr_states" : curr_states, 
             "buffer" : buffer}
         )
+
+    def _buffer_add(self, precondition, actor : str, action: str, message : str, knowledge):
+        #breakpoint() # TODO test code below
+
+        assert action in [ "!", "?" ], f"Unexpected action: {action}"
+
+        num_before = len(self.get_buffer_items())
+
+        if actor not in self.buffer:
+            self.buffer[actor] = {}
+
+        if action not in self.buffer[actor]:
+            self.buffer[actor][action] = {}
+
+        if message not in self.buffer[actor][action]:
+            self.buffer[actor][action][message] = []
+
+        self.buffer[actor][action][message].append({"precondition": precondition, "knowledge": knowledge})
+
+        num_after = len(self.get_buffer_items())
+        assert num_after == num_before + 1, f"Expected buffer length after add operation: {num_before+1}. Actual length: {num_after}"
+
+    def _buffer_remove(self, precondition, actor : str, action : str, message : str, knowledge):
+
+        breakpoint() # TODO test code below
+ 
+        assert action in [ "!", "?" ], f"Unexpected action: {action}"
+
+        if not actor in self.buffer:
+            raise Exception(f"No event ({actor},{action},{message}) to remove from buffer")
+
+        if not action in self.buffer[actor]:
+            raise Exception(f"No event ({actor},{action},{message}) to remove from buffer")
+
+        if not message in self.buffer[actor][action]:
+            raise Exception(f"No event ({actor},{action},{message}) to remove from buffer")
+
+        for (idx,curr) in enumerate(self.buffer[actor][action][message]):
+            if curr["precondition"] == precondition and curr["knowledge"] == knowledge:
+                del self.buffer[actor][action][message][idx]
+                return # successful case
+
+        # if it reaches here, no message with precondition and knowledge was found for actor, thus raise an exception
+        raise Exception(f"No event ({actor},{action},{message}) to remove from buffer with given precondition and knowledge")
+     
+    def get_buffer_items(self):
+        #breakpoint() # TODO test the code below
+        items = []
+        for actor in self.buffer:
+            for action in self.buffer[actor]:
+                for message in self.buffer[actor][action]:
+                    for curr in self.buffer[actor][action][message]:
+                        precondition = curr["precondition"]
+                        knowledge = curr["knowledge"]
+                        items.append((precondition, (actor, action, message), knowledge))
+
+        return items
+
+  
+    
+    def buffer_find_usable_event(self):
+
+        breakpoint() # TODO rewrite code below
+
+        from enforcer import Enforcer
+
+        found = None
+        for actor in self.buffer:
+            for action in self.buffer[actor]:
+                for message in self.buffer[actor][action]:
+                    event = f"{actor}{action}{message}"
+                    for curr in self.buffer[actor][action][message]:
+                        if not "precondition" in curr or not "knowledge" in curr: 
+                            raise Exception(f"Ill-formed buffer item. Expected item with 'precondition' and 'knowledge'. Found: {curr}")
+    
+                        precondition = curr["precondition"]
+                        knowledge = curr["knowledge"]
+                    
+                        for s in self.curr_states:
+                            #if self._nfa.transitions_from(s, event) and self.check_sat(precondition):
+                            if self._lts.transitions_from(s, event) and self.check_sat(precondition):
+                                return precondition, event, knowledge
+                        
+        raise Enforcer.NoMessageFound("No usable message found")
+
    
+    def ended(self):
+        return False # TODO understand when it is actually ended
+
     def process_input(self, precondition, event, knowledge):
 
-        raise Exception("Not implemented yet")
+        actor,action,message = self._parse_event(event)
+
+        #if actor not in self.curr_states:
+        if actor not in self.get_actors(): 
+            print(f"(* discard event : {event} : actor not known *)")
+            return
+
+        #transforms_list = list(self._local_types[actor].transforms)
+        transforms_list = list(self.get_local_type(actor).transforms)
+        random.shuffle(transforms_list)
+
+        # iterate only concat Transforms
+        for t in filter(Transform.select_concat, transforms_list):
+            #breakpoint()
+            if t.is_enabled(self.curr_states[actor], event):
+                t.apply(self.curr_states[actor], self.pruning_relation[actor], event) # TODO precondition and knowledge not handled, yet
+                print(f"(* applied transform: {actor}: {t} *)")
+                return event
+
+        # if this point is reached, buffer the event
+        self._buffer_add(None, actor, action, message, None)
+
+        return None
 
 
     def process_check(self):
 
-        raise Exception("Not implemented yet")
+        #breakpoint()
+        dirty = True
+        while dirty:
+            dirty = False
+            #actor_list = list(self._local_types.keys())
+            actor_list = self.get_actors()
+            random.shuffle(actor_list)
+            for actor in actor_list:
+                #lt = self._local_types[actor]
+                lt = self.get_local_type(actor)
+                transforms_list = list(lt.transforms)
+                random.shuffle(transforms_list)
+                #for t in transforms_list:   
+                # iterate only non-concat Transforms
+                for t in filter(lambda t: not Transform.select_concat(t), transforms_list):
+                    #if not t.is_concat:
+                    if t.is_enabled(self.curr_states[actor]):
+                        #breakpoint()
+                        t.apply(self.curr_states[actor], self.pruning_relation[actor])
+                        print(f"(* applied transform: {actor}: {t} *)")
+                        dirty = True
+                        break
+
+    def get_actors(self):
+        return list(self._local_types.keys())
+
+    def get_local_type(self, name : str):
+        if name not in self._local_types:
+            raise Exception(f"Local type with name {name} does not exist")
+
+        return self._local_types[name]
+
+    def get_all_states(self):
+        return sorted(self._global_type.states)
+
+    def get_curr_states(self):
+        curr_states = []
+
+        for actor, states in sorted(self.curr_states.items()):
+            for s in states:
+                curr_states.append(s)
+
+        return sorted(set(curr_states))
+
+
+    def is_state_final(self, s):
+        return False # TODO how to check a final state?
+
+    def is_state_initial(self, s):  
+        #actor, state = s # split the input state (a pair)
+        #return state == self._local_types[actor].initial
+        return s == self._global_type.initial
+
+    def is_state_current(self, s, participant=None):  
+        #actor, state = s # split the input state (a pair)
+        #return state in self.curr_states[actor]
+
+        curr_states = []
+        #for name, lt in self._local_types.items():
+        for name in self.get_actors():
+            lt = self.get_local_type(name)
+            curr_states.extend(self.curr_states[name])
+
+        return s in curr_states
+
+    def some_state_is_current(self, states, participant=None):
+
+        curr_states = []
+        #for name, lt in self._local_types.items():
+        for name in self.get_actors():
+            lt = self.get_local_type(name)
+
+            if participant is None or name == participant:
+                curr_states.extend(self.curr_states[name])
+
+        res = len(set(curr_states).intersection(states)) > 0
+        return res
+
+
+
+
 
 class EngineOffChain(Engine, models.Model):
 
