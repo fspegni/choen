@@ -109,6 +109,10 @@ class StateVar(IsLocalMixin, IsGlobalMixin):
         return str(self._identifier)
 
     @property
+    def messages(self):
+        return set()
+
+    @property
     def events(self):
         return set()
 
@@ -242,8 +246,7 @@ class Composition(object):
         return self.state_vars
 
     @property
-    def events(self):
-        #breakpoint()
+    def messages(self):
         res = []
         for idx, curr in enumerate(self._arguments):
             if isinstance(curr, StateVar):
@@ -260,6 +263,27 @@ class Composition(object):
 
         return set(res)
 
+    @property
+    def events(self):
+        #breakpoint()
+        res = []
+        for idx, curr in enumerate(self._arguments):
+            if isinstance(curr, StateVar):
+                pass
+            elif isinstance(curr, Composition):
+                pass
+            elif isinstance(curr, MsgExc):
+                res.append(f"!{curr.label}<>{curr.sender}")
+            elif isinstance(curr, MsgSend):
+                res.append(f"!{curr.label}->{curr.receiver}")
+            elif isinstance(curr, MsgRecv):
+                res.append(f"?{curr.label}<-{curr.sender}")
+            else:
+                raise Exception(f"Argument type not expected (position: {idx}): {curr} ({type(curr)}")
+
+        return set(res)
+
+       
 
 
 
@@ -606,8 +630,14 @@ class End(IsGlobalMixin, IsLocalMixin):
         return self.state_vars
 
     @property
+    def messages(self):
+        return set()
+
+    @property
     def events(self):
         return set()
+
+
 
 class PruningRelation:
 
@@ -667,7 +697,9 @@ class PruningRelation:
 
 class Transform:
 
-    RE_MSG = r"(\w+)([!?])(\w+)((->|<-)(\w+))?" # Alice!cwin->Charlie ; Charlie?close<-Alice
+    # Alice!cwin->Charlie ; Charlie?close<-Alice
+    RE_MSG = "^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
+
 
     select_concat = lambda t: t.is_concat
 
@@ -695,18 +727,17 @@ class Transform:
             if not match:
                 return False
 
-
             if self.is_concat:
                 rhs1, rhs2 = self._rhs.arguments
                 if self._lhs not in states:
                     return False
 
                 #breakpoint()
-                actor, action, label, _, direction, actor1 = match.groups()
-                if isinstance(rhs1, MsgSend) and action == "!":
-                    return rhs1.sender == actor and rhs1.label == label and direction == "->" and rhs1.receiver == actor1
-                elif isinstance(rhs1, MsgRecv) and action == "?":
-                    return rhs1.receiver == actor and rhs1.label == label and direction == "<-" and rhs1.sender == actor1
+                actor, event, action, label, direction, actor1 = match.groups()
+                if isinstance(rhs1, MsgSend) and action == "!" and direction == "->":
+                    return rhs1.sender == actor and rhs1.label == label and rhs1.receiver == actor1
+                elif isinstance(rhs1, MsgRecv) and action == "?" and direction == "<-":
+                    return rhs1.receiver == actor and rhs1.label == label and rhs1.sender == actor1
                 else:
                     return False
             else:
@@ -938,6 +969,10 @@ class Transform:
         return self.state_vars
 
     @property
+    def messages(self):
+        return self.lhs.messages.union(self.rhs.messages)
+
+    @property
     def events(self):
         return self.lhs.events.union(self.rhs.events)
 
@@ -1027,6 +1062,15 @@ class TypeDef(nfa.LTS):
         return map(lambda sv: sv.id, self.state_vars)
 
     @property
+    def messages(self):
+
+        res = set([])
+        for t in self.transforms:
+            res = res.union(t.messages)
+
+        return res
+
+    @property
     def events(self):
 
         res = set([])
@@ -1034,6 +1078,8 @@ class TypeDef(nfa.LTS):
             res = res.union(t.events)
 
         return res
+
+
 
     @property
     def logger(self):

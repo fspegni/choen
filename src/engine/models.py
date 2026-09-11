@@ -499,6 +499,8 @@ class UnionFilter(Filter):
 
 class Engine:
 
+    RE_MESSAGE = "^([^!?]+)([!?])([^!?]+)$"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         #self._nfa = None
@@ -509,7 +511,7 @@ class Engine:
 
     def _parse_event(self, symbol):
     
-        m = re.match("^([^!?]+)([!?])([^!?]+)$", symbol)
+        m = re.match(Engine.RE_MESSAGE, symbol)
 
         return m.groups() if m else (None, None, None)
  
@@ -663,11 +665,13 @@ class StateVarEncoder(DjangoJSONEncoder):
 
 class EngineOffChainMPST(Engine, models.Model):
 
+    RE_MESSAGE_MPST = "^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
+
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
-    curr_states = models.JSONField(default=[], encoder=StateVarEncoder, verbose_name=_("current states"))
-    history = models.JSONField(default=[], verbose_name=_("history"))
-    buffer = models.JSONField(default={}, verbose_name=_("buffer"))
-    kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
+    curr_states = models.JSONField(default=list, encoder=StateVarEncoder, verbose_name=_("current states"))
+    history = models.JSONField(default=list, verbose_name=_("history"))
+    buffer = models.JSONField(default=dict, verbose_name=_("buffer"))
+    kb = models.JSONField(default=dict, verbose_name=_("knowledge base"))
 
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
@@ -704,7 +708,15 @@ class EngineOffChainMPST(Engine, models.Model):
         e.save()
 
         return e
+ 
+    def _parse_event(self, symbol):
     
+        #breakpoint()
+        m = re.match(EngineOffChainMPST.RE_MESSAGE_MPST, symbol)
+
+        return m.groups() if m else (None, None, None, None, None, None)
+ 
+   
     def set_global_type(self, gt):
 
         self._global_type = gt
@@ -760,7 +772,7 @@ class EngineOffChainMPST(Engine, models.Model):
 
     def _buffer_remove(self, precondition, actor : str, action : str, message : str, knowledge):
 
-        breakpoint() # TODO test code below
+        #breakpoint() # TODO test code below
  
         assert action in [ "!", "?" ], f"Unexpected action: {action}"
 
@@ -794,44 +806,54 @@ class EngineOffChainMPST(Engine, models.Model):
 
         return items
 
+    
   
-    
-    def buffer_find_usable_event(self):
-
-        breakpoint() # TODO rewrite code below
-
-        from enforcer import Enforcer
-
-        found = None
-        for actor in self.buffer:
-            for action in self.buffer[actor]:
-                for message in self.buffer[actor][action]:
-                    event = f"{actor}{action}{message}"
-                    for curr in self.buffer[actor][action][message]:
-                        if not "precondition" in curr or not "knowledge" in curr: 
-                            raise Exception(f"Ill-formed buffer item. Expected item with 'precondition' and 'knowledge'. Found: {curr}")
-    
-                        precondition = curr["precondition"]
-                        knowledge = curr["knowledge"]
-                    
-                        for s in self.curr_states:
-                            #if self._nfa.transitions_from(s, event) and self.check_sat(precondition):
-                            if self._lts.transitions_from(s, event) and self.check_sat(precondition):
-                                return precondition, event, knowledge
-                        
-        raise Enforcer.NoMessageFound("No usable message found")
-
+##    
+##    def buffer_find_usable_event(self):
+##
+##        breakpoint() # TODO rewrite code below
+##
+##        from enforcer import Enforcer
+##
+##        found = None
+##        for actor in self.buffer:
+##            for action in self.buffer[actor]:
+##                for message in self.buffer[actor][action]:
+##                    event = f"{actor}{action}{message}"
+##                    for curr in self.buffer[actor][action][message]:
+##                        if not "precondition" in curr or not "knowledge" in curr: 
+##                            raise Exception(f"Ill-formed buffer item. Expected item with 'precondition' and 'knowledge'. Found: {curr}")
+##    
+##                        precondition = curr["precondition"]
+##                        knowledge = curr["knowledge"]
+##                    
+##                        for s in self.curr_states:
+##                            #if self._nfa.transitions_from(s, event) and self.check_sat(precondition):
+##                            if self._lts.transitions_from(s, event) and self.check_sat(precondition):
+##                                return precondition, event, knowledge
+##                        
+##        raise Enforcer.NoMessageFound("No usable message found")
+##
    
     def ended(self):
         return False # TODO understand when it is actually ended
 
-    def process_input(self, precondition, event, knowledge):
+    def process_input(self, precondition, event_text, knowledge):
 
-        actor,action,message = self._parse_event(event)
+        #breakpoint()
+        actor,event,action,message,direction,actor1 = self._parse_event(event_text)
 
         #if actor not in self.curr_states:
+        if not actor:
+            print(f"(* discard event : {event_text} : format not recognized *)")
+            return
+
         if actor not in self.get_actors(): 
-            print(f"(* discard event : {event} : actor not known *)")
+            print(f"(* discard event : {event_text} : actor not known *)")
+            return
+
+        if event not in self.get_events():
+            print(f"(* discard event : {event_text} : event not allowed *)")
             return
 
         #transforms_list = list(self._local_types[actor].transforms)
@@ -841,13 +863,14 @@ class EngineOffChainMPST(Engine, models.Model):
         # iterate only concat Transforms
         for t in filter(Transform.select_concat, transforms_list):
             #breakpoint()
-            if t.is_enabled(self.curr_states[actor], event):
+            if t.is_enabled(self.curr_states[actor], event_text):
                 t.apply(self.curr_states[actor], self.pruning_relation[actor], event) # TODO precondition and knowledge not handled, yet
                 print(f"(* applied transform: {actor}: {t} *)")
-                return event
+                out = f"{actor}{event}"
+                return out
 
         # if this point is reached, buffer the event
-        self._buffer_add(None, actor, action, message, None)
+        self._buffer_add(None, actor, action, event, None)
 
         return None
 
@@ -859,6 +882,26 @@ class EngineOffChainMPST(Engine, models.Model):
         while dirty:
             dirty = False
             #actor_list = list(self._local_types.keys())
+
+            # 1. try consuming buffered events
+            for curr in self.get_buffer_items():
+                precondition, (actor, action, event), knowledge = curr
+                event_text = f"{actor}{event}"
+
+                lt = self.get_local_type(actor)
+                transforms_list = list(lt.transforms)
+                for t in filter(lambda t: Transform.select_concat(t), transforms_list):
+                    #breakpoint()
+                    if t.is_enabled(self.curr_states[actor], event_text):
+                        t.apply(self.curr_states[actor], self.pruning_relation[actor], event) # TODO precondition and knowledge not handled, yet
+                        print(f"(* applied transform: {actor}: {t} (from buffer) *)")
+                        self._buffer_remove(precondition, actor, action, event, knowledge)
+                        out = f"{actor}{event}"
+                        return out
+ 
+                #breakpoint()
+
+            # 2. try with "silent" transforms
             actor_list = self.get_actors()
             random.shuffle(actor_list)
             for actor in actor_list:
@@ -876,9 +919,18 @@ class EngineOffChainMPST(Engine, models.Model):
                         print(f"(* applied transform: {actor}: {t} *)")
                         dirty = True
                         break
+                        
+        return None
 
     def get_actors(self):
         return list(self._local_types.keys())
+
+    def get_events(self):
+        res = []
+        for p, lt in self._local_types.items():
+            res.extend(lt.events)
+
+        return set(res)
 
     def get_local_type(self, name : str):
         if name not in self._local_types:
@@ -939,10 +991,10 @@ class EngineOffChainMPST(Engine, models.Model):
 class EngineOffChain(Engine, models.Model):
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
-    curr_states = models.JSONField(default=[], verbose_name=_("current states"))
-    history = models.JSONField(default=[], verbose_name=_("history"))
-    buffer = models.JSONField(default={}, verbose_name=_("buffer"))
-    kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
+    curr_states = models.JSONField(default=list, verbose_name=_("current states"))
+    history = models.JSONField(default=list, verbose_name=_("history"))
+    buffer = models.JSONField(default=dict, verbose_name=_("buffer"))
+    kb = models.JSONField(default=list, verbose_name=_("knowledge base"))
 
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
