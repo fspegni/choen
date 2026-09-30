@@ -45,14 +45,17 @@ logs:
 	${DC} logs -f
 
 static:
-	${DA} collectstatic --clear
+	${DC} exec -it backend ${DA} collectstatic --noinput --clear
 
 migrate:
-	${DA} makemigrations
-	${DA} migrate
+	#${DA} makemigrations
+	#${DA} migrate
+	${DC} exec -it backend ${DA} makemigrations
+	${DC} exec -it backend ${DA} migrate
 
 cli:
-	${DA} cli
+	#${DA} cli
+	${DC} exec -it backend ${DA} cli
 
 cli_help:
 	${DA} cli --help
@@ -64,5 +67,5 @@ test:
 ganache:
 	npx ganache --db ./ganache_data --mnemonic "${MNEMONIC}" --accounts 5 --defaultBalanceEther 10000
 
-init_data:
-	env | grep DJANGO && ${DC} exec -it backend django-admin createsuperuser --noinput --username "$${DJANGO_SUPERUSER_USERNAME}" --email "$${DJANGO_SUPERUSER_EMAIL}"
+init: static
+	${DC} exec -it backend ${DA} createsuperuser

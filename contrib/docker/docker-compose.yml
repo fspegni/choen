@@ -1,0 +1,24 @@
+volumes:
+    backend_data:
+
+services:
+
+    backend:
+        build:
+            context: .
+            dockerfile: ./contrib/docker/Dockerfile_backend
+            args:
+                DJANGO_SUPERUSER_USERNAME: "${DJANGO_SUPERUSER_USERNAME}"
+                DJANGO_SUPERUSER_EMAIL: "${DJANGO_SUPERUSER_EMAIL}"
+
+        volumes:
+            - './src:/app/src'  
+            - './public:/app/public'  
+            - 'backend_data:/app/data/persistent'
+        env_file:
+            - "./contrib/docker/.env"
+ 
+        restart: unless-stopped
+        ports:
+            - '127.0.0.1:${BACKEND_HOST_PORT}:${BACKEND_CONTAINER_PORT}'
+        command: [ "django-admin", "runserver", "0.0.0.0:8000" ]
