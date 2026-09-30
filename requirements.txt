@@ -18,7 +18,7 @@ Jinja2==3.0.2
 lockfile==0.12.2
 MarkupSafe==2.0.1
 msgpack==0.6.2
-packaging==20.3
+packaging==23.1
 pep517==0.8.2
 progress==1.5
 pyparsing==2.4.6
@@ -31,7 +31,8 @@ sqlparse==0.4.2
 #urllib3==1.25.8
 urllib3>=2.0,<3
 webencodings==0.5.1
-py-solc-x==1.1.1
+#py-solc-x==1.1.1
+py-solc-x==2.0.5
 deprecation==2.1.0
 prompt-toolkit==3.0.29
 #web3==5.31.0
