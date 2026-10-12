@@ -741,7 +741,8 @@ class CmdBuildContracts(UICommand):
             #nfa.remove_unreachable_states()
 
             
-            nfa : NFA = self.ui._model.get_object("nfa")
+            #nfa : NFA = self.ui._model.get_object("nfa")
+            nfa : NFA = self.ui._model.get_object("lts")
             if not nfa:
                 print("Unexpected error when loading current choreography: no NFA generated")
                 return
@@ -792,6 +793,8 @@ class CmdLoadMPST(UICommand):
             self.ui._model.set_object("mpst", c)
             self.ui._model.set_object("lts", c.root)
             print(f"MPST '{name}' loaded ...")
+        except json.decoder.JSONDecodeError as e:
+            print(f"Ill-formed MPST: {e}")
         except Exception as e: # MPST.DoesNotExist as e:
             #breakpoint()
             if os.path.exists(name):
@@ -1372,7 +1375,8 @@ class CmdDump(UICommand):
                     raise UICommand.Error("You must load a choreography, before dumping its nfa")
 
 
-                nfa : NFA = self.ui._model.get_object("nfa")
+                #nfa : NFA = self.ui._model.get_object("nfa")
+                nfa : NFA = self.ui._model.get_object("lts")
                 if not nfa:
                     raise UICommand.Error("Unexpected error generating NFA from the current choreography")
 

@@ -14,8 +14,8 @@ def expect_node_type(cho:Choreography, node:ElementType, ntypes, limit_node=None
 
     real_ntype = cho.node_type(node, limit_node)
 
-    if real_ntype not in ntypes:
-        breakpoint()
+    #if real_ntype not in ntypes:
+    #    breakpoint()
     assert real_ntype in ntypes, f"Expected node of type '{ntypes}'. Found: Node: {node} - Type: {real_ntype}"
 
 

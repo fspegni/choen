@@ -1177,7 +1177,7 @@ class TypeDef(nfa.LTS):
     def transforms_from(self, source : StateVar, label : str = None, target : StateVar = None):
 
         def find_matching_event(t):
-            breakpoint()
+            #breakpoint()
             return False
 
         if not label:
@@ -1851,6 +1851,7 @@ class GlobalType(TypeDef):
                     rhs_args = map(lambda a: StateVar(a), t.rhs.arguments)
                     t1 = Transform(StateVar(lhs_sv), ExternalChoice(active_sender, *rhs_args))
             else:
+                #breakpoint()
                 print(f"Unexpected transform type: {t} ({type(t)} : {type(t.lhs)} -> {type(t.rhs)}). Skip it ...")
                 continue
 
