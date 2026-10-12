@@ -14,6 +14,7 @@ services:
         volumes:
             - './src:/app/src'  
             - './public:/app/public'  
+            - './data/initial:/app/data/initial'
             - 'backend_data:/app/data/persistent'
         env_file:
             - "./contrib/docker/.env"

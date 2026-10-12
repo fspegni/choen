@@ -57,6 +57,9 @@ cli:
 	#${DA} cli
 	${DC} exec -it backend ${DA} cli
 
+cli-old:
+	${DA} cli
+
 cli_help:
 	${DA} cli --help
 

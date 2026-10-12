@@ -1,0 +1,19 @@
+{
+    "type": "GlobalType",
+    "initial": "x0",
+    "transforms": [
+
+        { "lhs": "x0", "rhs": { "t": "Fork", "a": [ "x1", "x2" ] } },
+        { "lhs": { "t": "Merge", "a": [ "x1", "x3" ] }, "rhs": "x4" },
+        { "lhs": { "t": "Merge", "a": [ "x2", "x5" ] }, "rhs": "x6" },
+        { "lhs": "x4", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Bob", "label": "Msg1" }, "x7" ] } },
+        { "lhs": "x7", "rhs": { "t": "Fork", "a": [ "x8", "x9" ] } },
+        { "lhs": "x8", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Bob", "receiver": "Alice", "label": "Ack1" }, "x10" ] } },
+        { "lhs": { "t": "Join", "a": [ "x6", "x9" ] }, "rhs": "x11" },    
+        { "lhs": "x11", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Alice", "receiver": "Bob", "label": "Msg2" }, "x12" ] } },
+        { "lhs": "x12", "rhs": { "t": "Fork", "a": [ "x13", "x14" ] } },
+        { "lhs": "x13", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Bob", "receiver": "Alice", "label": "Ack2" }, "x5" ] } },
+        { "lhs": { "t": "Join", "a": [ "x10", "x14" ] }, "rhs": "x3" }
+    ]
+}
+
