@@ -6,7 +6,7 @@ from django_object_actions import DjangoObjectActions, action
 # Register your models here.
 from django import forms
 from django.core.exceptions import ValidationError
-from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOnChain, EngineOffChain
+from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOnChain, EngineOnChainMPST, EngineOffChain, EngineOffChainMPST, EngineHasContract
 from django.contrib.admin import SimpleListFilter
 from django.urls import reverse
 
@@ -233,3 +233,34 @@ class EngineOnChain(admin.ModelAdmin):
     def kb(self, obj : EngineOnChain):
 
         return obj.get_kb()
+
+
+@admin.register(EngineOffChainMPST)
+class EngineOffChainMPST(admin.ModelAdmin):
+    list_display = [ "running_instance", "running_instance__choreography", "curr_states", "created_at" ]
+
+    list_filter = [ "created_at", ]
+    readonly_fields = [ "created_at" ]
+
+
+class EngineHasContractInline(admin.TabularInline):
+    model = EngineHasContract
+    extra = 1
+
+@admin.register(EngineOnChainMPST)
+class EngineOnChainMPST(admin.ModelAdmin):
+    
+    list_display = [ "running_instance", "running_instance__choreography", "created_at", ] # "cost_gas", "cost_wei", "cost_eth", ] # "overhead_build", "overhead_execution", "overhead_total" ]
+
+    list_filter = [ "created_at", "blockchain_configuration" ]
+    #readonly_fields = [ "contract_enforcer_size", "contracts_size", "created_at", "curr_states", "buffer", "cost_gas", "cost_wei", "cost_eth", ] # "overhead_build", "overhead_execution", "overhead_total", ]
+
+    inlines = [ EngineHasContractInline ]
+
+    def curr_states(self, obj : EngineOnChainMPST):
+
+        return obj.get_curr_states()
+
+    def buffer(self, obj : EngineOnChainMPST):
+    
+        return obj.get_buffer_items()

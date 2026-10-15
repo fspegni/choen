@@ -20,7 +20,7 @@ restart: stop rm up
 #	sleep 3 && open http://localhost:${PORT}
 
 up:
-	${DC} up -d backend
+	${DC} up -d
 
 stop:
 	${DC} stop
@@ -28,8 +28,9 @@ stop:
 rm:
 	${DC} rm
 
-#shell:
-#	${DA} shell_plus
+shell-old:
+	${DA} shell_plus
+
 shell:
 	${DC} exec -it backend bash
 
@@ -52,6 +53,10 @@ migrate:
 	#${DA} migrate
 	${DC} exec -it backend ${DA} makemigrations
 	${DC} exec -it backend ${DA} migrate
+
+migrate-old:
+	${DA} makemigrations
+	${DA} migrate
 
 cli:
 	#${DA} cli

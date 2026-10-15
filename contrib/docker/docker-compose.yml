@@ -23,3 +23,25 @@ services:
         ports:
             - '127.0.0.1:${BACKEND_HOST_PORT}:${BACKEND_CONTAINER_PORT}'
         command: [ "django-admin", "runserver", "0.0.0.0:8000" ]
+        networks:
+            - blockchain
+
+
+    ganache:
+        image: trufflesuite/ganache:latest
+        command:
+          - --server.host
+          - 0.0.0.0
+          - --server.port
+          - "8545"
+          - --wallet.deterministic
+          - --chain.chainId
+          - "1337"
+        ports:
+          - "127.0.0.1:8545:8545"
+        networks:
+          - blockchain
+    
+networks:
+  blockchain:
+    driver: bridge

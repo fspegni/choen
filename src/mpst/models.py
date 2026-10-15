@@ -998,7 +998,9 @@ class Transform:
 
     @staticmethod
     def parse(obj):
+
         if "lhs" not in obj or "rhs" not in obj:
+            breakpoint()
             raise Exception("Ill-formed representation of transform.")
 
         lhs = obj["lhs"]

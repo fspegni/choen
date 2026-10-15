@@ -157,6 +157,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 SOLC_VERSION = "0.8.0"
 TEMPLATE_NAME = "template.sol.jinja2"
+MPST_CONTRACT_TEMPLATE = "mpst_enforcer.sol.jinja2"
 
 #ONCHAIN_ENABLED = True
 ONCHAIN_ADDRESS = os.getenv("CHOEN_ONCHAIN_ADDRESS", None) #"<better_keep_this_secret>"

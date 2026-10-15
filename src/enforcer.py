@@ -679,6 +679,12 @@ class CmdOpenFile(UICommand):
 
     _description = "Opens a file or a choreography in the local system given its path or name"
 
+    def do_copy(self, path):
+        with open(path, "r") as f:
+            content = f.read()
+            pyperclip.copy(content)
+            print(f"Content copied on clipboard from file: {path} ...")
+
     def execute(self, path=None, extra=None, *args, **kwargs):
 
         if not path:
@@ -711,16 +717,15 @@ class CmdOpenFile(UICommand):
 
         try:
             if extra == "copy":
-                with open(path, "r") as f:
-                    content = f.read()
-                    pyperclip.copy(content)
-                    print(f"Content copied on clipboard from file: {path} ...")
+                self.do_copy(path)
 
             else:
                 subprocess.run(["open", path])
                 print(f"Opening file with system shell: {path} ...")
         except Exception as err:
-            print(f"Error opening file: {path}. Details: {err}")
+            print(f"Error opening file: {path}. Details: {err}. Try copying the content on the clipboard ...")
+            self.do_copy(path)
+            
 
 class CmdBuildContracts(UICommand):
 
@@ -788,6 +793,7 @@ class CmdLoadMPST(UICommand):
             print(available)
             return
 
+        #breakpoint()
         try:
             c : MPST = MPST.objects.get(name=name)
             self.ui._model.set_object("mpst", c)
@@ -1473,13 +1479,15 @@ class CmdDump(UICommand):
 
 
                     is_current_state = lambda s: s == lt.initial #nfa.initial
+                    current_states = ""
     
-                    if ri and getattr(ri, "engineoffchainmpst"):
+                    if ri and getattr(ri, "engineoffchainmpst", None):
                         is_current_state = lambda states: ri.engineoffchainmpst.some_state_is_current(states, p)
+                        current_states = ",".join(map(str, ri.engineoffchainmpst.curr_states[p]))
     
                     print(f"{p}:")
                     print(f"    initial: {lt.initial}")
-                    print("    current states: {" + ",".join(map(str, ri.engineoffchainmpst.curr_states[p])) + "}")
+                    print("    current states: {" + current_states + "}")
                     for t in lt.transitions: #nfa.transitions:
     
                         t_repr = str(t)

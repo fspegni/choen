@@ -23,7 +23,7 @@ from django.db import transaction
 from django.conf import settings
 
 from datetime import datetime
-from generator import SmartContractGenerator
+from generator import SmartContractGenerator, MPSTSmartContractGenerator
 import uuid
 import nfa
 import rei
@@ -332,23 +332,30 @@ class RunningInstance(models.Model):
 
         assert engine_offchain is None, "Cannot run setup_onchain on an off-chain engine"
 
-
+ 
         self.blockchain_configuration = blockchain_configuration
-
         self.save()
 
-        if engine_onchain:
-            #contract_nfa = engine_onchain.contract_nfa
-            #contract_enforcer = engine_onchain.contract_enforcer
-
-            engine_onchain.attach_smart_contracts() #contract_nfa, contract_enforcer) # TODO test this
-
-        else:
-
-            engine_onchain = EngineOnChain.create_engine(self, the_filter=kwargs.get("filter", None))
-            assert engine_onchain is not None
+        #breakpoint()
+        if not engine_onchain:
+    
+            if self.choreography and self.mpst:
+                raise Exception("Cannot handle a running instance with both a choreography and a MPST")
+            elif self.choreography: 
+                engine_onchain = EngineOnChain.create_engine(self, the_filter=kwargs.get("filter", None))
+            elif self.mpst:
+                engine_onchain = EngineOnChainMPST.create_engine(self)
+            else:
+                raise Exception("Cannot handle a running instance with neither a choreography nor a MPST")
+    
+            assert engine_onchain is not None      
 
             engine_onchain.deploy_smart_contracts()
+        else:
+ 
+            # TODO test this, not verified yet
+            engine_onchain.attach_smart_contracts() #contract_nfa, contract_enforcer)
+
     
         log_file = kwargs.get("log_file", None) 
         if log_file:
@@ -382,7 +389,7 @@ class RunningInstance(models.Model):
             elif self.choreography: 
                 engine_offchain = EngineOffChain.create_engine(self, the_filter=kwargs.get("filter", None))
             elif self.mpst:
-                engine_offchain = EngineOffChainMPST.create_engine(self, the_filter=kwargs.get("filter", None))
+                engine_offchain = EngineOffChainMPST.create_engine(self)
             else:
                 raise Exception("Cannot handle a running instance with neither a choreography nor a MPST")
     
@@ -807,6 +814,10 @@ class EngineOffChainMPST(Engine, models.Model):
         return items
 
     
+    def ended(self):
+        # TODO re-implement this
+        print("(* EngineOffChainMPST.ended() not implemented yet *)")
+        return False
   
 ##    
 ##    def buffer_find_usable_event(self):
@@ -835,9 +846,6 @@ class EngineOffChainMPST(Engine, models.Model):
 ##        raise Enforcer.NoMessageFound("No usable message found")
 ##
    
-    def ended(self):
-        return False # TODO understand when it is actually ended
-
     def process_input(self, precondition, event_text, knowledge):
 
         #breakpoint()
@@ -1590,6 +1598,9 @@ class Contract(models.Model):
         #tx_receipt = bc._sendTransaction(transaction, callback=callback)
         tx, tx_receipt = bc._sendTransaction(transaction) # callback=callback)
 
+        if not tx_receipt:
+            raise Exception("No transaction receipt received. Are you experiencing network problems?")
+
         gas_price_actual = tx_receipt.effectiveGasPrice
         transaction_actual_cost = round(w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
 
@@ -1733,7 +1744,347 @@ class Contract(models.Model):
 
 
 
+class EngineOnChainMPST(Engine, models.Model):
 
+    RE_MESSAGE_MPST = "^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
+
+    running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
+    blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
+
+
+    contract_enforcer = models.ManyToManyField(Contract, through="EngineHasContract", verbose_name=_("contract enforcer"), related_name="enforcer_engine_mpst")
+
+#    curr_states = models.JSONField(default=[], verbose_name=_("current states"))
+#    history = models.JSONField(default=[], verbose_name=_("history"))
+#    buffer = models.JSONField(default={}, verbose_name=_("buffer"))
+#    kb = models.JSONField(default=[], verbose_name=_("knowledge base"))
+
+    execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+    execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+
+    stats = models.JSONField(default = [])
+    created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
+
+
+
+    curr_states = models.JSONField(default=list, encoder=StateVarEncoder, verbose_name=_("current states"))
+    history = models.JSONField(default=list, verbose_name=_("history"))
+    buffer = models.JSONField(default=dict, verbose_name=_("buffer"))
+    kb = models.JSONField(default=dict, verbose_name=_("knowledge base"))
+
+    execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+    execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
+
+    created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
+
+    stats = models.JSONField(default = [])
+
+    @staticmethod
+    def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None): 
+
+
+        gt = ri.mpst.root
+
+        e = EngineOnChainMPST()
+        e._lts = gt
+        #e.set_global_type(gt)
+
+        blockchain_configuration = ri.blockchain_configuration
+
+        e.blockchain_configuration = blockchain_configuration
+        e._w3 : Web3 = blockchain_configuration.get_w3()
+        e._debug_log("Connected.")
+
+
+        #breakpoint()
+        num_sv = len(list(gt.states))
+        num_transitions = len(gt.transitions)
+        num_events = len(gt.messages)
+
+        e._debug : bool = True
+        e.stats = [ { "gt_num_state_variables": num_sv, "gt_num_transitions": num_transitions, "gt_num_events": num_events } ]
+
+
+        # test network connection, by retrieving the network_id
+        network_id = e._w3.net.version
+        e._debug_log(f"Network ID: {network_id}")
+        
+        # test account
+        #account = Account.from_key(blockchain_configuration.private_key)
+        account = blockchain_configuration.get_account()
+        balance = e._w3.eth.get_balance(account.address) 
+        print(f"Account: {account.address} . Balance: {e.w3.from_wei(balance, 'ether')} ETH")
+
+        #breakpoint()
+        e._transaction_callback = transaction_callback
+        e._deploy_callback = deploy_callback
+
+        #if the_filter:
+        #    e.set_filter(the_filter)
+
+        e.running_instance = ri
+
+        e.save()
+
+        return e
+
+      
+
+    def deploy_smart_contracts(self): #, ri:RunningInstance=None):
+
+        #if not self._nfa:
+        #breakpoint()
+        if not self._lts:
+            raise Exception("No MPST has been set for this purpose")
+
+        if not self.blockchain_configuration:
+            raise Exception("No blockchain configuration has been set. Cannot continue")
+    
+        #scg: SmartContractGenerator = SmartContractGenerator(self._nfa)
+        scg: MPSTSmartContractGenerator = MPSTSmartContractGenerator(self._lts)
+        sc : SmartContract = scg.createSmartContract()
+        sc.compile(debug=self._debug)
+ 
+ 
+        # 2. deploy the Incomp library
+        sc_incomp_abi = sc.get_abi("Incomp")
+        sc_incomp_bytecode = sc.get_bytecode("Incomp")
+        sc_incomp = Contract.objects.create(
+                        abi=sc_incomp_abi, 
+                        bytecode=sc_incomp_bytecode, 
+                        label="Incomp", 
+                        blockchain_configuration=self.blockchain_configuration)
+        
+        _, incomp_stats = sc_incomp.deploy()
+
+        self._log_stats(incomp_stats)
+
+        ehc = EngineHasContract.objects.create(engine=self, contract=sc_incomp, name="__Incomp__")
+
+  
+        # 0. deploy the Utils library
+        sc_states_abi = sc.get_abi("States")
+        sc_states_bytecode = sc.get_bytecode("States")
+        sc_states = Contract.objects.create(
+                        abi=sc_states_abi, 
+                        bytecode=sc_states_bytecode, 
+                        label="States", 
+                        blockchain_configuration=self.blockchain_configuration)
+        
+        _, states_stats = sc_states.deploy()
+
+        self._log_stats(states_stats)
+
+        ehc = EngineHasContract.objects.create(engine=self, contract=sc_states, name="__State__")
+        print(f"States library deployed ({sc_states.contract_address}) ...")    
+
+        # 1. deploy the Events
+        sc_events_abi = sc.get_abi("Events")
+        sc_events_bytecode = sc.get_bytecode("Events")
+        sc_events = Contract.objects.create(
+                        abi=sc_events_abi, 
+                        bytecode=sc_events_bytecode, 
+                        label="Events", 
+                        blockchain_configuration=self.blockchain_configuration)
+        
+        _, events_stats = sc_events.deploy()
+
+        self._log_stats(events_stats)
+
+        ehc = EngineHasContract.objects.create(engine=self, contract=sc_events, name="__Event__")
+
+
+        # 3. deploy all participant's enforcers
+        for curr in self.lts.participants:
+            sc_enforcer_abi = sc.get_abi(curr)
+            sc_enforcer_bytecode = sc.get_bytecode(curr, { "Events": sc_events.contract_address, "States": sc_states.contract_address, "Incomp": sc_incomp.contract_address })
+            sc_enforcer = Contract.objects.create(
+                            abi=sc_enforcer_abi, 
+                            bytecode=sc_enforcer_bytecode, 
+                            label=curr, 
+                            blockchain_configuration=self.blockchain_configuration)
+    
+            _, enforcer_stats = sc_enforcer.deploy()
+            self._log_stats(enforcer_stats)
+
+            ehc = EngineHasContract.objects.create(engine=self, contract=sc_enforcer, name=curr)
+            print(f"Enforcer contract deployed for participant {curr} ({sc_enforcer.contract_address}) ...")    
+
+        #self.contract_nfa =sc_nfa
+        #self.contract_enforcer = sc_enforcer
+        self.save()
+
+
+    def attach_smart_contracts(self): #, sc_enforcer_address): #, ri=None):
+        raise Exception("Not implemented yet")
+
+
+    def process_input(self, precondition, event, knowledge):
+
+        if not self.contract_enforcer:
+            raise Exception(f"No enforcer contract(s) defined. Not ready for this method")
+
+
+        pattern = r'([A-Za-z_0-9]+)([!?])([A-Za-z_0-9]+)(->|<-)([A-Za-z_0-9]+)'
+        #parts = re.split(r'([!?])', event)
+
+        #match = self._filter.match(parts[0], parts[1], parts[2])
+        match = re.fullmatch(pattern, event)
+        if not match:
+            return "" #event
+        try:
+            #if len(parts) != 3:
+            #    raise ValueError(f"Unhandled event: {event}")
+            #
+            #agent = self._encode_agent(parts[0])
+            #action = self._encode_action(parts[1])
+            #message = self._encode_message(parts[2])
+            agent, action, message, _, target = match.groups()
+            enc_agent = self._encode_agent(agent)
+            enc_action = self._encode_action(action)
+            enc_message = self._encode_message(message)
+            enc_target = self._encode_agent(target)
+        except Exception:
+            self._debug_log(f"Symbol not recognized: {event}")
+            return None
+        
+
+        #breakpoint()
+        try:
+            the_contract = self.contract_enforcer.get(label=agent)
+            
+            output_before = the_contract.invoke("getOutput")
+         
+            _, process_input_stats = the_contract.transact("check_event", [ enc_agent, enc_action, enc_target, enc_message, ]) 
+
+            self._log_stats(process_input_stats)
+
+            self.save()
+
+            output_after = the_contract.invoke("getOutput")
+        except Contract.DoesNotExist:
+            output_after = output_before
+    
+        return output_after[len(output_before):]
+
+
+
+    def process_check(self):    
+        print(f"(* Not needed for MPST *)")
+
+    def ended(self):
+        # TODO re-implement this
+        print("(* EngineOnChainMPST.ended() not implemented yet *)")
+        return False
+
+ 
+    def _encode_state(self, value):
+
+        assert isinstance(value, str), f"Expected string as state name. Passed: {value}"
+
+        #if not self._nfa:
+        if not self._lts:
+            #raise Exception("No NFA has been set for this purpose")
+            raise Exception("No LTS has been set for this purpose")
+
+#        if isinstance(value, nfa.State):
+#            value = value.id
+
+        #return sorted(map(lambda s: s.id, self._nfa.states)).index(value)
+        return sorted(map(lambda s: s.id, self._lts.states)).index(value)
+
+    def _encode_action(self, value):
+        # this is based on the enum appearing in the template for MPST enforcers
+        if value == "!":
+            return 0
+        elif value == "?":
+            return 1
+        else:
+            raise ValueError(f"Unhandled action: {value}")
+
+    def _decode_action(self, encoded):
+        # this is based on the enum appearing in the template for MPST enforcers
+        if encoded == 0:
+            return "!"
+        elif encoded == 1:
+            return "?"
+        else:
+            raise ValueError(f"Unhandled encoded action: {encoded}")
+
+
+    def _encode_agent(self, value):
+
+        #if not self._nfa:
+        if not self._lts:
+            raise Exception("No NFA has been set for this purpose")
+
+        return sorted(self._lts.participants).index(value)
+
+    def _decode_agent(self, encoded):
+
+        #if not self._nfa:
+        if not self._lts:
+            raise Exception("No NFA has been set for this purpose")
+
+        value = sorted(self._lts.participants)[encoded]
+        return value
+       
+    def _encode_message(self, value):
+
+        if not self._lts:
+            raise Exception("No NFA has been set for this purpose")
+
+        return sorted(self._lts.messages).index(value)
+
+    def _decode_message(self, encoded):
+
+        if not self._lts:
+            raise Exception("No NFA has been set for this purpose")
+
+        return sorted(self._lts.messages)[encoded]
+
+    def _decode_buffer_item(self, encoded):
+        raise Exception("Not implemented yet!")
+        #precondition, ( actor, action, message ) , knowledge = encoded
+        #
+        #return precondition, ( self._decode_agent(actor), self._decode_action(action), self._decode_message(message) ), knowledge
+
+
+
+
+    def _log_stats(self, obj : dict):
+
+        obj = json.loads(json.dumps(obj, cls=DjangoJSONEncoder))
+        self.stats.append(obj)
+
+
+    @property
+    def w3(self) -> Web3:
+        w3 = getattr(self, "_w3", None)
+        if not w3:
+            self._w3 = self.blockchain_configuration.get_w3()
+
+        return self._w3
+    
+
+    @property
+    def chain_id(self) -> int:
+        return self.blockchain_configuration.chain_id if self.blockchain_configuration else None
+
+    @property
+    def address(self) -> str:
+        return self.blockchain_configuration.address if self.blockchain_configuration else None
+
+    @property
+    def private_key(self) -> str:
+        return self.blockchain_configuration.private_key if self.blockchain_configuration else None
+ 
+
+class EngineHasContract(models.Model):
+
+    engine = models.ForeignKey(EngineOnChainMPST, null=True, blank=False, on_delete=models.SET_NULL)
+    contract = models.ForeignKey(Contract, null=True, blank=False, on_delete=models.SET_NULL)
+    name = models.CharField(max_length=100, null=True, blank=False, verbose_name=_("name"))
 
 class EngineOnChain(Engine,models.Model):
 
@@ -1845,6 +2196,7 @@ class EngineOnChain(Engine,models.Model):
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None, the_filter : Filter = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
+        breakpoint()
         nfa_start = datetime.now()
         nfa = ri.choreography.to_nfa(optimize=True)
     

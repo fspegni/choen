@@ -1,0 +1,446 @@
+
+// SPDX-Licence-Identiier: CC-BY-NC-4.0	
+
+pragma solidity >= 0.7.6;
+pragma abicoder v2;
+
+enum ACTION {
+    Send,   // 0
+    Receive // 1
+}
+
+{% for CURR in ENUMERATIONS %}
+enum {{ CURR.name }} {
+{% for VAL in CURR.values %}
+    {{ VAL }} {% if not loop.last %},{% endif %} // {{ loop.index-1 }}
+{% endfor %}
+}
+{% endfor %}
+
+struct Event {
+    ACTOR initiator;
+    ACTION action;
+    ACTOR target;
+	MSG label;
+}
+
+struct IRel {
+	mapping(STATE => STATE[]) to_prune;
+	mapping(uint256 => bool) pairs;
+}
+
+
+library States {
+    uint8 internal constant COUNT = {{ NUM_STATES }};
+
+    function get(uint i) internal pure returns (STATE) {
+		require(i < COUNT);
+        return STATE(i);
+    }
+
+
+	function set_remove(STATE[] storage states, STATE state) public  {
+		
+			for (uint256 i = 0; i < states.length; i++) {
+				if (states[i] == state) {
+					states[i] = states[states.length - 1];
+					states.pop();
+				}
+			}
+				
+	}
+
+	function set_remove(STATE[] storage states, STATE[] memory to_remove) public  {
+		
+			for (uint256 i = 0; i < to_remove.length; i++) {
+				set_remove(states, to_remove[i]);
+			}
+				
+	}
+
+
+
+
+	function set_find(STATE[] memory states, STATE state) public pure returns(int256) {
+		
+			for (uint256 i = 0; i < states.length; i++) {
+				if (states[i] == state) {
+					return int256(i);
+				}
+			}
+		
+			return -1;
+				
+	}
+
+
+	function set_of(STATE a) public pure returns(STATE[] memory)  {
+		
+			STATE[] memory temp = new STATE[](1);
+			temp[0] = a;
+			return temp;
+				
+	}
+
+
+	function set_of(STATE a, STATE b) public pure returns(STATE[] memory) {
+		
+			STATE[] memory temp = new STATE[](2);
+			temp[0] = a;
+			temp[1] = b;
+			return temp;
+				
+	}
+
+
+	function set_join(STATE[] memory a, STATE[] memory b) public pure returns(STATE[] memory) {
+		
+			STATE[] memory temp = new STATE[](a.length + b.length);
+			uint idx=0;
+			for (idx=0; idx<a.length; idx++) {
+				temp[idx] = a[idx];
+			}
+			for (uint jdx=0; jdx<b.length; jdx++) {
+				temp[jdx+idx] = b[jdx];
+			}
+			return temp;
+				
+	}
+}
+
+library Incomp {
+
+	function alt_pack(STATE s1, STATE s2) public pure returns (uint256) {
+		if (s1 < s2) {
+			return (uint256(s1) << 128) | uint256(s2);	
+		} else {
+			return (uint256(s2) << 128) | uint256(s1);	
+		}
+	}
+
+	function add(IRel storage pr, STATE s1, STATE s2) public {
+		//require(s1 != s2);
+
+		// condition: s1 < s2
+		uint256 key = alt_pack(s1, s2);
+
+		if (pr.pairs[key]) {
+			// already exists
+			return;
+		}
+
+		pr.pairs[key] = true;
+		pr.to_prune[s1].push(s2);
+		pr.to_prune[s2].push(s1);
+	}
+
+	function remove(IRel storage pr, STATE s) public {
+		for (uint idx=0; idx<States.COUNT; idx++) {
+			STATE t = States.get(idx);
+			uint256 key = alt_pack(s, t);
+			delete pr.pairs[key];
+		}
+	}
+
+	function update(IRel storage pr, STATE s, STATE[] memory new_alt) public {
+		
+		for (uint i=0; i<States.COUNT; i++) {
+			STATE t = States.get(i);
+
+			// check whether pair (s,t) or (t,s) are in the incomp IRelation
+			uint key = alt_pack(s, t);
+
+			if (pr.pairs[key]) {
+				// replace (s,t) or (t,s) with (a,t) for any a in new_alt
+				delete pr.pairs[key];
+
+				for (uint j=0; j<new_alt.length; j++) {	
+					STATE a = new_alt[j];
+					uint new_key = alt_pack(a, t);
+					pr.pairs[new_key] = true;
+				}
+			}
+		}
+		
+	}
+
+	function alt_to(IRel  storage pr, STATE s) public view returns (STATE[] memory) {
+		return pr.to_prune[s];
+	}
+
+}
+
+function apply_pass(STATE[] storage states, IRel storage pr, STATE lhs, /* Event memory ev, */ STATE rhs) returns (bool) {
+	require(lhs != rhs);
+
+	int256 pos = States.set_find(states, lhs); 
+	if (pos >= 0) { 
+	
+		states[uint256(pos)] = rhs;
+		STATE[] memory to_prune = Incomp.alt_to(pr, lhs);
+		States.set_remove(states, to_prune);
+	
+		Incomp.update(pr, lhs, States.set_of(rhs));
+		
+		return true;
+	} 
+
+	return false;
+	        
+}
+
+function apply_choice(STATE[] storage states, IRel storage pr, STATE lhs, STATE rhs1, STATE rhs2) returns (bool) {
+	require(lhs != rhs1);
+	require(lhs != rhs2);
+
+	int256 pos = States.set_find(states, lhs);
+	
+	if (pos >= 0) {
+		states[uint256(pos)] = rhs1;
+		states.push(rhs2);
+	
+		Incomp.add(pr, rhs1, rhs2);
+		Incomp.update(pr, lhs, States.set_of(rhs1, rhs2));
+
+		return true;
+	} 
+
+	return false;
+	        
+}
+
+
+function apply_merge(STATE[] storage states, IRel storage pr, STATE lhs1, STATE lhs2, STATE rhs) returns (bool) {
+	require(lhs1 != rhs, "LHS1 == RHS not supported");
+	require(lhs2 != rhs, "LHS2 == RHS not supported");
+
+    if (apply_passthrough(states, pr, lhs1, rhs)) {
+        return true;
+    } else if (apply_passthrough(states, pr, lhs2, rhs)) {
+        return true;
+    } 
+
+	return false;
+
+}
+
+
+function apply_fork(STATE[] storage states, IRel storage pr, STATE lhs, STATE rhs1, STATE rhs2) returns (bool)  {
+	require(lhs != rhs1);
+	require(lhs != rhs2);
+
+	int256 pos = States.set_find(states, lhs);
+
+	if (pos >= 0) {
+
+		// STATE source = states[uint256(pos_lhs)];
+		states[uint256(pos)] = rhs1;
+		states.push(rhs2);
+
+		// pr_update(pr, source, States.set_of(rhs1, rhs2));
+		Incomp.update(pr, lhs, States.set_of(rhs1, rhs2));
+		return true;
+	} 
+
+	return false;
+	        
+}
+
+
+function apply_join(STATE[] storage states, IRel storage pr, STATE lhs1, STATE lhs2, STATE rhs) returns (bool)  {
+	require(lhs1 != rhs);
+	require(lhs2 != rhs);
+
+	int256 pos1 = States.set_find(states, lhs1); 
+	
+	if (pos1 >= 0) { 
+		int256 pos2 = States.set_find(states, lhs2); 
+		if (pos2 >= 0) { 
+			
+			states[uint256(pos1)] = rhs;
+			states[uint256(pos2)] = states[states.length - 1];
+			states.pop();
+			Incomp.update(pr, lhs1, States.set_of(rhs));
+			Incomp.update(pr, lhs2, States.set_of(rhs));
+			return true;
+		} 
+		
+	}
+
+	return false;
+
+	        
+}
+
+
+
+function apply_passthrough(STATE[] storage states, IRel storage pr, STATE lhs, STATE rhs)  returns (bool) {
+	require(lhs != rhs, "LHS should differ from RHS");
+	
+	int256 pos = States.set_find(states, lhs);
+	if (pos >= 0) {
+		// STATE source = states[uint256(pos)];
+		states[uint256(pos)] = rhs;
+		// if (source != rhs) { /* pr_update(pr, source, States.set_of(rhs)); */ }
+
+		Incomp.update(pr, lhs, States.set_of(rhs));
+		return true;
+	} 
+		
+	return false;
+            
+}
+
+
+function apply_end(STATE[] storage states, IRel storage pr, uint256 lhs)  {
+	
+	    STATE source = states[lhs];
+	    states[lhs] = states[states.length - 1];
+	    states.pop();
+	
+		// pr_remove(pr, source);
+		Incomp.remove(pr, source);
+	        
+}
+
+
+/*
+function action_to_string(ACTION a) pure returns (string memory) {
+	if (a == ACTION.Send) { return '!'; } else if (a == ACTION.Receive) { return '?'; } else { return ""; }
+}
+
+
+function participant_to_string(ACTOR p) pure returns (string memory) {
+	if (p == ACTOR.Charlie) { return 'Charlie'; } else if (p == ACTOR.Dana) { return 'Dana'; } else if (p == ACTOR.Bob) { return 'Bob'; } else if (p == ACTOR.Alice) { return 'Alice'; } else return '??';
+}
+*/
+
+library Events {
+	function eq(Event memory ev, ACTION action, ACTOR initiator, ACTOR target, MSG _msg) public pure returns (bool) {
+		return ev.action == action && ev.initiator == initiator && ev.target == target && ev.label == _msg;
+	}
+
+	function contains(Event[] memory events, Event memory ev) public pure returns (bool) {
+		for (uint idx=0; idx<events.length; idx++) {
+			Event memory curr = events[idx];
+			if (curr.action == ev.action && curr.initiator == ev.initiator && curr.target == ev.target && curr.label == ev.label) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+/*
+function task_to_string(Event memory t) pure returns (string memory) {
+	
+	string memory initiator = participant_to_string(t.initiator);
+	string memory action = action_to_string(t.action);
+	string memory target = participant_to_string(t.target);
+
+	return string(abi.encodePacked(initiator, action, target));
+	
+	        
+}
+
+
+function task_arr_to_string(Event[] memory ar) pure returns (string[] memory) {
+	
+	string[] memory result = new string[](ar.length);
+	for (uint idx=0; idx<ar.length; idx++) {
+		Event memory t = ar[idx];
+		
+		//if (idx > 0) {
+		//    result = string(abi.encodePacked(result, ", "));
+		//}
+
+		//result = string(abi.encodePacked(result, task_to_string(t)));
+		result[idx] = task_to_string(t);
+	}
+
+	return result;
+	        
+}
+*/
+
+abstract contract MSABase
+ {
+
+
+	STATE[] states;
+	IRel pr;
+	Event[] delayable; Event[] buffer;
+	Event[] input; Event[] output; 
+
+	constructor() {
+		states.push(STATE.x0);
+		init_delayable();
+		eq_closure();
+	}
+
+	function eq_closure() internal virtual;
+	function check_event(ACTOR initiator, ACTION act, ACTOR recipient, MSG label) public virtual;
+	function init_delayable() internal virtual;
+	
+
+	function getStates() public view returns(STATE[] memory) {
+		return states;
+	}
+	
+	
+	function getInput() public view returns(Event[] memory) {
+		return input;
+	}
+	
+	
+	function getOutput() public view returns(Event[] memory) {
+		return output;
+	}
+	
+	
+	function getBuffer() public view returns(Event[] memory) {
+		return buffer;
+	}
+	
+	
+	function getIncomp(STATE s) public view returns(STATE[] memory) {
+		return pr.to_prune[s];
+	}
+	
+	/*
+	function getInputAsString() public view returns(string[] memory) {
+		return task_arr_to_string(input);
+	} */
+	
+	/*
+	function getOutputAsString() public view returns(string[] memory) {
+		return task_arr_to_string(output);
+	}*/
+	
+	/*
+	function getBufferAsString() public view returns(string[] memory) {
+		return task_arr_to_string(buffer);
+	}*/
+	
+}
+
+{% for CURR in CONTRACTS %}
+
+contract {{ CURR.name }} is MSABase
+ {
+	function init_delayable() internal override {
+		// TODO
+{{ CURR._functions.init_delayable.body }}
+	}
+	
+	function eq_closure() internal override {
+{{ CURR._functions.eq_closure.body }}
+	}
+	
+	
+	function check_event(ACTOR initiator, ACTION act, ACTOR recipient, MSG label) public override {
+{{ CURR._functions.check_event.body }}
+    }
+}
+  
+{% endfor %}

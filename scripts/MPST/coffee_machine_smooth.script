@@ -1,0 +1,10 @@
+Customer!list_of_products->Coffee_machine
+Coffee_machine?list_of_products<-Customer
+Coffee_machine!selection->Customer
+Customer?selection<-Coffee_machine
+Customer!cost->Coffee_machine
+Coffee_machine?cost<-Customer
+Coffee_machine!payment1->Customer
+Customer?payment1<-Coffee_machine
+Coffee_machine!the_product->Customer
+Customer?the_product<-Coffee_machine

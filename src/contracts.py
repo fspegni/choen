@@ -10,6 +10,8 @@ import datetime
 import requests
 import re
 
+from jinja2 import Environment, PackageLoader
+
 class Compileable(object):
 
     def compile(self):
@@ -135,14 +137,36 @@ class Library(Compileable):
 
     def __init__(self, name : str):
         self._name : str = name
-        self._functions : list = []
+        self._functions : dict = {}
+        self._functions_ordering : list = []
 
     def add_function(self, f : Function):
+     
+        #breakpoint()       
+        if f.name in self._functions:
             
-        self._functions.append(f)
+            curr_func = self._functions[f.name]
+            if isinstance(curr_func, list):
+                curr_func.append(f)
+            else:
+                curr_func = [ curr_func ]
+            self._functions[f.name] = curr_func
+        else:
+            self._functions[f.name] = f
+            self._functions_ordering.append(f.name)
 
     def compile(self):
-        function_bodies = "\n".join(map(lambda f: f.compile() + "\n" , self._functions))
+        bodies = []
+        for curr in self._functions_ordering:
+            if isinstance(curr, list):          
+                for f in curr:
+                    bodies.append(f.compile())
+
+            else:
+                bodies.append(f.compile())
+
+        #function_bodies = "\n".join(map(lambda f: f.compile() + "\n" , self._functions))
+        function_bodies = "\n".join(bodies)
         return f"""library {self._name} {{
             {function_bodies}
         }}
@@ -218,6 +242,7 @@ class Contract(Compileable):
     def __init__(self, name):#, version):
         self._name = name
         self._functions : dict = {}
+        self._functions_ordering : list = []
         self._attributes : dict = {}
 #        self._structures : dict = {}
         self._constructor : dict = {}
@@ -272,10 +297,12 @@ class Contract(Compileable):
         self._enums[enum.name] = enum
 
     def add_function(self, f : Function):
-        #if f.name in self._functions:
-        #    raise Exception(f"Function named {f.name} already exists")
+        #breakpoint()
+        if f.name in self._functions:
+            raise Exception(f"Function named {f.name} already exists")
             
         self._functions[f.name] = f
+        self._functions_ordering.append(f.name)
 
     def add_attribute(self, a : Variable):
         if a.name in self._attributes:
@@ -309,7 +336,6 @@ class Contract(Compileable):
         #libraries_text = "\n".join(map(lambda l: f"{l}", self._libraries))
         directives_text = "\n".join(map(lambda d: f"{d};", self._directives))
      
-      
         enums_text = "\n".join(map(lambda a: a.compile(), self._enums.values()))
         struct_text = "" # FS this should be removed
         attributes_text = "\n".join(map(lambda a: a.compile()+";", self._attributes.values()))
@@ -397,7 +423,8 @@ class SmartContract(Compileable):
         self._version = version
         self._imports = []
         #self._libraries : list = []
-        self._functions : list = []
+        self._functions : dict = {}
+        self._functions_ordering : list = []
         self._attributes : list = []
         self._libraries : dict = {}
         self._contracts : dict = {}
@@ -405,11 +432,29 @@ class SmartContract(Compileable):
         self._enums : dict = {}
         self._structures : dict = {}
         self._types : dict = {}
-    
+        self._template = None
+       
 
         # information populated after the compilation
         self._compiled_sol = None
 
+    def deploy(self, name, blockchain_configuration):
+        breakpoint()
+        sc_abi = self.get_abi(name)
+        sc_bytecode = self.get_bytecode(name)
+        sc = Contract.objects.create(
+                        abi=sc_abi, 
+                        bytecode=sc_bytecode, 
+                        label=name, 
+                        blockchain_configuration=blockchain_configuration)
+
+        _, stats = sc.deploy()
+        return sc, stats
+
+
+
+    def set_template(self, template):
+        self._template = template
 
 
     def add_verbatim(self, verbatim):
@@ -462,7 +507,14 @@ class SmartContract(Compileable):
         return self._contracts
 
     def add_function(self, f : Function):
-        self._functions.append(f)
+        #self._functions.append(f)
+
+        #breakpoint()
+        if f.name in self._functions:
+            raise ValueError(f"Function named {f.name} already present")
+
+        self._functions[f.name] = f
+        self._functions_ordering.append(f)
 
     def add_attribute(self, v : Variable):
         self._attributes.append(v)
@@ -532,15 +584,7 @@ class SmartContract(Compileable):
     def compiled_sol(self):
         return self._compiled_sol
 
-    def compile(self, prefix:str="smart_contract", debug:bool=False):
-
-        debug = True
-        try:
-            solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
-        except solcx.exceptions.SolcNotInstalled:
-            print(f"Installing solc v{settings.SOLC_VERSION} ...")
-            solcx.install_solc(settings.SOLC_VERSION) #"0.8.0")
-            solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
+    def make_text_naive(self):
 
         print(f"Using solc v{settings.SOLC_VERSION} ...")
 
@@ -552,6 +596,7 @@ class SmartContract(Compileable):
         contracts_text = "\n".join(map(lambda c: c.compile() + "\n", self.contracts.values())) 
         #breakpoint()
         types_text = "\n".join(map(lambda i: f"type {i[0]} is {i[1]};", self._types.items()))
+        #breakpoint()
         enums_text = "\n".join(map(lambda c: c.compile()+"\n", self.enumerations))    
         structs_text = "\n".join(map(lambda c: c.compile()+"\n", self.structures))    
 
@@ -581,6 +626,55 @@ pragma abicoder v2;
 
 {contracts_text}
 """
+
+        return smart_contract_text
+
+    def make_text_template(self):
+        import jsbeautifier
+
+        #breakpoint()
+        env = Environment(loader=PackageLoader('bpmn2solidity'))
+        env.filters["slugify"] = lambda v: slugify(v).replace("-", "_")
+        template = env.get_template(self._template)
+
+        state_values = []
+        actor_values = []
+        message_values = []
+        action_values = []
+        contracts = self.contracts.values()
+
+        #breakpoint()
+        num_states = len(self._enums["STATE"].values)
+        ctx = { "settings": settings, "NUM_STATES": num_states, "ENUMERATIONS": self.enumerations, "FUNCTION": self.functions, "CONTRACTS": contracts }
+        source = template.render(**ctx)
+
+        opts = jsbeautifier.default_options()
+        opts.indent_size = 4
+
+        try:
+            # try using jsbeautifier to pretty-print solidity ... it may not work 100% of the times
+            formatted = jsbeautifier.beautify(source, opts)
+
+        except:
+            print(f"Cannot pretty-print Solidity code. Continue with 'less pretty' but functionally-equivalent code ...")
+            formatted = source
+        return formatted
+
+
+    def compile(self, prefix:str="smart_contract", debug:bool=False):
+
+        debug = True
+        try:
+            solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
+        except solcx.exceptions.SolcNotInstalled:
+            print(f"Installing solc v{settings.SOLC_VERSION} ...")
+            solcx.install_solc(settings.SOLC_VERSION) #"0.8.0")
+            solcx.set_solc_version(settings.SOLC_VERSION) #"0.8.0")
+
+        if self._template:
+            smart_contract_text = self.make_text_template()
+        else:
+            smart_contract_text = self.make_text_naive()
 
         #breakpoint()
         if (debug):
@@ -636,8 +730,10 @@ pragma abicoder v2;
                     print(f"    creation : {len_bytecode_creation} B")
                     print(f"    runtime  : {len_bytecode_runtime} B")
 
+                len_total = len_bytecode_creation_total + len_bytecode_runtime_total
                 print(f"> creation (total): {len_bytecode_creation_total} B")
                 print(f"> runtime (total): {len_bytecode_runtime_total} B")
+                print(f"> total: {len_total} B")
 
         except Exception as err:
             print(f"Errors compiling smart-contract code: {err}")    

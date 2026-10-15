@@ -2,6 +2,9 @@ import nfa
 from contracts import Constructor, Contract, Function, Variable, Constant, Event, SmartContract, Enum, Struct, Library
 import re
 
+from jinja2 import Environment, PackageLoader
+from bpmn2solidity.settings import MPST_CONTRACT_TEMPLATE
+
 def is_memory_type(solidity_type):
 
     if solidity_type == "string" or solidity_type.endswith("[]"):
@@ -94,20 +97,20 @@ class EncoderContractGenerator(Generator):
 
     def create_constructor(self, contract):
 
-        #self.create_encoding(contract, "STATE", "string", encoded_type="STATES")
+        #self.create_encoding(contract, "STATE", "string", encoded_type="STATE")
         #breakpoint()
 
         #breakpoint()
         state_names = list(map(lambda s: s.id, self._nfa.states))
 
-        #self.create_encoder(contract, "STATE", "string", values=state_names, encoded_type="STATES")
-        self.create_decoder(contract, "STATE", "string", values=sorted(state_names), encoded_type="STATES")
+        #self.create_encoder(contract, "STATE", "string", values=state_names, encoded_type="STATE")
+        self.create_decoder(contract, "STATE", "string", values=sorted(state_names), encoded_type="STATE")
 
-        #self.create_encoder(contract, "AGENT", "string", values=self._nfa.agents, encoded_type="AGENTS")
-        self.create_decoder(contract, "AGENT", "string", values=sorted(self._nfa.agents), encoded_type="AGENTS")
+        #self.create_encoder(contract, "AGENT", "string", values=self._nfa.agents, encoded_type="ACTOR")
+        self.create_decoder(contract, "AGENT", "string", values=sorted(self._nfa.agents), encoded_type="ACTOR")
 
-        #self.create_encoder(contract, "MESSAGE", "string", values=self._nfa.messages, encoded_type="MESSAGES")
-        self.create_decoder(contract, "MESSAGE", "string", values=sorted(self._nfa.messages), encoded_type="MESSAGES")
+        #self.create_encoder(contract, "MESSAGE", "string", values=self._nfa.messages, encoded_type="MESSAGE")
+        self.create_decoder(contract, "MESSAGE", "string", values=sorted(self._nfa.messages), encoded_type="MESSAGE")
 
         #self.create_encoder(contract, "EVENT_ACTION", "bytes1", values={ "send": "!", "recv": "?" }, encoded_type="EVENT_ACTION")
         self.create_decoder(contract, "EVENT_ACTION", "bytes1", values={ "send": "!", "recv": "?" }, encoded_type="EVENT_ACTION")
@@ -115,14 +118,14 @@ class EncoderContractGenerator(Generator):
 
 
         #self.create_encoding(contract, "SYMBOL", "Symbol", plain_type_attributes=["agent","action","message"], encoded_type="SYMBOLS")
-        #self.create_encoding(contract, "PROPOSITION", "string", encoded_type="PROPOSITIONS")
-        #self.create_encoding(contract, "AGENT", "string", encoded_type="AGENTS")
-        #self.create_encoding(contract, "MESSAGE","string", encoded_type="MESSAGES")
+        #self.create_encoding(contract, "PROPOSITION", "string", encoded_type="PROPOSITION")
+        #self.create_encoding(contract, "AGENT", "string", encoded_type="ACTOR")
+        #self.create_encoding(contract, "MESSAGE","string", encoded_type="MESSAGE")
 
         constructor_body = """
     //empty_STATE = encode_STATE('');
     //empty_AGENT = encode_AGENT('');
-    //empty_SYMBOL = encode_SYMBOL(Symbol(empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE));
+    //empty_SYMBOL = encode_SYMBOL(Symbol(empty_AGENT, EVENT_ACTION.epsilon, MESSAGE.empty_MESSAGE));
     //empty_PROPOSITION = encode_PROPOSITION('');
     //empty_MESSAGE = encode_MESSAGE('');
         """
@@ -273,17 +276,17 @@ class NFAContractGenerator(Generator):
 
         #breakpoint()
         #contract.add_attribute(Variable("states", "uint16[]")) #"bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
-        contract.add_attribute(Variable("states", "STATES[]")) #"bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
+        contract.add_attribute(Variable("states", "STATE[]")) #"bytes32[]")) #,"", "[" + states_encoded + "]" )) #list(map(lambda s: s.id, self.nfa.states)))) #,a lambda values: f"bytes32('{v}')"))
 
         #contract.add_attribute(Variable("tmpStates","string[]"))
         #contract.add_attribute(Variable("tmpStates","bytes32[]")) # FS remove this
         #contract.add_attribute(Variable("initialState", "string","",'"'+str(self.nfa.initial.id)+'"'))
-        contract.add_attribute(Variable("initialState", "STATES")) #"bytes32")) #,"",'encoder.encode_STATE("'+str(self.nfa.initial.id)+'")'))
+        contract.add_attribute(Variable("initialState", "STATE")) #"bytes32")) #,"",'encoder.encode_STATE("'+str(self.nfa.initial.id)+'")'))
         #contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
 
         #contract.add_attribute(Variable("finalStates", "string[]","",list(map(lambda f: f.id, self.nfa.final))))
-        contract.add_attribute(Variable("finalStates", "STATES[]")) #"bytes32[]")) #,"","[" + final_states_encoded + "]"))
-        contract.add_attribute(Variable("currentStates", "STATES[]")) #"bytes32[]")) #"string[]"))
+        contract.add_attribute(Variable("finalStates", "STATE[]")) #"bytes32[]")) #,"","[" + final_states_encoded + "]"))
+        contract.add_attribute(Variable("currentStates", "STATE[]")) #"bytes32[]")) #"string[]"))
         #contract.add_attribute(Variable("message", "string[]"))
         #contract.add_attribute(Variable("message", "uint[]"))
         #contract.add_attribute(Variable("epsilon","string"))
@@ -291,7 +294,7 @@ class NFAContractGenerator(Generator):
         contract.add_attribute(Variable("end","bool"))
         #contract.add_attribute(Variable("transitions", "mapping(string => mapping(string => string[]))"))
         #contract.add_attribute(Variable("transitions", "mapping(bytes32 => mapping(bytes32 => bytes32[]))"))
-        contract.add_attribute(Variable("transitions", "mapping(bytes32 => STATES[])")) #"mapping(bytes32 => bytes32[])"))
+        contract.add_attribute(Variable("transitions", "mapping(bytes32 => STATE[])")) #"mapping(bytes32 => bytes32[])"))
         #contract.add_attribute(Variable("transitions", "mapping(string => mapping(string => buffItem[]))")) # TODO restart from here
     
     def create_constructor(self, contract : Contract):
@@ -313,7 +316,7 @@ class NFAContractGenerator(Generator):
             elif t.label != "":
                 raise Exception(f"Symbol not recognized: {t.label}")
 
-            initTransitionsBody += f"addTransition(STATES.{t.source.id}, AGENTS.{solidity_slugify(actor)}, EVENT_ACTION.{solidity_slugify(the_action)}, MESSAGES.{solidity_slugify(message)}, STATES.{t.target.id});\n"
+            initTransitionsBody += f"addTransition(STATE.{t.source.id}, ACTOR.{solidity_slugify(actor)}, EVENT_ACTION.{solidity_slugify(the_action)}, MESSAGE.{solidity_slugify(message)}, STATE.{t.target.id});\n"
 
         
 
@@ -321,7 +324,7 @@ class NFAContractGenerator(Generator):
         constructorBody = f"""
 encoder = new _Encoder();
 initTransitions();
-STATES[] memory tmpStates = new STATES[](1);
+STATE[] memory tmpStates = new STATE[](1);
 tmpStates[0] = initialState;
 currentStates = tmpStates;
         """
@@ -353,15 +356,15 @@ currentStates = tmpStates;
 #        contract.add_function(Function("initStates", [], initStatesBody, "private"))
         contract.add_function(Function("initTransitions", [], initTransitionsBody, "private")) # TODO ensure this cannot be called twice
 
-        #initStatesBody = "\n".join ( map(lambda s: f"states.push(STATES.{s.id});", self.nfa.states) )
+        #initStatesBody = "\n".join ( map(lambda s: f"states.push(STATE.{s.id});", self.nfa.states) )
         #contract.add_function(Function("initStates", [], initStatesBody, "private"))  # TODO ensure this cannot be called twice
 
 #        contract.add_function(Function("addState", [Variable("name", "string memory")], addStateBody, "private"))
-#        contract.add_function(Function("addState", [Variable("state", "STATES")], addStateBody, "private"))
+#        contract.add_function(Function("addState", [Variable("state", "STATE")], addStateBody, "private"))
 
 #        addTransitionBody = f"Symbol memory symbol = Symbol(actor, action, message); bytes32 k = keccak256(abi.encode(source, encoder.encode_SYMBOL(symbol))); transitions[k].push(target);"
         addTransitionBody = f"bytes32 k = keccak256(abi.encode(source, actor, action, message)); transitions[k].push(target);"
-        contract.add_function(Function("addTransition", [ Variable("source", "STATES"), Variable("actor", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGES"), Variable("target", "STATES")], addTransitionBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
+        contract.add_function(Function("addTransition", [ Variable("source", "STATE"), Variable("actor", "ACTOR"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGE"), Variable("target", "STATE")], addTransitionBody, "private")) # TODO if this should be called from the enforcer (public), find a way to force at most one call; if not call all other functions should be "blocked"
 
     def create_functions(self, contract : Contract):
 
@@ -374,7 +377,7 @@ currentStates = tmpStates;
         contract.add_function(Function("checkInitialAndFinalStates",
                         #[Variable("newStates", "string[]","memory")],
                         #[Variable("newStates", "bytes32[]", "memory")],
-                        [Variable("newStates", "STATES[]", "memory")],
+                        [Variable("newStates", "STATE[]", "memory")],
                         """start = false;
 end = false;
 for (uint i = 0; i < newStates.length; i++) {
@@ -438,7 +441,7 @@ for (uint i = 0; i < newStates.length; i++) {
 
 		bytes32 h = keccak256(abi.encode(source /* h_source */, /* h_symbol */ symbol));
 
-		STATES[] memory candidates = transitions[h];
+		STATE[] memory candidates = transitions[h];
 
 		if (candidates.length == 0) {
 			return false;
@@ -454,7 +457,7 @@ for (uint i = 0; i < newStates.length; i++) {
         """
 
         contract.add_function(Function("isTransition",
-                                [Variable("source", "STATES"), Variable("actor", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGES"), Variable("target", "STATES") ],
+                                [Variable("source", "STATE"), Variable("actor", "ACTOR"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGE"), Variable("target", "STATE") ],
                                 isTransitionBody,   
                                 "public view",
                                 "bool"))
@@ -480,7 +483,7 @@ for (uint i = 0; i < newStates.length; i++) {
                                 "public view",
                                 #"string[] memory"))
                                 #"bytes32[] memory"))
-                                "STATES[] memory"))
+                                "STATE[] memory"))
 
         contract.add_function(Function("getCurrentStatesAsString",
                                 [],
@@ -492,7 +495,7 @@ for (uint i = 0; i < newStates.length; i++) {
                                 [],
                                 "return initialState;",
                                 "public view",
-                                "STATES"))
+                                "STATE"))
 
         contract.add_function(Function("getInitialStateAsString",
                                 [],
@@ -507,7 +510,7 @@ for (uint i = 0; i < newStates.length; i++) {
                                 "return finalStates;",
                                 "public view",
                                 #"bytes32[] memory"))
-                                "STATES[] memory"))
+                                "STATE[] memory"))
 
         contract.add_function(Function("getFinalStatesAsString",
                                 [],
@@ -524,14 +527,14 @@ for (uint i = 0; i < newStates.length; i++) {
 
         contract.add_function(Function("isFinal",
                                 #[Variable("curr","bytes32")],
-                                [Variable("curr","STATES")],
+                                [Variable("curr","STATE")],
                                 """(bool found, ) = Utils.arrContains(curr, finalStates); return found;""", 
                                 "public view",
                                 "bool"))
  
         contract.add_function(Function("isInitial",
                                 #[Variable("curr","bytes32")],
-                                [Variable("curr","STATES")],
+                                [Variable("curr","STATE")],
                                 """return curr == initialState;""",
                                 "public view",
                                 "bool"))
@@ -539,7 +542,7 @@ for (uint i = 0; i < newStates.length; i++) {
 
         contract.add_function(Function("isCurrent",
                                 #[Variable("curr","bytes32")],
-                                [Variable("curr","STATES")],
+                                [Variable("curr","STATE")],
                                 """(bool found, ) = Utils.arrContains(curr, currentStates); return found;""", # TODO
                                 "public view",
                                 "bool"))
@@ -564,14 +567,14 @@ for (uint i = 0; i < newStates.length; i++) {
         contract.add_function(Function("transitionFrom",
                                 #[Variable("state","string","memory"), Variable("label","string","memory")],
                                 #[Variable("state","bytes32"), Variable("label","bytes32")],
-                                #[Variable("state","STATES"), Variable("label","uint16")],
-                                [Variable("source","STATES"), Variable("actor","AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGES")],
+                                #[Variable("state","STATE"), Variable("label","uint16")],
+                                [Variable("source","STATE"), Variable("actor","ACTOR"), Variable("action", "EVENT_ACTION"), Variable("message", "MESSAGE")],
                                 #transitionFromBody,
                                 #"bytes32 k = keccak256(abi.encode(state, label)); return transitions[k];",
                                 "bytes32 k = keccak256(abi.encode(source, actor, action, message)); return transitions[k];",
                                 "public view",
                                 #"bytes32[] memory"))
-                                "STATES[] memory"))
+                                "STATE[] memory"))
 
         contract.add_function(Function("transition",
                                 #[Variable("label","string","memory")],
@@ -580,9 +583,9 @@ for (uint i = 0; i < newStates.length; i++) {
                                 #[Variable("label","uint16")],
                                 [Variable("label", "Symbol", "memory")],
 """
-        STATES[] memory tmp;
+        STATE[] memory tmp;
 		for (uint i = 0; i < currentStates.length; i++) {
-		    STATES[] memory s = transitionFrom(currentStates[i], label.agent, label.action, label.message);
+		    STATE[] memory s = transitionFrom(currentStates[i], label.agent, label.action, label.message);
 		    tmp = Utils.union(tmp, s);
 		}
 		require(tmp.length != 0);
@@ -605,7 +608,7 @@ for (uint i = 0; i < newStates.length; i++) {
                         [Variable("symbol","Symbol","memory")], #Variable("symbol_enc", "uint16")],
                         """
 for (uint i = 0; i < currentStates.length; i++) {
-    STATES[] memory s_reached = transitionFrom(currentStates[i], symbol.agent, symbol.action, symbol.message /* symbol_enc */);
+    STATE[] memory s_reached = transitionFrom(currentStates[i], symbol.agent, symbol.action, symbol.message /* symbol_enc */);
     if (s_reached.length > 0) return true;
     //reached = union(reached, s_reached); 
 }
@@ -650,7 +653,7 @@ class EnforcerContractGenerator(Generator):
         contract.add_attribute(Variable("actors","string[]",))
         contract.add_attribute(Variable("buffer","BufferItem[]"))
         #contract.add_attribute(Variable("tmpStates","bytes32[]"))
-        contract.add_attribute(Variable("kb","PROPOSITIONS[]")) # ,"bytes32[]"))
+        contract.add_attribute(Variable("kb","PROPOSITION[]")) # ,"bytes32[]"))
         #contract.add_attribute(Variable("buffer","mapping(string => mapping(string => uint))"))
         contract.add_attribute(Variable("chainStartTime", "uint"))    
         contract.add_attribute(Variable("chainEndTime", "uint"))    
@@ -686,7 +689,7 @@ class EnforcerContractGenerator(Generator):
                                 """return kb;""",
                                 "public view",
                                 #"bytes32[] memory"))
-                                "PROPOSITIONS[] memory"))
+                                "PROPOSITION[] memory"))
 
 
         contract.add_function(Function("getInput", 
@@ -783,7 +786,7 @@ class EnforcerContractGenerator(Generator):
 #                                [ Variable("input", "string memory") ],
 #                                splitInput_body,
 #                                "private view",
-#                                "AGENTS agent, EVENT_ACTION action, MESSAGES message"))
+#                                "ACTOR agent, EVENT_ACTION action, MESSAGE message"))
 #
 
 
@@ -834,7 +837,7 @@ class EnforcerContractGenerator(Generator):
                                 [ Variable("precondition", "Prop[]", "memory"), Variable("symbol","Symbol","memory"), Variable("knowledge", "Prop[]", "memory") ], #Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
     buffer_add(precondition, symbol, knowledge);
-    return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
+    return Symbol(ACTOR.empty_AGENT, EVENT_ACTION.epsilon, MESSAGE.empty_MESSAGE);
                                 """,
                                 "private",
                                 "Symbol memory"))
@@ -844,7 +847,7 @@ class EnforcerContractGenerator(Generator):
                                 [ Variable("precondition", "Prop[]", "memory"), Variable("symbol", "Symbol", "memory"), Variable("knowledge", "Prop[]", "memory") ], # Variable("symbol_enc", "uint16")], #"bytes32")],
                                 """
     buffer_add(precondition, symbol, knowledge);
-    return Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
+    return Symbol(ACTOR.empty_AGENT, EVENT_ACTION.epsilon, MESSAGE.empty_MESSAGE);
                                 """,
                                 "private",
                                 "Symbol memory"))
@@ -874,13 +877,13 @@ class EnforcerContractGenerator(Generator):
 
     def __create_processors(self, contract : Contract):
         contract.add_function(Function("process_input",
-                                [ Variable("precondition", "Prop[]", "memory"), Variable("agent", "AGENTS"), Variable("action", "EVENT_ACTION"), Variable("message","MESSAGES"), Variable("knowledge", "Prop[]", "memory") ],
+                                [ Variable("precondition", "Prop[]", "memory"), Variable("agent", "ACTOR"), Variable("action", "EVENT_ACTION"), Variable("message","MESSAGE"), Variable("knowledge", "Prop[]", "memory") ],
 #                                [ Variable("the_input", "string memory") ],
                                 """
 
-//AGENTS agent;
+//ACTOR agent;
 //EVENT_ACTION action;
-//MESSAGES message;
+//MESSAGE message;
 //
 //( agent, action, message ) = splitInput(the_input);
 
@@ -912,7 +915,7 @@ if (condition_rule_send_now(precondition, symbol /*, symbol_enc */)) {
     dirty = false;
 } else {
     //debug = "No matching condition";
-    //out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE); //"None";
+    //out = Symbol(ACTOR.empty_AGENT, EVENT_ACTION.epsilon, MESSAGE.empty_MESSAGE); //"None";
     dirty = false;
 }
 //emit outputEvent(debug, out);
@@ -932,7 +935,7 @@ return out;
                                 [],
                                 """
 		
-				Symbol memory out = Symbol(AGENTS.empty_AGENT, EVENT_ACTION.epsilon, MESSAGES.empty_MESSAGE);
+				Symbol memory out = Symbol(ACTOR.empty_AGENT, EVENT_ACTION.epsilon, MESSAGE.empty_MESSAGE);
 		
 				bool dirty = true;
 		
@@ -977,7 +980,7 @@ return out;
 ##                                [],
 ##                                "return nfa.getStatesAsString();",
 ##                                "public view",
-##                                "STATES[] memory"))
+##                                "STATE[] memory"))
 
         contract.add_function(Function("getNFACurrentStates",
                                 [],
@@ -1070,7 +1073,7 @@ return (false, 0);
         utils.add_function(Function("arrContains",
                                 #[Variable("s","string","memory"),Variable("states","string[]","memory")],
                                 #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
-                                [ Variable("item", "STATES"), Variable("collection", "STATES[]", "memory") ],
+                                [ Variable("item", "STATE"), Variable("collection", "STATE[]", "memory") ],
                                 arrContains_body,
                                 "public pure", #"internal pure",
                                 "bool, uint"))
@@ -1078,21 +1081,21 @@ return (false, 0);
         utils.add_function(Function("arrContains",
                                 #[Variable("s","string","memory"),Variable("states","string[]","memory")],
                                 #[Variable("s","bytes32"),Variable("states","bytes32[]","memory")],
-                                [ Variable("item", "PROPOSITIONS"), Variable("collection", "PROPOSITIONS[]", "memory") ],
+                                [ Variable("item", "PROPOSITION"), Variable("collection", "PROPOSITION[]", "memory") ],
                                 arrContains_body,
                                 "public pure", #"internal pure",
                                 "bool, uint"))
         
         utils.add_function(Function("shrink",
                         #[Variable("source", "bytes32[]", "memory"), Variable("newSize", "uint")],
-                        [Variable("source", "STATES[]", "memory"), Variable("newSize", "uint")],
+                        [Variable("source", "STATE[]", "memory"), Variable("newSize", "uint")],
 """
         require(newSize <= source.length);
 
         if (source.length == newSize) {
             return source;
         } else {
-            STATES[] memory res = new STATES[](newSize);
+            STATE[] memory res = new STATE[](newSize);
             for (uint idx = 0; idx < newSize; idx++) {
                 res[idx] = source[idx];
             } 
@@ -1101,13 +1104,13 @@ return (false, 0);
 """,
                         "public pure",
                         #"bytes32[] memory")
-                        "STATES[] memory")
+                        "STATE[] memory")
         )
 
         utils.add_function(Function("indexOf",
                         #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
                         #[Variable("array","bytes32[]","memory"),Variable("item","bytes32")],
-                        [Variable("array","STATES[]","memory"),Variable("item","STATES")],
+                        [Variable("array","STATE[]","memory"),Variable("item","STATE")],
                         """
         for (uint idx = 0; idx < array.length; idx++) {
             if (array[idx] == item) {
@@ -1123,22 +1126,22 @@ return (false, 0);
         utils.add_function(Function("union",
                         #[Variable("arrayA","string[]","memory"),Variable("arrayB","string[]","memory")],
                         #[Variable("arrayA","bytes32[]","memory"),Variable("arrayB","bytes32[]","memory")],
-                        [Variable("arrayA","STATES[]","memory"),Variable("arrayB","STATES[]","memory")],
+                        [Variable("arrayA","STATE[]","memory"),Variable("arrayB","STATE[]","memory")],
                         """
 	
-        STATES[] memory tmp = new STATES[](arrayA.length + arrayB.length);
+        STATE[] memory tmp = new STATE[](arrayA.length + arrayB.length);
         uint countA = 0;
         uint countB = 0;
 
         for (uint idx = 0; idx < arrayA.length; idx++) {
-            STATES curr = arrayA[idx];
+            STATE curr = arrayA[idx];
             if (indexOf(tmp, curr) < 0) {
                 tmp[countA++] = curr;
             }
         }
 
         for (uint idx = 0; idx < arrayB.length; idx++) {
-            STATES curr = arrayB[idx];
+            STATE curr = arrayB[idx];
 
             if (indexOf(tmp, curr) < 0) {
                 tmp[countA + countB++] = curr;
@@ -1151,7 +1154,7 @@ return (false, 0);
                         "public pure", # was "private"
                         #"string[] memory"))
                         #"bytes32[] memory"))
-                        "STATES[] memory"))
+                        "STATE[] memory"))
 
 
 
@@ -1161,12 +1164,12 @@ return (false, 0);
 
     def create_structs(self):
 
-        #self._contract.add_type("PROPOSITIONS", "uint16")
-        #self._contract.add_type("AGENTS", "uint16")
-        #self._contract.add_type("MESSAGES", "uint16")
+        #self._contract.add_type("PROPOSITION", "uint16")
+        #self._contract.add_type("ACTOR", "uint16")
+        #self._contract.add_type("MESSAGE", "uint16")
         #self._contract.add_struct(Struct("Symbol", [ ("agent", "bytes32"), ("action", "EVENT_ACTION"), ("message", "bytes32") ]))
-        self._contract.add_struct(Struct("Symbol", [ ("agent", "AGENTS"), ("action", "EVENT_ACTION"), ("message", "MESSAGES") ]))
-        self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "PROPOSITIONS") ])) #("identifier", "bytes32") ]))
+        self._contract.add_struct(Struct("Symbol", [ ("agent", "ACTOR"), ("action", "EVENT_ACTION"), ("message", "MESSAGE") ]))
+        self._contract.add_struct(Struct("Prop", [ ("neg", "bool"), ("identifier", "PROPOSITION") ])) #("identifier", "bytes32") ]))
         self._contract.add_struct(Struct("BufferItem", [ ("precondition", "Prop[]", "memory"), ("symbol", "Symbol"), ("knowledge", "Prop[]", "memory") ]))
 
 
@@ -1174,11 +1177,11 @@ return (false, 0);
 
         self._contract.add_enum(Enum("EVENT_ACTION", [ "epsilon", "send", "recv" ]))
 
-        self._contract.add_enum(Enum("STATES", sorted([ s.id for s in self._nfa.states ]))) 
-        self._contract.add_enum(Enum("AGENTS", [ "empty_AGENT", ] + sorted([ solidity_slugify(a) for a in self._nfa.agents ]))) 
-        self._contract.add_enum(Enum("MESSAGES", [ "empty_MESSAGE", ] + sorted([m for m in self._nfa.messages ])))
+        self._contract.add_enum(Enum("STATE", sorted([ s.id for s in self._nfa.states ]))) 
+        self._contract.add_enum(Enum("ACTOR", [ "empty_AGENT", ] + sorted([ solidity_slugify(a) for a in self._nfa.agents ]))) 
+        self._contract.add_enum(Enum("MESSAGE", [ "empty_MESSAGE", ] + sorted([m for m in self._nfa.messages ])))
         propositions = [ m for m in self._nfa.propositions ] or [ "foo" ] # at least one member is required for ENUM's
-        self._contract.add_enum(Enum("PROPOSITIONS", propositions))
+        self._contract.add_enum(Enum("PROPOSITION", propositions))
 
 
     def createSmartContract(self) -> SmartContract:
@@ -1229,70 +1232,95 @@ class MPSTLocalTypeContractGenerator(Generator):
         self._local_type = local_type
         super().__init__(contract_name)
 
-    def create_attributes(self, contract):
-
-        contract.add_attribute(Variable("states", "STATES[]"))
-        contract.add_attribute(Variable("pr", "PruneRelation"))
-        contract.add_attribute(Variable("input", "Task[]"))
-        contract.add_attribute(Variable("output", "Task[]"))
-        contract.add_attribute(Variable("buffer", "Task[]"))
-
-    def create_constructor(self, contract):
-        initial_state = str(self._local_type.initial)
-        constructor_body = f"states.push(STATES.{initial_state});\ncheck_no_input();"
-        contract.add_constructor(Constructor([], constructor_body))
-
+##    def create_attributes(self, contract):
+##
+##        contract.add_attribute(Variable("states", "STATE[]"))
+##        contract.add_attribute(Variable("pr", "IRel")) #"PruneRelation"))
+##        contract.add_attribute(Variable("input", "Event[]")) #"Task[]"))
+##        contract.add_attribute(Variable("output", "Event[]")) #"Task[]"))
+##        contract.add_attribute(Variable("delayable", "Event[]")) #"Task[]"))
+##        contract.add_attribute(Variable("buffer", "Event[]")) #"Task[]"))
+####
+##    def create_constructor(self, contract):
+##        initial_state = str(self._local_type.initial)
+##        constructor_body = f"states.push(STATE.{initial_state});\neq_closure();"
+##        contract.add_constructor(Constructor([], constructor_body))
+##
     def create_functions(self, contract):
 
         from mpst.models import MsgSend, MsgRecv
 
-        check_no_input_body = """
-int256 pos1;
-int256 pos2;
+        eq_closure_body = """
 
 bool dirty = false;
 
-do {
-    dirty = false;
         """
+
+        rules = []
 
         for t in self._local_type.transforms:
             if t.is_fork:
-                check_no_input_body = f"{check_no_input_body}\n\n    // fork: {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >= 0) {{ apply_fork(states, pr, uint256(pos1), STATES.{t.rhs.arguments[0]}, STATES.{t.rhs.arguments[1]}); dirty = true; }}"
+                lhs = t.lhs
+                rhs1 = t.rhs.arguments[0]
+                rhs2 = t.rhs.arguments[1]
+
+                rules.append(f"        if (apply_fork(states, pr, STATE.{lhs}, STATE.{rhs1}, STATE.{rhs2})) {{ dirty = true; }}")
 
             elif t.is_join:
+                lhs1 = t.lhs.arguments[0]
+                lhs2 = t.lhs.arguments[1]
+                rhs1 = t.rhs
 
-                check_no_input_body = f"{check_no_input_body}\n\n    // join: {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs.arguments[0]}); if (pos1 >= 0) {{ pos2 = states_arr_find(states, STATES.{t.lhs.arguments[1]}); if (pos2 >= 0) {{ apply_join(states, pr, uint256(pos1), uint256(pos2), STATES.{t.rhs}); dirty = true; }} }}"
-
-
-            elif t.is_merge:
-
-                check_no_input_body = f"{check_no_input_body}\n\n    // merge : {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs.arguments[0]}); if (pos1 >= 0) {{ apply_passthrough(states, pr, uint256(pos1), STATES.{t.rhs}); dirty = true; }} else {{ pos2 = states_arr_find(states, STATES.{t.lhs.arguments[1]}); if (pos2 >= 0) {{ apply_passthrough(states, pr, uint256(pos2), STATES.{t.rhs}); dirty = true; }} }}"
-
-            elif t.is_passthrough:
-                check_no_input_body = f"{check_no_input_body}\n\n    // passthrough : {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >=0) {{ apply_passthrough(states, pr, uint256(pos1)); dirty = true; }}"
-
-            elif t.is_end:
-                check_no_input_body = f"{check_no_input_body}\n\n    // end : {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >= 0) {{ apply_end(states, pr, uint256(pos1)); dirty = true; }}"
+                rules.append(f"        if (apply_join(states, pr, STATE.{lhs1}, STATE.{lhs2}, STATE.{rhs1})) {{ dirty = true; }}")
 
             elif t.is_internal_choice or t.is_external_choice:
-                #breakpoint()
-                check_no_input_body = f"{check_no_input_body}\n\n    // internal/external choice: {t} \n    pos1 = states_arr_find(states, STATES.{t.lhs}); if (pos1 >= 0) {{ apply_choice(states, pr, uint256(pos1), STATES.{t.rhs.arguments[0]}, STATES.{t.rhs.arguments[1]}); dirty = true; }} "
+                lhs = t.lhs
+                rhs1 = t.rhs.arguments[0]
+                rhs2 = t.rhs.arguments[1]
+
+                rules.append(f"        if (apply_choice(states, pr, STATE.{lhs}, STATE.{rhs1}, STATE.{rhs2})) {{ dirty = true; }}")
+
+            elif t.is_merge:
+                lhs1 = t.lhs.arguments[0]
+                lhs2 = t.lhs.arguments[1]
+                rhs1 = t.rhs
+
+                rules.append(f"        if (apply_merge(states, pr, STATE.{lhs1}, STATE.{lhs2}, STATE.{rhs1})) {{ dirty = true; }}")
 
 
-        check_no_input_body = f"{check_no_input_body}\n}} while (dirty); "
+            elif t.is_passthrough:
+                lhs1 = t.lhs
+                rhs1 = t.rhs
+
+                rules.append(f"        if (apply_passthrough(states, pr, STATE.{lhs1}, STATE.{rhs1})) {{ dirty = true; }}")
 
 
-        contract.add_function(Function("check_no_input", [], check_no_input_body, "public"))
+            elif t.is_end:
+                lhs1 = t.lhs.arguments[0]
+
+                rules.append(f"        if (apply_end(states, pr, STATE.{lhs1})) {{ dirty = true; }}")
 
 
-        check_task_body = """
-int256 pos;
+        #breakpoint()
+        if len(rules) > 0:
+            rules_body = "\n            ".join(rules)
+            eq_closure_body = f"{eq_closure_body}\n        do {{\n            dirty = false;\n        {rules_body}\n        }} while (dirty);\n"
+        else:
+            eq_closure_body = f"    // no fork, join, choice, merge, passthrough or end\n"
 
-input.push(task);
+
+        contract.add_function(Function("eq_closure", [], eq_closure_body, "public"))
+
+        contract.add_function(Function("init_delayable", [], "", "public")) # TODO finish this function
+
+        check_event_body = """
+Event memory ev = Event(initiator, act, recipient, label);
+
+input.push(ev);
 
         """
 
+        rules = []
         for t in self._local_type.transforms:
             if t.is_concat:
 
@@ -1306,40 +1334,43 @@ input.push(task);
                     #field = "target"
                     initiator = t.rhs.arguments[0].sender
                     target = t.rhs.arguments[0].receiver
-
+                    label = t.rhs.arguments[0].label
 
                 elif isinstance(t.rhs.arguments[0], MsgRecv):
                     action = "Receive"
                     #field = "initiator"
                     initiator = t.rhs.arguments[0].receiver
                     target = t.rhs.arguments[0].sender
+                    label = t.rhs.arguments[0].label
 
                 else:
                     raise Exception("Action not supported")
 
-
-                check_task_body = f"{check_task_body}\n\n// {action} : {t} \npos = states_arr_find(states, STATES.{t.lhs}); if (pos >= 0) {{ if (task.action == ACTIONS.{ action } && task.initiator == PARTICIPANTS.{ initiator } && task.target == PARTICIPANTS.{ target }) {{ apply_send_receive(states, pr, uint256(pos), STATES.{t.rhs.arguments[-1]}); output.push(task); check_no_input(); return; }} else if (task.action == ACTIONS.Wt{ action } && task.initiator == PARTICIPANTS.{ initiator } && task.target == PARTICIPANTS.{ target }) {{ apply_passthrough(states, pr, uint256(pos), STATES.{t.lhs}); output.push(task); check_no_input(); return; }} }} "
-
-
     
+                lhs = t.lhs
+                rhs = t.rhs.arguments[-1]
+                rules.append(f"        // {str(t)}")
+                rules.append(f"        if (Events.eq(ev, ACTION.{action}, ACTOR.{initiator}, ACTOR.{target}, MSG.{label}) && apply_pass(states, pr, STATE.{lhs}, STATE.{rhs})) {{ output.push(ev); eq_closure(); return; }}")
+                #check_event_body = f"{check_event_body}\n\n// {action} : {t} \npos = states_arr_find(states, STATE.{t.lhs}); if (pos >= 0) {{ if (task.action == ACTION.{ action } && task.initiator == ACTOR.{ initiator } && task.target == ACTOR.{ target }) {{ apply_send_receive(states, pr, uint256(pos), STATE.{t.rhs.arguments[-1]}); output.push(task); eq_closure(); return; }} else if (task.action == ACTION.Wt{ action } && task.initiator == ACTOR.{ initiator } && task.target == ACTOR.{ target }) {{ apply_passthrough(states, pr, uint256(pos), STATE.{t.lhs}); output.push(task); eq_closure(); return; }} }} "
+        rules_body = "\n".join(rules)
+        check_event_body = f"{check_event_body}{rules_body}\n\n// add to buffer (delay) or skip (suppress)\n\nif (Events.contains(delayable, ev)) {{ buffer.push(ev); }}"
 
-        check_task_body = f"{check_task_body}\n\ncheck_no_input();\n\n// otherwise, add to buffer\n\nbuffer.push(task);"
+        contract.add_function(Function("check_event", [Variable("task", "Event", "calldata")], check_event_body, "public"))
 
-        contract.add_function(Function("check_task", [Variable("task", "Task", "calldata")], check_task_body, "public"))
-
-
-        contract.add_function(Function("getStates", [], "return states;", "public view returns(STATES[] memory)"))
-        contract.add_function(Function("getInput", [], "return input;", "public view returns(Task[] memory)"))
-        contract.add_function(Function("getOutput", [], "return output;", "public view returns(Task[] memory)"))
-        contract.add_function(Function("getBuffer", [], "return buffer;", "public view returns(Task[] memory)"))
-
-        contract.add_function(Function("getPruneRelationKeys", [], "return pr.keys;", "public view returns(STATES[] memory)"))
-        contract.add_function(Function("getPruneRelation", [Variable("s","STATES")], "return pr.to_prune[s];", "public view returns(STATES[] memory)"))
-
-        
-        contract.add_function(Function("getInputAsString", [], "return task_arr_to_string(input);", "public view returns(string[] memory)"))
-        contract.add_function(Function("getOutputAsString", [], "return task_arr_to_string(output);", "public view returns(string[] memory)"))
-        contract.add_function(Function("getBufferAsString", [], "return task_arr_to_string(buffer);", "public view returns(string[] memory)"))
+##
+##        contract.add_function(Function("getStates", [], "return states;", "public view returns(STATE[] memory)"))
+##        contract.add_function(Function("getInput", [], "return input;", "public view returns(Event[] memory)"))
+##        contract.add_function(Function("getOutput", [], "return output;", "public view returns(Event[] memory)"))
+##        contract.add_function(Function("getBuffer", [], "return buffer;", "public view returns(Event[] memory)"))
+##
+##        #contract.add_function(Function("getPruneRelationKeys", [], "return pr.keys;", "public view returns(STATE[] memory)"))
+##        contract.add_function(Function("geIncompRelation", [Variable("s","STATE")], "return pr.to_prune[s];", "public view returns(STATE[] memory)"))
+##
+##        
+##        contract.add_function(Function("getInputAsString", [], "return task_arr_to_string(input);", "public view returns(string[] memory)"))
+##        contract.add_function(Function("getOutputAsString", [], "return task_arr_to_string(output);", "public view returns(string[] memory)"))
+##        contract.add_function(Function("getBufferAsString", [], "return task_arr_to_string(buffer);", "public view returns(string[] memory)"))
+##
  
 class MPSTSmartContractGenerator:
     
@@ -1350,14 +1381,21 @@ class MPSTSmartContractGenerator:
         self._gt = gt
         self._contract : SmartContract = SmartContract("0.7.6")
 
+        self._contract.set_template(MPST_CONTRACT_TEMPLATE)
+
         self._participants = gt.participants
         if not self._participants or len(self._participants) < 2:
             raise Exception("Expected global type with at least two participants")
 
+        self._messages = gt.messages
+        if not self._messages or len(self._messages) < 1:
+            raise Exception("Expected global type with at least one message")
+
+
         self._local_types = {}
         self._local_types_contracts = {}
 
-        self._actions = { "Send" : "!", "Receive": "?", "WtSend": "!*", "WtReceive": "?*" }
+        #self._actions = { "Send" : "!", "Receive": "?", }
 
         for p in self._participants:
             #breakpoint()
@@ -1391,246 +1429,246 @@ class MPSTSmartContractGenerator:
     def createSmartContract(self):
 
         self.create_enums()
-        self.create_structs()
+        #self.create_structs()
         self.create_contracts()
 
-        self.create_aux_functions()
+        #self.create_aux_functions()
 
         return self.contract
-
-    def create_aux_functions(self):
-
-        states_arr_remove_body = """
-	for (uint256 i = 0; i < states.length; i++) {
-		if (states[i] == state) {
-			states[i] = states[states.length - 1];
-			states.pop();
-		}
-	}
-        """
-        self.contract.add_function(Function("states_arr_remove", [Variable("states", "STATES[] storage"), Variable("state", "STATES")], states_arr_remove_body, ""))
-
-        states_arr_find_body = """
-    for (uint256 i = 0; i < states.length; i++) {
-        if (states[i] == state) {
-            return int256(i);
-        }
-    }
-
-    return -1;
-        """
-        self.contract.add_function(Function("states_arr_find", [Variable("states", "STATES[] memory"), Variable("state", "STATES")], states_arr_find_body, "pure returns(int256)"))
-
-        states_arr_of1_body = """
-    STATES[] memory temp = new STATES[](1);
-	temp[0] = a;
-	return temp;
-        """
-        self.contract.add_function(Function("states_arr_of", [Variable("a", "STATES")], states_arr_of1_body, "pure returns(STATES[] memory)"))
-
-        states_arr_of2_body = """
-    STATES[] memory temp = new STATES[](2);
-	temp[0] = a;
-	temp[1] = b;
-	return temp;
-        """
-        self.contract.add_function(Function("states_arr_of", [Variable("a", "STATES"), Variable("b", "STATES")], states_arr_of2_body, "pure returns(STATES[] memory)"))
-
-
-        states_arr_join = """
-	STATES[] memory temp = new STATES[](a.length + b.length);
-	uint idx=0;
-	for (idx=0; idx<a.length; idx++) {
-		temp[idx] = a[idx];
-	}
-	for (uint jdx=0; jdx<b.length; jdx++) {
-		temp[jdx+idx] = b[jdx];
-	}
-	return temp;
-        """
-        self.contract.add_function(Function("states_arr_join", [Variable("a", "STATES[] memory"), Variable("b", "STATES[] memory")], states_arr_join, "pure returns(STATES[] memory)"))
-
-
-        pr_add_body = """
-	// check1 : the state should not exist in the mapping
-	require(pr.to_prune[source].length == 0); 
-
-	// check 2 : the state should not exist in the keys
-	for (uint idx=0; idx<pr.keys.length; idx++) {
-		if (pr.keys[idx] == source) {
-			revert("Unexpected error: state should not be in prune relation");
-		}
-	}
-
-	pr.keys.push(source);
-
-	pr.to_prune[source] = to_prune;
-        """
-        self.contract.add_function(Function("pr_add", [Variable("pr", "PruneRelation storage"), Variable("source", "STATES"), Variable("to_prune", "STATES[] memory")], pr_add_body, ""))
-
-        pr_remove_body = """
-	for (uint idx=0; idx<pr.keys.length; idx++) {
-		STATES source1 = pr.keys[idx];
-
-		if (source1 == source) {
-			// remove source's alternative states
-			pr.keys[idx] = pr.keys[pr.keys.length-1];
-			pr.keys.pop();
-
-			delete pr.to_prune[source];
-		} else {
-			
-			// source1 != source => remove source from source1's alternative states (if present)
-			for (uint jdx=0; jdx<pr.to_prune[source1].length; jdx++) {
-				if (pr.to_prune[source1][jdx] == source) {
-					pr.to_prune[source1][jdx] = pr.to_prune[source1][ pr.to_prune[source1].length - 1];
-					pr.to_prune[source1].pop();
-				}
-			}
-		}
-	}
-        """
-        self.contract.add_function(Function("pr_remove", [Variable("pr", "PruneRelation storage"), Variable("source", "STATES")], pr_remove_body, ""))
-
-        pr_update_body = """
-    require(targets.length > 0, "Empty targets");
-
-    for (uint idx=0; idx<pr.keys.length; idx++) {
-    
-        int found = states_arr_find(pr.to_prune[pr.keys[idx]], source);
-        if (found >= 0) {
-            STATES[] storage old_targets = pr.to_prune[pr.keys[idx]];
-            old_targets[uint(found)] = targets[0];
-
-            for (uint j=1; j<targets.length; j++) {
-                old_targets.push(targets[j]);
-            }
-            pr.to_prune[source] = old_targets;
-
-            break;        
-        }
-    }
-        """
-        self.contract.add_function(Function("pr_update", [Variable("pr", "PruneRelation storage"), Variable("source", "STATES"), Variable("targets", "STATES[] memory")], pr_update_body, ""))
-
-        apply_fork_body = """
-    STATES source = states[lhs];
-    states[lhs] = rhs1;
-    states.push(rhs2);
-    pr_update(pr, source, states_arr_of(rhs1, rhs2));
-        """
-        self.contract.add_function(Function("apply_fork", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs1", "STATES"), Variable("rhs2", "STATES")], apply_fork_body, ""))
-
-    
-        apply_join_body = """
-    STATES source1 = states[lhs1];
-    STATES source2 = states[lhs2];
-    states[lhs1] = rhs;
-    states[lhs2] = states[states.length - 1];
-    states.pop();
-    pr_update(pr, source1, states_arr_of(rhs));
-    pr_update(pr, source2, states_arr_of(rhs));
-        """
-        self.contract.add_function(Function("apply_join", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs1","uint256"), Variable("lhs2", "uint256"), Variable("rhs", "STATES")], apply_join_body, ""))
-
-
-        apply_choice_body = """
-
-	STATES source = states[lhs];
-	STATES[] memory to_prune = pr.to_prune[source];
-
-	states[lhs] = rhs1;
-	states.push(rhs2);
-
-	pr_update(pr, source, states_arr_of(rhs1, rhs2));
-
-	pr_add(pr, rhs1, states_arr_join(to_prune, states_arr_of(rhs2)));
-	pr_add(pr, rhs2, states_arr_join(to_prune, states_arr_of(rhs1)));
-        """
-    
-        self.contract.add_function(Function("apply_choice", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs1", "STATES"), Variable("rhs2", "STATES")], apply_choice_body, ""))
-
-
-##        apply_merge_body = """
-##    STATES source = states[lhs];
-##    states[lhs] = rhs;
-##    pr_update(pr, source, states_arr_of(rhs));
-##        """
-##        self.contract.add_function(Function("apply_merge", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs", "STATES")], apply_merge_body, ""))
 ##
-
-        apply_passthrough_body = """
-    STATES source = states[lhs];
-    states[lhs] = rhs;
-    if (source != rhs) { pr_update(pr, source, states_arr_of(rhs)); }
-        """
-        self.contract.add_function(Function("apply_passthrough", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs", "STATES")], apply_passthrough_body, ""))
-
-        apply_end_body = """
-    STATES source = states[lhs];
-    states[lhs] = states[states.length - 1];
-    states.pop();
-
-	pr_remove(pr, source);
-        """
-        self.contract.add_function(Function("apply_end", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256") ], apply_end_body, ""))
-
- 
-        apply_send_receive_body = """
-    STATES source = states[lhs];
-
-    states[lhs] = rhs;
-
-	// remove all the alternatives from the prune relation
-	STATES[] memory to_prune = pr.to_prune[source];	        
-	for (uint idx=0; idx<to_prune.length; idx++) {
-		pr_remove(pr, to_prune[idx]);
-		states_arr_remove(states, to_prune[idx]);
-	}
-	// remove also the source state from the prune relation
-	pr_remove(pr, source);
-        """
-        self.contract.add_function(Function("apply_send_receive", [Variable("states", "STATES[] storage"), Variable("pr", "PruneRelation storage"), Variable("lhs","uint256"), Variable("rhs", "STATES")], apply_send_receive_body, ""))
-
-
-        a_to_s_parts = [ f"if (a == ACTIONS.{ k }) {{ return '{v}'; }}" for k,v in self._actions.items() ]
-        action_to_string_body = " else ".join(a_to_s_parts) + " else return '??';"
-
-        self.contract.add_function(Function("action_to_string", [Variable("a","ACTIONS")], action_to_string_body, "pure returns (string memory)"))
-
-        p_to_s_parts = [ f"if (p == PARTICIPANTS.{ p }) {{ return '{p}'; }}" for p in self._participants ] 
-        participant_to_string_body = " else ".join(p_to_s_parts) + " else return '??';"
-        self.contract.add_function(Function("participant_to_string", [Variable("p","PARTICIPANTS")], participant_to_string_body, "pure returns (string memory)"))
-
-        
-        task_to_string_body = f"""
-            string memory initiator = participant_to_string(t.initiator);
-            string memory action = action_to_string(t.action);
-            string memory target = participant_to_string(t.target);
-
-            return string(abi.encodePacked(initiator, action, target));
-
-        """
-        self.contract.add_function(Function("task_to_string", [Variable("t", "Task memory")], task_to_string_body, "pure returns (string memory)"))
-
-        task_arr_to_string_body = """
-    string[] memory result = new string[](ar.length);
-    for (uint idx=0; idx<ar.length; idx++) {
-        Task memory t = ar[idx];
-        
-        //if (idx > 0) {
-        //    result = string(abi.encodePacked(result, ", "));
-        //}
-
-        //result = string(abi.encodePacked(result, task_to_string(t)));
-        result[idx] = task_to_string(t);
-    }
-
-    return result;
-        """
-        self.contract.add_function(Function("task_arr_to_string", [Variable("ar", "Task[] memory")], task_arr_to_string_body, "pure returns (string[] memory)"))
-
-
+##    def create_aux_functions(self):
+##
+##        states_arr_remove_body = """
+##	for (uint256 i = 0; i < states.length; i++) {
+##		if (states[i] == state) {
+##			states[i] = states[states.length - 1];
+##			states.pop();
+##		}
+##	}
+##        """
+##        self.contract.add_function(Function("states_arr_remove", [Variable("states", "STATE[] storage"), Variable("state", "STATE")], states_arr_remove_body, ""))
+##
+##        states_arr_find_body = """
+##    for (uint256 i = 0; i < states.length; i++) {
+##        if (states[i] == state) {
+##            return int256(i);
+##        }
+##    }
+##
+##    return -1;
+##        """
+##        self.contract.add_function(Function("states_arr_find", [Variable("states", "STATE[] memory"), Variable("state", "STATE")], states_arr_find_body, "pure returns(int256)"))
+##
+##        states_arr_of1_body = """
+##    STATE[] memory temp = new STATE[](1);
+##	temp[0] = a;
+##	return temp;
+##        """
+##        self.contract.add_function(Function("states_arr_of", [Variable("a", "STATE")], states_arr_of1_body, "pure returns(STATE[] memory)"))
+##
+##        states_arr_of2_body = """
+##    STATE[] memory temp = new STATE[](2);
+##	temp[0] = a;
+##	temp[1] = b;
+##	return temp;
+##        """
+##        self.contract.add_function(Function("states_arr_of", [Variable("a", "STATE"), Variable("b", "STATE")], states_arr_of2_body, "pure returns(STATE[] memory)"))
+##
+##
+##        states_arr_join = """
+##	STATE[] memory temp = new STATE[](a.length + b.length);
+##	uint idx=0;
+##	for (idx=0; idx<a.length; idx++) {
+##		temp[idx] = a[idx];
+##	}
+##	for (uint jdx=0; jdx<b.length; jdx++) {
+##		temp[jdx+idx] = b[jdx];
+##	}
+##	return temp;
+##        """
+##        self.contract.add_function(Function("states_arr_join", [Variable("a", "STATE[] memory"), Variable("b", "STATE[] memory")], states_arr_join, "pure returns(STATE[] memory)"))
+##
+##
+##        pr_add_body = """
+##	// check1 : the state should not exist in the mapping
+##	require(pr.to_prune[source].length == 0); 
+##
+##	// check 2 : the state should not exist in the keys
+##	for (uint idx=0; idx<pr.keys.length; idx++) {
+##		if (pr.keys[idx] == source) {
+##			revert("Unexpected error: state should not be in prune relation");
+##		}
+##	}
+##
+##	pr.keys.push(source);
+##
+##	pr.to_prune[source] = to_prune;
+##        """
+##        self.contract.add_function(Function("pr_add", [Variable("pr", "IRel storage"), Variable("source", "STATE"), Variable("to_prune", "STATE[] memory")], pr_add_body, ""))
+##
+##        pr_remove_body = """
+##	for (uint idx=0; idx<pr.keys.length; idx++) {
+##		STATE source1 = pr.keys[idx];
+##
+##		if (source1 == source) {
+##			// remove source's alternative states
+##			pr.keys[idx] = pr.keys[pr.keys.length-1];
+##			pr.keys.pop();
+##
+##			delete pr.to_prune[source];
+##		} else {
+##			
+##			// source1 != source => remove source from source1's alternative states (if present)
+##			for (uint jdx=0; jdx<pr.to_prune[source1].length; jdx++) {
+##				if (pr.to_prune[source1][jdx] == source) {
+##					pr.to_prune[source1][jdx] = pr.to_prune[source1][ pr.to_prune[source1].length - 1];
+##					pr.to_prune[source1].pop();
+##				}
+##			}
+##		}
+##	}
+##        """
+##        self.contract.add_function(Function("pr_remove", [Variable("pr", "IRel storage"), Variable("source", "STATE")], pr_remove_body, ""))
+##
+##        pr_update_body = """
+##    require(targets.length > 0, "Empty targets");
+##
+##    for (uint idx=0; idx<pr.keys.length; idx++) {
+##    
+##        int found = states_arr_find(pr.to_prune[pr.keys[idx]], source);
+##        if (found >= 0) {
+##            STATE[] storage old_targets = pr.to_prune[pr.keys[idx]];
+##            old_targets[uint(found)] = targets[0];
+##
+##            for (uint j=1; j<targets.length; j++) {
+##                old_targets.push(targets[j]);
+##            }
+##            pr.to_prune[source] = old_targets;
+##
+##            break;        
+##        }
+##    }
+##        """
+##        self.contract.add_function(Function("pr_update", [Variable("pr", "IRel storage"), Variable("source", "STATE"), Variable("targets", "STATE[] memory")], pr_update_body, ""))
+##
+##        apply_fork_body = """
+##    STATE source = states[lhs];
+##    states[lhs] = rhs1;
+##    states.push(rhs2);
+##    pr_update(pr, source, states_arr_of(rhs1, rhs2));
+##        """
+##        self.contract.add_function(Function("apply_fork", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs","uint256"), Variable("rhs1", "STATE"), Variable("rhs2", "STATE")], apply_fork_body, ""))
+##
+##    
+##        apply_join_body = """
+##    STATE source1 = states[lhs1];
+##    STATE source2 = states[lhs2];
+##    states[lhs1] = rhs;
+##    states[lhs2] = states[states.length - 1];
+##    states.pop();
+##    pr_update(pr, source1, states_arr_of(rhs));
+##    pr_update(pr, source2, states_arr_of(rhs));
+##        """
+##        self.contract.add_function(Function("apply_join", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs1","uint256"), Variable("lhs2", "uint256"), Variable("rhs", "STATE")], apply_join_body, ""))
+##
+##
+##        apply_choice_body = """
+##
+##	STATE source = states[lhs];
+##	STATE[] memory to_prune = pr.to_prune[source];
+##
+##	states[lhs] = rhs1;
+##	states.push(rhs2);
+##
+##	pr_update(pr, source, states_arr_of(rhs1, rhs2));
+##
+##	pr_add(pr, rhs1, states_arr_join(to_prune, states_arr_of(rhs2)));
+##	pr_add(pr, rhs2, states_arr_join(to_prune, states_arr_of(rhs1)));
+##        """
+##    
+##        self.contract.add_function(Function("apply_choice", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs","uint256"), Variable("rhs1", "STATE"), Variable("rhs2", "STATE")], apply_choice_body, ""))
+##
+##
+####        apply_merge_body = """
+####    STATE source = states[lhs];
+####    states[lhs] = rhs;
+####    pr_update(pr, source, states_arr_of(rhs));
+####        """
+####        self.contract.add_function(Function("apply_merge", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs","uint256"), Variable("rhs", "STATE")], apply_merge_body, ""))
+####
+##
+##        apply_passthrough_body = """
+##    STATE source = states[lhs];
+##    states[lhs] = rhs;
+##    if (source != rhs) { pr_update(pr, source, states_arr_of(rhs)); }
+##        """
+##        self.contract.add_function(Function("apply_passthrough", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs","uint256"), Variable("rhs", "STATE")], apply_passthrough_body, ""))
+##
+##        apply_end_body = """
+##    STATE source = states[lhs];
+##    states[lhs] = states[states.length - 1];
+##    states.pop();
+##
+##	pr_remove(pr, source);
+##        """
+##        self.contract.add_function(Function("apply_end", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs","uint256") ], apply_end_body, ""))
+##
+## 
+##        apply_send_receive_body = """
+##    STATE source = states[lhs];
+##
+##    states[lhs] = rhs;
+##
+##	// remove all the alternatives from the prune relation
+##	STATE[] memory to_prune = pr.to_prune[source];	        
+##	for (uint idx=0; idx<to_prune.length; idx++) {
+##		pr_remove(pr, to_prune[idx]);
+##		states_arr_remove(states, to_prune[idx]);
+##	}
+##	// remove also the source state from the prune relation
+##	pr_remove(pr, source);
+##        """
+##        self.contract.add_function(Function("apply_send_receive", [Variable("states", "STATE[] storage"), Variable("pr", "IRel storage"), Variable("lhs","uint256"), Variable("rhs", "STATE")], apply_send_receive_body, ""))
+##
+##
+##        a_to_s_parts = [ f"if (a == ACTION.{ k }) {{ return '{v}'; }}" for k,v in self._actions.items() ]
+##        action_to_string_body = " else ".join(a_to_s_parts) + " else return '??';"
+##
+##        self.contract.add_function(Function("action_to_string", [Variable("a","ACTION")], action_to_string_body, "pure returns (string memory)"))
+##
+##        p_to_s_parts = [ f"if (p == ACTOR.{ p }) {{ return '{p}'; }}" for p in self._participants ] 
+##        participant_to_string_body = " else ".join(p_to_s_parts) + " else return '??';"
+##        self.contract.add_function(Function("participant_to_string", [Variable("p","ACTOR")], participant_to_string_body, "pure returns (string memory)"))
+##
+##        
+##        event_to_string_body = f"""
+##            string memory initiator = participant_to_string(t.initiator);
+##            string memory action = action_to_string(t.action);
+##            string memory target = participant_to_string(t.target);
+##
+##            return string(abi.encodePacked(initiator, action, target));
+##
+##        """
+##        self.contract.add_function(Function("event_to_string", [Variable("t", "Event memory")], event_to_string_body, "pure returns (string memory)"))
+##
+##        task_arr_to_string_body = """
+##    string[] memory result = new string[](ar.length);
+##    for (uint idx=0; idx<ar.length; idx++) {
+##        Event memory t = ar[idx];
+##        
+##        //if (idx > 0) {
+##        //    result = string(abi.encodePacked(result, ", "));
+##        //}
+##
+##        //result = string(abi.encodePacked(result, event_to_string(t)));
+##        result[idx] = event_to_string(t);
+##    }
+##
+##    return result;
+##        """
+##        self.contract.add_function(Function("task_arr_to_string", [Variable("ar", "Event[] memory")], task_arr_to_string_body, "pure returns (string[] memory)"))
+##
+##
 
     def create_contracts(self):
 
@@ -1639,20 +1677,22 @@ class MPSTSmartContractGenerator:
 
         return self.contract   
 
-
-    def create_structs(self):
-
-        self.contract.add_struct(Struct("Task", [ ("initiator", "PARTICIPANTS"), ("action", "ACTIONS"), ("target", "PARTICIPANTS")  ]))
-        self.contract.add_struct(Struct("PruneRelation", [ ("keys", "STATES[]"), ("to_prune", "mapping(STATES => STATES[])")  ]))
-
-
+##
+##    def create_structs(self):
+##
+##        #self.contract.add_struct(Struct("Task", [ ("initiator", "ACTOR"), ("action", "ACTION"), ("target", "ACTOR")  ]))
+##        self.contract.add_struct(Struct("Event", [ ("initiator", "ACTOR"), ("action", "ACTION"), ("target", "ACTOR"), ("label", "MSG")  ]))
+##        self.contract.add_struct(Struct("IRel", [ ("pairs", "mapping(STATE => bool)"), ("to_prune", "mapping(STATE => STATE[])")  ]))
+##
+##
     def create_enums(self):
 
         #breakpoint()
         states = sorted(map(str, self._gt.state_vars)) # [ "a", "b", "c" ]
-        self.contract.add_enum(Enum("STATES", states, ", "))
+        self.contract.add_enum(Enum("STATE", sorted(states))) #, ", "))
 
-        self.contract.add_enum(Enum("ACTIONS", self._actions.keys()))
-        self.contract.add_enum(Enum("PARTICIPANTS", sorted(self._participants)))
+        #self.contract.add_enum(Enum("ACTION", self._actions.keys()))
+        self.contract.add_enum(Enum("ACTOR", sorted(self._participants)))
+        self.contract.add_enum(Enum("MSG", sorted(self._messages)))
 
 
