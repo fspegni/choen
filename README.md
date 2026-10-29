@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1439013234.svg)](https://doi.org/10.5281/zenodo.23784785)
+
 This repository contains a blockchain-based Choreography Enforcer. The application takes as input a multiparty session type or a BPMN 2.0 choreography diagram, and synthesize a Solidity smart contract that act as an enforcer of actors trying to implement the choreography in their production processes.
 
 The tool is still a prototype. The current stable version is based on a comand-line interface (CLI) where the user inputs the simulated events and observes whether the enforcer allows such events or not (perhaps they will be delayed, or postponed indefinitely). A REST API interface allows to integrate ChoEn with third party apps.
