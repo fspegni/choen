@@ -66,6 +66,10 @@ In order to configure Sepolia we suggest to follow these steps using online tuto
 - configure an account on MetaMask
 - add Sepolia testnests on MetaMask
 - use a Sepolia-faucet to load some Sepolia-ETH and start deploying/transactiong (e.g. [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia), [here](https://sepolia-faucet.pk910.de/))
+- enter [http://localhost:8000/admin/engine/configuration/](http://localhost:8000/admin/engine/configuration/) to create a new configuration, saving the RPC endpoing and chain-id for Sepolia together with address and private key)
+- execute the experiments changing the name of your `<bc_config>` to match the one given at the previous step
+
+## Cleanup
 
 # Some details
 
