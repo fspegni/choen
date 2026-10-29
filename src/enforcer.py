@@ -235,14 +235,18 @@ class CmdInit(UICommand):
             else:
                 print(f"Choreography {name} already exists ...")
 
-        for filename in os.listdir(os.path.join(settings.DATA_ROOT, "MPST")):
-            name = filename.split(".")[0] # remove the final dot extension
-            filepath = Path(settings.DATA_ROOT, "MPST", filename)
+        mpst_dir = Path(settings.DATA_ROOT, "MPST")
+        for filepath in mpst_dir.iterdir():
+            if not filepath.is_file():
+                print(f"Skip directory: {filepath} ...")
+                continue
+        
             #breakpoint()
+            filename = filepath.name
+            name = filepath.stem  # filename without the final extension
             attribs = {
                 "name": name,
-                #"resource": os.path.join("BPMN", filename), #os.path.join(settings.MEDIA_ROOT, filename),
-                "resource": File(filepath.open("rb"), name=filename)
+                "resource": File(filepath.open("rb"), name=filename),
             }
             
             c, created = MPST.objects.get_or_create(name=name, defaults=attribs)
@@ -328,20 +332,34 @@ class CmdStep(UICommand):
 
         script_len = len(the_script)
 
+        #breakpoint()
         while script_position < script_len and (num_steps is None or num_steps > 0):
 
             line = the_script[script_position].strip()
-            if line[0] == "#":
+            script_position = script_position + 1
+            self.ui._model.set_object("script_position", script_position)
+    
+            if not line or line[0] == "#":
                 # this is a comment
                 continue
             try: 
-                ri.append_input(line)            
+                ri.append_input(line)   
                 out = ri.enforcer.process_input(line)
                 if out:
                     ri.append_output(out)
-                script_position = script_position + 1
+                else:
+                    # TODO remove this
+                    #breakpoint()
+                    pass
+
+                while True:
+                    out1 = ri.enforcer.process_check()
+                    if out1:
+                        ri.append_output(out1)
+                    else:
+                        break            
+ 
                 num_steps = num_steps - 1 if num_steps is not None else None
-                self.ui._model.set_object("script_position", script_position)
 
             except Exception as err:
                 print(f"Error executing script: {err}")
@@ -780,6 +798,40 @@ class CmdBuildContracts(UICommand):
         c = scg.createSmartContract()
         c.compile(debug=debug)
 
+class CmdUnloadMPST(UICommand):
+
+    _description = "Unload a Multi-Party Session Type from database"
+
+    def execute(self, name=None, *args, **kwargs):
+
+        if not name:
+            print("Please, specify a MPST to unload. Available MPSTs:")
+            available = "\n".join(map(lambda c: f"* {c.name}", MPST.objects.all()))
+            print(available)
+            return
+
+        #breakpoint()
+        try:
+            candidates = MPST.objects.filter(name__icontains=name)
+
+            if len(candidates) == 0:
+                raise MPST.DoesNotExist(f"Cannot find any MPST whose name contains '{name}'")
+            elif len(candidates) > 1:
+                found  = ", ".join(list(map(lambda curr: curr.name, candidates)))
+                raise ValueError(f"Too many MPST have name containing '{name}': {found}")
+
+            #c : MPST = MPST.objects.get(name=name)
+            c = candidates[0]
+            confirm = self.ui.prompt(f"Are you sure you want to delete MPST {c.name}? [yN]")
+            if confirm in ["y","Y"]:
+                #breakpoint()
+                c.delete()
+                self.ui._model.unset_object("mpst")
+                self.ui._model.unset_object("lts")
+                print(f"MPST '{c.name}' unloaded ...")
+        except Exception as e:
+            print(f"Error fetching MPST: {e}")
+
  
 class CmdLoadMPST(UICommand):
 
@@ -795,13 +847,26 @@ class CmdLoadMPST(UICommand):
 
         #breakpoint()
         try:
-            c : MPST = MPST.objects.get(name=name)
+            candidates = MPST.objects.filter(name__icontains=name)
+
+            #breakpoint()
+            if len(candidates) == 0:
+                raise MPST.DoesNotExist(f"Cannot find any MPST whose name contains '{name}'")
+            elif len(candidates) > 1:
+                found  = ", ".join(list(map(lambda curr: curr.name, candidates)))
+                raise ValueError(f"Too many MPST have name containing '{name}': {found}")
+
+            #c : MPST = MPST.objects.get(name=name)
+            c = candidates[0]
             self.ui._model.set_object("mpst", c)
             self.ui._model.set_object("lts", c.root)
-            print(f"MPST '{name}' loaded ...")
+            print(f"MPST '{c.name}' loaded ...")
         except json.decoder.JSONDecodeError as e:
             print(f"Ill-formed MPST: {e}")
-        except Exception as e: # MPST.DoesNotExist as e:
+        except ValueError as e:
+            print(f"Error fetching MPST: {e}")
+        #except Exception as e: # MPST.DoesNotExist as e:
+        except MPST.DoesNotExist as e:
             #breakpoint()
             if os.path.exists(name):
                 if os.path.isfile(name):
@@ -836,6 +901,39 @@ class CmdLoadMPST(UICommand):
         else:
             print(f"OK MPST {mpst_name} : already exists and has been loaded ...")
  
+class CmdUnloadChoreography(UICommand):
+
+    _description = "Unload a BPMN choreography from database"
+
+    def execute(self, name=None, *args, **kwargs):
+
+        if not name:
+            print("Please, specify a BPMN choreography to unload. Available choreographies:")
+            available = "\n".join(map(lambda c: f"* {c.name}", Choreography.objects.all()))
+            print(available)
+            return
+
+        #breakpoint()
+        try:
+            candidates = Choreography.objects.filter(name__icontains=name)
+
+            if len(candidates) == 0:
+                raise Choreography.DoesNotExist(f"Cannot find any BPMN choreography whose name contains '{name}'")
+            elif len(candidates) > 1:
+                found  = ", ".join(list(map(lambda curr: curr.name, candidates)))
+                raise ValueError(f"Too many BPMN choreographies have name containing '{name}': {found}")
+
+            c = candidates[0]
+            confirm = self.ui.prompt(f"Are you sure you want to delete BPMN choreography {c.name}? [yN]")
+            if confirm in ["y","Y"]:
+                c.delete()
+                self.ui._model.unset_object("choreography")
+                self.ui._model.unset_object("lts")
+                print(f"Choreography '{c.name}' unloaded ...")
+        except Exception as e:
+            print(f"Error fetching BPMN choreography: {e}")
+
+
 
 class CmdLoadChoreography(UICommand):
 
@@ -1187,54 +1285,67 @@ class CmdRandom(UICommand):
 
     _description = "Generate random input and pass it to the currently loaded running instance"
 
+    DEFAULT_COIN_WEIGHT = 0.8
+
     def execute(self, *args, **kwargs):
 
-        nfa = self.ui._model.get_object("nfa")
-        if not nfa:
-            raise UICommand.Error("Cannot continue without a loaded NFA")
+        #breakpoint()
+        lts = self.ui._model.get_object("lts")
+        if not lts:
+            raise UICommand.Error("Cannot continue without a loaded LTS")
 
         ri = self.ui._model.get_object("ri")
 
         if not ri:
             raise UICommand.Error("Cannot continue without a running instance")
 
-        end = args[0].strip() if len(args) > 0 else "1"
-
-        if end == "end":
-            while not nfa.is_final(ri.engine.get_curr_states()):
-                self._emit_random_event(nfa, ri)
-        elif end.isdigit():
-
-            for i in range(int(end)):
-                self._emit_random_event(nfa, ri)
-        else:
-            raise UICommand.Error(f"Ill-formed argument: {args[0]}. Expected: end | <positive_integer>")
-    
-    def _emit_random_event(self, nfa : NFA, ri : RunningInstance):
-
         #breakpoint()
-        coin = random.randint(0, 100)
-        if coin < 5:
+        end = args[0].strip() if len(args) > 0 else "1"
+        weight = float(args[1].strip()) if len(args) > 1 else None
 
-            # 5% of the times, generate a completely random event
+        try:
+            if end == "end":
+                while not lts.is_final(ri.engine.get_curr_states()):
+                    self._emit_random_event(lts, ri, weight=weight)
+            elif end.isdigit():
+    
+                for i in range(int(end)):
+                    self._emit_random_event(lts, ri, weight=weight)
+            else:
+                raise UICommand.Error(f"Ill-formed argument: {args[0]}. Expected: end | <positive_integer>")
+        except Exception as err:
+            print(err)
+    
+    def _emit_random_event(self, lts, ri : RunningInstance, weight=None):
 
-            actor = random.choice(list(nfa.agents))  #random_string(10)
-            msg = random.choice(list(nfa.messages)) #random_string(10)
-            action = random.choice(["?","!"])
-            random_event = f"{actor}{action}{msg}"
 
-        elif coin < 55:
-        
-            # 50% of the times, generate a random event among those accepted in the current states
-            enabled_transitions = nfa.enabled_transitions(ri.engine.get_curr_states()) #ri.engine.curr_states)
+        weight = weight or self.DEFAULT_COIN_WEIGHT
 
-            random_event = random.choice(enabled_transitions).label
+        coin = random.random()
+        if coin > weight: #< 15:
 
+            random_event = random.choice(list(lts.events))
+            
         else:
 
-            # 45% of the times, pick an actual event of the nfa
+            event_list = list(lts.events)
 
-            random_event = random.choice(list(nfa.events))
+            if getattr(ri, "engineonchainmpst"):   
+                event_list = [] 
+                for p in lts.participants:
+                    event_list.extend(ri.engineonchainmpst.get_acceptable_events(participant=p))
+            elif getattr(ri, "engineoffchainmpst"):
+                event_list = [] 
+                for p in lts.participants:
+                    event_list.extend(ri.engineonchainmpst.get_acceptable_events(participant=p))
+
+            print(f"Acceptable event list: {event_list} ...")
+    
+            if not event_list:
+                raise ValueError("Unexpected situation: no acceptable events at this stage")
+    
+            random_event = random.choice(list(set(event_list)))
+            print(f"Chosen event: {random_event} ...")
     
         ri.append_input(random_event)
         out = ri.enforcer.process_input(random_event)
@@ -1305,7 +1416,9 @@ class CmdDump(UICommand):
 
                 if self.ui._enforcer is not None:
                     #is_current_state = lambda s: self.ui._enforcer.engine.is_state_current(s)
-                    is_current_state = lambda states: self.ui._enforcer.engine.some_state_is_current(states)
+                    curr_states = self.ui._enforcer.engine.get_curr_states()
+                    #is_current_state = lambda states: self.ui._enforcer.engine.some_state_is_current(states)
+                    is_current_state = lambda states: len(set(states).intersection(curr_states)) > 0
 
 ##                if self.ui._enforcer is None:
 ##                    print("You must start the enforcer, before dumping its transitions")
@@ -1358,8 +1471,20 @@ class CmdDump(UICommand):
 
                 bitems = self.ui._enforcer.engine.get_buffer_items() or []
                 #for actor,message,precondition,knowledge in bitems:
-                for precondition, (actor, action, message), knowledge in bitems:
-                    msg = f"* {precondition or 'T'} -> ({actor},{action},{message})({knowledge or 'nil'})"
+                #breakpoint()
+                #for precondition, (actor, action, message), knowledge in bitems:
+                for curr in bitems:
+                    if len(curr) == 3:  
+                        # TODO old format, to be updated
+                        precondition, (actor, action, message), knowledge = curr
+                        target = None
+                    elif len(curr) == 4:
+                        # TODO new format, to be tested
+                        actor, action, target, message = curr
+                        precondition = None
+                        knowledge = None
+
+                    msg = f"* {precondition or 'T'} -> ({actor},{action},{target},{message})({knowledge or 'nil'})"
                     print(msg)
             
             elif args[0] == "rei":
@@ -1456,13 +1581,15 @@ class CmdDump(UICommand):
     
                 ri = self.ui._model.get_object("ri")
                 in_events = " ".join(ri.input_events) if ri and ri.input_events else "N/N"
-                print(in_events)
+                num_events = len(ri.input_events) if ri and ri.input_events else 0
+                print(f"{num_events}: {in_events}")
 
             elif args[0] == "output":
 
                 ri = self.ui._model.get_object("ri")
                 out_events = " ".join(map(str, ri.output_events)) if ri and ri.output_events else "N/N"
-                print(out_events)
+                num_events = len(ri.output_events) if ri and ri.output_events else 0
+                print(f"{num_events}: {out_events}")
 
             elif args[0] == "local_types":
 
@@ -1482,8 +1609,18 @@ class CmdDump(UICommand):
                     current_states = ""
     
                     if ri and getattr(ri, "engineoffchainmpst", None):
-                        is_current_state = lambda states: ri.engineoffchainmpst.some_state_is_current(states, p)
-                        current_states = ",".join(map(str, ri.engineoffchainmpst.curr_states[p]))
+                        curr_states = set(ri.engineoffchainmpst.get_curr_states(p))
+                        #is_current_state = lambda states: ri.engineoffchainmpst.some_state_is_current(states, p)
+                        is_current_state = lambda states: len(curr_states.intersection(states)) > 0
+                        #current_states = ",".join(map(str, ri.engineoffchainmpst.curr_states[p]))
+                        current_states = ",".join(map(str, curr_states))
+                    elif ri and getattr(ri, "engineonchainmpst", None):
+                        #breakpoint()
+                        curr_states = set(ri.engineonchainmpst.get_curr_states(p))
+                        #is_current_state = lambda states: ri.engineonchainmpst.some_state_is_current(states, p)
+                        is_current_state = lambda states: len(curr_states.intersection(states)) > 0
+                        #current_states = ",".join(map(str, ri.engineonchainmpst.curr_states[p]))
+                        current_states = ",".join(curr_states)
     
                     print(f"{p}:")
                     print(f"    initial: {lt.initial}")
@@ -1690,7 +1827,9 @@ class UI:
             "rm"    : CmdRemove(self), #self.cmd_remove,
 #            "load"  : CmdLoadChoreography(self), #self.cmd_load,
             "open": CmdOpenFile(self),
+            "unload_mpst": CmdUnloadMPST(self),
             "load_mpst"  : CmdLoadMPST(self), #self.cmd_load, # FS redundant but more familiar name
+            "unload_choreography": CmdUnloadChoreography(self),
             "load_choreography"  : CmdLoadChoreography(self), #self.cmd_load, # FS redundant but more familiar name
             "load_instance": CmdLoadInstance(self), 
             "log" : CmdLogOnOff(self), # self.cmd_start,

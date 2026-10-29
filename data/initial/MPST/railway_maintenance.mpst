@@ -1,0 +1,39 @@
+{
+    "type": "GlobalType",
+    "initial": "x0",
+    "transforms": [
+        { "lhs": "x0", "rhs": { "t": "Fork", "a": [ "x1", "x2" ] } },
+
+        { "lhs": "x1", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "WCS", "receiver": "MA2", "label": "weekProg2" }, "x3" ] } },
+        { "lhs": "x3", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "MA2", "receiver": "WCS", "label": "ack2" }, "x5" ] } },
+        { "lhs": "x2", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "WCS", "receiver": "MA1", "label": "weekProg1" }, "x4" ] } },
+        { "lhs": "x4", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "MA1", "receiver": "WCS", "label": "ack1" }, "x6" ] } },
+
+        { "lhs": { "t": "Join", "a": [ "x5", "x6" ] }, "rhs": "x7" },
+
+        { "lhs": "x7", "rhs": { "t": "Choice", "a": [ "x8", "x9" ] } },
+
+        { "lhs": "x8", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "MA1", "receiver": "WCS", "label": "requirements" }, "x10" ] } },
+        { "lhs": "x10", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "WCS", "receiver": "MA1", "label": "updatedProg" }, "x11" ] } },
+        { "lhs": "x11", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "MA1", "receiver": "WCS", "label": "ack3" }, "x12" ] } },
+
+        { "lhs": { "t": "Merge", "a": [ "x12", "x9" ] }, "rhs": "x13" },
+
+        { "lhs": "x13", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "WCS", "receiver": "Team", "label": "briefing" }, "x14" ] } },
+
+        { "lhs": "x14", "rhs": { "t": "Choice", "a": [ "x15", "x16" ] } },
+
+        { "lhs": "x16", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "Team", "receiver": "WCS", "label": "varReq" }, "x17" ] } },
+        { "lhs": "x17", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "WCS", "receiver": "AW", "label": "changelog" }, "x18" ] } },
+        { "lhs": "x18", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "AW", "receiver": "CSS", "label": "varDescr" }, "x19" ] } },
+
+        { "lhs": { "t": "Merge", "a": [ "x15", "x19" ] }, "rhs": "x20" },
+
+        { "lhs": "x20", "rhs": { "t": "Fork", "a": [ "x21", "x22" ] } },
+
+        { "lhs": "x21", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "MA1", "receiver": "WCS", "label": "dailySum1" }, "x23" ] } },
+        { "lhs": "x22", "rhs": { "t": "Concat", "a": [ { "t": "MsgExc", "sender": "MA2", "receiver": "WCS", "label": "dailySum2" }, "x24" ] } },
+
+        { "lhs": { "t": "Join", "a": [ "x23", "x24" ] }, "rhs": "x25" }
+    ]
+}

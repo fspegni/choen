@@ -187,6 +187,11 @@ CORS_ALLOW_ALL_ORIGINS = True
 #    "http://127.0.0.1:9013",
 #]
 
+DEFAULT_GAS_LIMIT = 4_000_000
+ENABLE_GAS_ESTIMATION = True #False # TODO at the moment disable gas estimation, it causes some exceptions -FS
+
 GAS_MULTIPLIER = 1.1
 GAS_PRIORITY_FEE_MULTIPLIER = 6 # 1.5
 GAS_MAX_FEE_MULTIPLIER = 2 #1.5
+
+DEFAULT_RETRIES = 2 

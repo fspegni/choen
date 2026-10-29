@@ -14,12 +14,12 @@
   <bpmn2:message id="Message_03y8rni" name="Problem questions" />
   <bpmn2:message id="Message_1mzry9l" name="Problem" />
   <bpmn2:choreography id="Choreography" name="Incident_Management">
-    <bpmn2:participant id="Participant_0gebno2" name="Key Account Manager" />
-    <bpmn2:participant id="Participant_0m46aut" name="Key Account Manager" />
-    <bpmn2:participant id="Participant_0g14uky" name="VIP Customer" />
-    <bpmn2:participant id="Participant_088bhyx" name="1st level support agent" />
-    <bpmn2:participant id="Participant_01yiw6q" name="2nd level support agent" />
-    <bpmn2:participant id="Participant_0jz02l5" name="Software Developer" />
+    <bpmn2:participant id="Participant_0gebno2" name="Key_Account_Manager" />
+    <bpmn2:participant id="Participant_0m46aut" name="Key_Account_Manager" />
+    <bpmn2:participant id="Participant_0g14uky" name="VIP_Customer" />
+    <bpmn2:participant id="Participant_088bhyx" name="1st_level_support_agent" />
+    <bpmn2:participant id="Participant_01yiw6q" name="2nd_level_support_agent" />
+    <bpmn2:participant id="Participant_0jz02l5" name="Software_Developer" />
     <bpmn2:messageFlow id="MessageFlow_1gtm0dl" sourceRef="Participant_0g14uky" targetRef="Participant_0m46aut" messageRef="Message_1g3ca1o" />
     <bpmn2:messageFlow id="MessageFlow_1qr0i22" sourceRef="Participant_01yiw6q" targetRef="Participant_088bhyx" messageRef="Message_093q2rv" />
     <bpmn2:messageFlow id="MessageFlow_0hb4ba4" sourceRef="Participant_088bhyx" targetRef="Participant_0m46aut" messageRef="Message_1q5658v" />
@@ -147,7 +147,7 @@
     <bpmn2:sequenceFlow id="Flow_094tat0" sourceRef="Gateway_16wtekl" targetRef="ChoreographyTask_1bg9auk" />
     <bpmn2:sequenceFlow id="Flow_1a3kqv1" sourceRef="ChoreographyTask_1jx8tc9" targetRef="Gateway_18zs8ej" />
     <bpmn2:sequenceFlow id="Flow_1j8bvvf" sourceRef="Gateway_10nhy94" targetRef="ChoreographyTask_1ac3642" />
-    <bpmn2:choreographyTask id="ChoreographyTask_1366gbd" name="Key Account Manager can handle issue" initiatingParticipantRef="Participant_0m46aut">
+    <bpmn2:choreographyTask id="ChoreographyTask_1366gbd" name="Key_Account_Manager can handle issue" initiatingParticipantRef="Participant_0m46aut">
       <bpmn2:incoming>Flow_1lgmcwp</bpmn2:incoming>
       <bpmn2:outgoing>Flow_14xtdq3</bpmn2:outgoing>
       <bpmn2:participantRef>Participant_0g14uky</bpmn2:participantRef>

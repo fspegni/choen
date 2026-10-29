@@ -1,0 +1,70 @@
+{
+  "type": "GlobalType",
+  "initial": "x0",
+  "transforms": [
+    { "lhs": "x0", "rhs": "x1" },
+    { "lhs": { "t": "Merge", "a": ["x1", "x8"] }, "rhs": "x2" },
+    {
+      "lhs": "x2",
+      "rhs": {
+        "t": "Concat",
+        "a": [
+          { "t": "MsgExc", "sender": "Customer", "receiver": "Coffee_machine", "label": "products" },
+          "x3"
+        ]
+      }
+    },
+    {
+      "lhs": "x3",
+      "rhs": {
+        "t": "Concat",
+        "a": [
+          { "t": "MsgExc", "sender": "Coffee_machine", "receiver": "Customer", "label": "selection" },
+          "x4"
+        ]
+      }
+    },
+    {
+      "lhs": "x4",
+      "rhs": {
+        "t": "Concat",
+        "a": [
+          { "t": "MsgExc", "sender": "Customer", "receiver": "Coffee_machine", "label": "cost" },
+          "x5"
+        ]
+      }
+    },
+    {
+      "lhs": "x5",
+      "rhs": {
+        "t": "Concat",
+        "a": [
+          { "t": "MsgExc", "sender": "Coffee_machine", "receiver": "Customer", "label": "payment1" },
+          "x6"
+        ]
+      }
+    },
+    { "lhs": "x6", "rhs": { "t": "Choice", "a": ["x7", "x9"] } },
+    {
+      "lhs": "x7",
+      "rhs": {
+        "t": "Concat",
+        "a": [
+          { "t": "MsgExc", "sender": "Coffee_machine", "receiver": "Customer", "label": "error" },
+          "x8"
+        ]
+      }
+    },
+    {
+      "lhs": "x9",
+      "rhs": {
+        "t": "Concat",
+        "a": [
+          { "t": "MsgExc", "sender": "Coffee_machine", "receiver": "Customer", "label": "product" },
+          "x10"
+        ]
+      }
+    },
+    { "lhs": "x10", "rhs": "end" }
+  ]
+}

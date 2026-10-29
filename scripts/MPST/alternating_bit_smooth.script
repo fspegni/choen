@@ -1,0 +1,14 @@
+Alice!Msg1->Bob
+Bob?Msg1<-Alice
+Alice!Msg2->Bob
+Bob?Msg2<-Alice
+Bob!Ack1->Alice
+Alice?Ack1<-Bob
+Alice!Msg1->Bob
+Bob?Msg1<-Alice
+Bob!Ack2->Alice
+Alice?Ack2<-Bob
+Alice!Msg2->Bob
+Bob?Msg2<-Alice
+Bob!Ack1->Alice
+Alice?Ack1<-Bob

@@ -438,8 +438,9 @@ class SmartContract(Compileable):
         # information populated after the compilation
         self._compiled_sol = None
 
+
     def deploy(self, name, blockchain_configuration):
-        breakpoint()
+        #breakpoint()
         sc_abi = self.get_abi(name)
         sc_bytecode = self.get_bytecode(name)
         sc = Contract.objects.create(

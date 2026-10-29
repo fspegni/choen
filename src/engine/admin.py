@@ -55,7 +55,7 @@ class IsOnChainFilter(SimpleListFilter):
 @admin.register(RunningInstance)
 class RunningInstanceAdmin(DjangoObjectActions, admin.ModelAdmin):
 
-    list_display = [ "id", "label", "choreography", "running", "is_onchain", "created_at", ]
+    list_display = [ "id", "label", "choreography", "mpst", "blockchain_configuration", "running", "is_onchain", "created_at", ]
     list_filter = [ "blockchain_configuration", "running", IsOnChainFilter, "created_at", ]
     search_fields = [ "id", "label", "choreography__name", "choreography__resource" ]
 
@@ -146,7 +146,7 @@ class ContractAdmin(admin.ModelAdmin):
     search_fields = [ "label", "contract_address", "running_instance__configuration__address", ]
 
     list_filter = [ "label", "deployed_at" ] 
-    readonly_fields = [ "running_instance", "choreography", "contract_address", "bytecode_size", "deployed_at" ]
+    readonly_fields = [ "running_instance", "choreography", "contract_address", "bytecode_size", "bytecode_hash", "deployed_at" ]
 
     def bytecode_size(self, obj: Contract):
         return obj.bytecode_size
@@ -250,9 +250,9 @@ class EngineHasContractInline(admin.TabularInline):
 @admin.register(EngineOnChainMPST)
 class EngineOnChainMPST(admin.ModelAdmin):
     
-    list_display = [ "running_instance", "running_instance__choreography", "created_at", ] # "cost_gas", "cost_wei", "cost_eth", ] # "overhead_build", "overhead_execution", "overhead_total" ]
+    list_display = [ "running_instance", "running_instance__mpst", "blockchain_configuration", "created_at", ] # "cost_gas", "cost_wei", "cost_eth", ] # "overhead_build", "overhead_execution", "overhead_total" ]
 
-    list_filter = [ "created_at", "blockchain_configuration" ]
+    list_filter = [ "created_at", "blockchain_configuration", "running_instance__mpst" ]
     #readonly_fields = [ "contract_enforcer_size", "contracts_size", "created_at", "curr_states", "buffer", "cost_gas", "cost_wei", "cost_eth", ] # "overhead_build", "overhead_execution", "overhead_total", ]
 
     inlines = [ EngineHasContractInline ]

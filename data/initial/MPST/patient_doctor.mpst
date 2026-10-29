@@ -1,0 +1,96 @@
+{
+    "type": "GlobalType",
+    "initial": "x0",
+    "transforms": [
+        {
+            "lhs": "x0",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Patient",
+                        "receiver": "Doctor",
+                        "label": "AppointmentRequest"
+                    },
+                    "x1"
+                ]
+            }
+        },
+        {
+            "lhs": "x1",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Doctor",
+                        "receiver": "Patient",
+                        "label": "AppointmentConfirmation"
+                    },
+                    "x2"
+                ]
+            }
+        },
+        {
+            "lhs": "x2",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Patient",
+                        "receiver": "Doctor",
+                        "label": "SymptomsList"
+                    },
+                    "x3"
+                ]
+            }
+        },
+        {
+            "lhs": "x3",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Doctor",
+                        "receiver": "Patient",
+                        "label": "Prescription"
+                    },
+                    "x4"
+                ]
+            }
+        },
+        {
+            "lhs": "x4",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Patient",
+                        "receiver": "Pharmacy",
+                        "label": "MedicineRequest"
+                    },
+                    "x5"
+                ]
+            }
+        },
+        {
+            "lhs": "x5",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Pharmacy",
+                        "receiver": "Patient",
+                        "label": "MedicineDelivery"
+                    },
+                    "x6"
+                ]
+            }
+        }
+    ]
+}

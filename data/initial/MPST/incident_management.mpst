@@ -1,0 +1,263 @@
+
+{
+    "type": "GlobalType",
+    "initial": "x0",
+    "transforms": [
+        {
+            "lhs": "x0",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "VIP_Customer",
+                        "receiver": "Key_Account_Manager",
+                        "label": "Problem"
+                    },
+                    "x1"
+                ]
+            }
+        },
+        {
+            "lhs": "x1",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Key_Account_Manager",
+                        "receiver": "VIP_Customer",
+                        "label": "ProblemQuestions"
+                    },
+                    "x2"
+                ]
+            }
+        },
+        {
+            "lhs": "x2",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "VIP_Customer",
+                        "receiver": "Key_Account_Manager",
+                        "label": "ProblemDetails"
+                    },
+                    "x3"
+                ]
+            }
+        },
+        {
+            "lhs": "x3",
+            "rhs": {
+                "t": "Choice",
+                "a": [
+                    "x4",
+                    "x5"
+                ]
+            }
+        },
+        {
+            "lhs": "x4",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Key_Account_Manager",
+                        "receiver": "VIP_Customer",
+                        "label": "CanHandleIssue"
+                    },
+                    "x6"
+                ]
+            }
+        },
+        {
+            "lhs": "x5",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Key_Account_Manager",
+                        "receiver": "_1st_level_support_agent",
+                        "label": "Issue"
+                    },
+                    "x7"
+                ]
+            }
+        },
+        {
+            "lhs": "x7",
+            "rhs": {
+                "t": "Choice",
+                "a": [
+                    "x8",
+                    "x9"
+                ]
+            }
+        },
+        {
+            "lhs": "x8",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "_1st_level_support_agent",
+                        "receiver": "Key_Account_Manager",
+                        "label": "ResolvedIssue"
+                    },
+                    "x10"
+                ]
+            }
+        },
+        {
+            "lhs": "x9",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "_1st_level_support_agent",
+                        "receiver": "_2nd_level_support_agent",
+                        "label": "Issue"
+                    },
+                    "x11"
+                ]
+            }
+        },
+        {
+            "lhs": "x11",
+            "rhs": {
+                "t": "Choice",
+                "a": [
+                    "x12",
+                    "x13"
+                ]
+            }
+        },
+        {
+            "lhs": "x12",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "_2nd_level_support_agent",
+                        "receiver": "_1st_level_support_agent",
+                        "label": "ResolvedIssue"
+                    },
+                    "x14"
+                ]
+            }
+        },
+        {
+            "lhs": "x13",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "_2nd_level_support_agent",
+                        "receiver": "Software_Developer",
+                        "label": "Issue"
+                    },
+                    "x15"
+                ]
+            }
+        },
+        {
+            "lhs": "x15",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Software_Developer",
+                        "receiver": "_2nd_level_support_agent",
+                        "label": "Feedback"
+                    },
+                    "x16"
+                ]
+            }
+        },
+        {
+            "lhs": {
+                "t": "Merge",
+                "a": [
+                    "x14",
+                    "x16"
+                ]
+            },
+            "rhs": "x17"
+        },
+        {
+            "lhs": "x17",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "_2nd_level_support_agent",
+                        "receiver": "_1st_level_support_agent",
+                        "label": "Feedback"
+                    },
+                    "x18"
+                ]
+            }
+        },
+        {
+            "lhs": {
+                "t": "Merge",
+                "a": [
+                    "x10",
+                    "x18"
+                ]
+            },
+            "rhs": "x19"
+        },
+        {
+            "lhs": "x19",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "_1st_level_support_agent",
+                        "receiver": "Key_Account_Manager",
+                        "label": "Feedback"
+                    },
+                    "x20"
+                ]
+            }
+        },
+        {
+            "lhs": {
+                "t": "Merge",
+                "a": [
+                    "x6",
+                    "x20"
+                ]
+            },
+            "rhs": "x21"
+        },
+        {
+            "lhs": "x21",
+            "rhs": {
+                "t": "Concat",
+                "a": [
+                    {
+                        "t": "MsgExc",
+                        "sender": "Key_Account_Manager",
+                        "receiver": "VIP_Customer",
+                        "label": "Solution"
+                    },
+                    "x22"
+                ]
+            }
+        }
+    ]
+}
+

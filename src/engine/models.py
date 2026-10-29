@@ -8,6 +8,7 @@ from web3 import Web3, HTTPProvider
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import random
+import time
 
 from web3.exceptions import Web3RPCError 
 #from web3.middleware import SignAndSendRawMiddlewareBuilder
@@ -58,6 +59,7 @@ class Configuration(models.Model):
     address = models.CharField(max_length=50, help_text=_("this is your wallet address; you can use Metamask or other tools to create one"), verbose_name=_("address"))
     private_key = models.CharField(max_length=500, help_text=_("this is supposed to be a secret; after saving the configuration, it will be hidden"), verbose_name=_("private key"))
 
+    #DEFAULT_RETRIES = 2
 
     class Meta:
         verbose_name = _("configuration")
@@ -84,7 +86,7 @@ class Configuration(models.Model):
         # setup a session with retries, to handle occasional disconnections or issues on the network stack
         session = requests.Session()
         retries = Retry(
-            total=5,
+            total=settings.DEFAULT_RETRIES,
             backoff_factor=0.5,          # 0.5, 1, 2, 4, 8s between retries
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["POST"],     # web3 calls are POST
@@ -109,6 +111,33 @@ class Configuration(models.Model):
         #w3.middleware_onion.add(sign_and_send_mw)
 
         return w3
+
+    def sync(self):
+        try:
+            while self.w3.eth.syncing:
+                print("**> Syncing...") #, w3.eth.syncing)
+                #breakpoint()
+        except Exception as e:
+            print("**> eth_syncing unsupported or failed:", e)
+            #breakpoint()
+
+
+        time.sleep(2) # extra time to allow blockchain to sync ... TODO refactor to avoid arbitrary sleep
+ 
+
+    def estimate_gas_limit(self, transaction):
+
+        if settings.ENABLE_GAS_ESTIMATION:
+            try:
+                gas_limit = self.w3.eth.estimate_gas(transaction)
+            except Exception as err:
+                print(f"Error estimating gas limit: {err}. Assuming default: {settings.DEFAULT_GAS_LIMIT}")
+                gas_limit = settings.DEFAULT_GAS_LIMIT
+        else:
+            gas_limit = settings.DEFAULT_GAS_LIMIT # FS- added to avoid timeout during estimate_gas ...
+    
+        return gas_limit
+
 
     def _sendTransaction(self, transaction): #callback=None):
 
@@ -158,7 +187,7 @@ class Configuration(models.Model):
         tx_receipt = None
         try:
             tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
-            print(f"Transaction validated. Receipt: {tx_receipt}")
+            print(f"Transaction validated. Receipt received ...") #: {tx_receipt}")
 
             tx.receipt = w3_to_json(tx_receipt)
             tx.receipt_hash = tx_receipt.transactionHash.hex()
@@ -177,6 +206,30 @@ class Configuration(models.Model):
 
         return tx, tx_receipt
 
+    def _get_events(self, w3_contract, tx_receipt):
+        
+        #breakpoint()
+        res = []
+        event_list = filter(lambda it: it["type"] == "event", w3_contract.abi)
+        for ev_desc in event_list:
+            events = getattr(w3_contract.events, ev_desc["name"]).process_receipt(tx_receipt)
+    
+            for curr in events:
+                #breakpoint()
+                parts = []
+                for key,value in sorted(curr["args"].items()):
+                    text = value
+                    if key:
+                        text = f"{key} => {value}"
+                    parts.append(text)
+
+                res.append(", ".join(parts))
+
+                #result = ", ".join(f"{key}=>{value}" for key, value in sorted(curr["args"].items()))
+                #res.append(result)
+            #res.extend(events)
+
+        return res
 
 
 class RunningInstance(models.Model):
@@ -185,11 +238,11 @@ class RunningInstance(models.Model):
 
     label = models.CharField(max_length=500, null=True, blank=True)
     choreography = models.ForeignKey(Choreography, null=True, blank=False, on_delete=models.DO_NOTHING)
-    mpst = models.ForeignKey(MPST, null=True, blank=False, on_delete=models.DO_NOTHING)
+    mpst = models.ForeignKey(MPST, null=True, blank=False, on_delete=models.SET_NULL) #on_delete=models.DO_NOTHING)
     running = models.BooleanField(default=False)
 
-    input_events = models.JSONField(default=[], verbose_name=_("input events"))
-    output_events = models.JSONField(default=[], verbose_name=_("output events"))
+    input_events = models.JSONField(default=list, verbose_name=_("input events"))
+    output_events = models.JSONField(default=list, verbose_name=_("output events"))
  
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the running instance has been created"))
 
@@ -201,8 +254,11 @@ class RunningInstance(models.Model):
     def engine(self):
         e_on = getattr(self, "engineonchain", None)
         e_off = getattr(self, "engineoffchain", None)
+        e_on_mpst = getattr(self, "engineonchainmpst", None)
+        e_off_mpst = getattr(self, "engineoffchainmpst", None)
 
-        return e_on or e_off
+
+        return e_on or e_off or e_on_mpst or e_off_mpst
 
     @property
     def execution_started(self):
@@ -274,8 +330,11 @@ class RunningInstance(models.Model):
         elif self.engine:   
             nfa = self.engine.nfa
         return nfa
-
         #return self._enforcer.engine.nfa if self._enforcer else None
+
+    @property
+    def global_type(self):
+        return self.mpst.root if self.mpst else None
 
     @property
     def enforcer_states(self):
@@ -419,9 +478,20 @@ class RunningInstance(models.Model):
 
     @property
     def stats(self):
+        #breakpoint()
         bc_configuration = self.blockchain_configuration.label if self.blockchain_configuration else None
 
-        lts = self.lts
+        #lts = self.lts
+ 
+        lts = None
+        if self.choreography:
+            lts = self.nfa
+        elif self.mpst:
+            lts = self.global_type
+
+        if not lts:
+            raise Exception("Cannot continue. No LTS found")       
+
         num_states = len(lts.states) if lts else None
         num_transitions = len(lts.transitions) if lts else None
         num_events = len(lts.events) if lts else None
@@ -506,7 +576,7 @@ class UnionFilter(Filter):
 
 class Engine:
 
-    RE_MESSAGE = "^([^!?]+)([!?])([^!?]+)$"
+    RE_MESSAGE = r"^([^!?]+)([!?])([^!?]+)$"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -672,7 +742,7 @@ class StateVarEncoder(DjangoJSONEncoder):
 
 class EngineOffChainMPST(Engine, models.Model):
 
-    RE_MESSAGE_MPST = "^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
+    RE_MESSAGE_MPST = r"^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
     curr_states = models.JSONField(default=list, encoder=StateVarEncoder, verbose_name=_("current states"))
@@ -685,7 +755,7 @@ class EngineOffChainMPST(Engine, models.Model):
 
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
-    stats = models.JSONField(default = [])
+    stats = models.JSONField(default=list)
 
     @staticmethod
     def create_engine(ri : RunningInstance, the_filter : Filter = None): 
@@ -710,6 +780,7 @@ class EngineOffChainMPST(Engine, models.Model):
 
         e.execution_started = timezone.now()
 
+        #breakpoint()
         e.process_check() # let the engine make progress as much as possible, without input
 
         e.save()
@@ -949,13 +1020,16 @@ class EngineOffChainMPST(Engine, models.Model):
     def get_all_states(self):
         return sorted(self._global_type.states)
 
-    def get_curr_states(self):
+    def get_curr_states(self, participant=None):
         curr_states = []
 
-        for actor, states in sorted(self.curr_states.items()):
-            for s in states:
-                curr_states.append(s)
-
+        if participant:
+            curr_states = self.curr_states[participant]
+        else:
+            for actor, states in sorted(self.curr_states.items()):
+                for s in states:
+                    curr_states.append(s)
+    
         return sorted(set(curr_states))
 
 
@@ -1009,7 +1083,7 @@ class EngineOffChain(Engine, models.Model):
 
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
-    stats = models.JSONField(default = [])
+    stats = models.JSONField(default=list)
 
     @staticmethod
     def create_engine(ri : RunningInstance, the_filter : Filter = None): 
@@ -1281,7 +1355,7 @@ class EngineOffChain(Engine, models.Model):
 
     def condition_rule_send_delayed(self, precondition, event):    
 
-        m = re.match("^[^!?]+\![^!?]+$", event) 
+        m = re.match(r"^[^!?]+\![^!?]+$", event) 
         if not m:
             return False
 
@@ -1307,7 +1381,7 @@ class EngineOffChain(Engine, models.Model):
         if not self.check_sat(precondition):
             return False
 
-        m = re.match("^[^!?]+\?[^!?]+$", event) 
+        m = re.match(r"^[^!?]+\?[^!?]+$", event) 
         if m is None:
             return False
 
@@ -1324,7 +1398,7 @@ class EngineOffChain(Engine, models.Model):
 
     def condition_rule_receive_delayed(self, precondition, event):    
     
-        m = re.match("^[^!?]+\?[^!?]+$", event) 
+        m = re.match(r"^[^!?]+\?[^!?]+$", event) 
         if not m:
             return False
     
@@ -1480,7 +1554,10 @@ class Contract(models.Model):
     label = models.CharField(max_length=100, verbose_name=_("label"))
     abi = models.JSONField(null=True, blank=False, verbose_name=_("abi"))
     bytecode = models.TextField(null=True, blank=False, verbose_name=_("bytecode"))
+    bytecode_hash = models.CharField(max_length=256, null=True, blank=False, verbose_name=_("bytecode hash"))
     deployed_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the contract has been deployed"))
+
+    DEFAULT_EVENT_NAMES = [ "Debug", ]
 
     class Meta:
         verbose_name = _("contract")
@@ -1523,12 +1600,21 @@ class Contract(models.Model):
         return len(self.bytecode) if self.bytecode else 0
 
 
+    @staticmethod
+    def get_bytecode_hash(bytecode):
+        import hashlib
+        digest = hashlib.sha256(bytecode.encode("utf-8")).hexdigest()
+        return digest
+
     def deploy(self, arguments=None, callback=None): #, contract_name : str, libraries=None, arguments=None):
         
         assert self.abi is not None, "Missing abi, cannot deploy"
         assert self.bytecode is not None, "Missing bytecode, cannot deploy"
 
         assert self.blockchain_configuration is not None, "Expected non-empty blockchain configuration"
+
+
+        print(f"\nDeploying contract {self.label} (bytecode: {len(self.bytecode)} bytes) ...")
 
         bc = self.blockchain_configuration    
         #abi = self.get_abi(contract_name)
@@ -1566,7 +1652,7 @@ class Contract(models.Model):
             "maxPriorityFeePerGas": w3.eth.max_priority_fee,
 
         }
-        print(f"Transaction parameters: {tx}")
+        #print(f"Transaction parameters: {tx}")
         #breakpoint()
         if (arguments == None):
 #            transaction = contract.constructor().buildTransaction(
@@ -1577,7 +1663,12 @@ class Contract(models.Model):
             transaction = w3_contract.constructor(*arguments).build_transaction(tx)
 
         #breakpoint()
-        gas_transaction_estimate = w3.eth.estimate_gas(transaction)
+        #if settings.ENABLE_GAS_ESTIMATION:
+        #    gas_transaction_estimate = w3.eth.estimate_gas(transaction)
+        #else:
+        #    gas_transaction_estimate = settings.DEFAULT_GAS_LIMIT
+        gas_transaction_estimate = bc.estimate_gas_limit(transaction)
+
         gas = int(gas_transaction_estimate * settings.GAS_MULTIPLIER)
         print(f"Estimated gas: {gas}.")
 #        transaction.update({
@@ -1588,31 +1679,41 @@ class Contract(models.Model):
 
         transaction.update({"gas": gas })
 
-        transaction_estimate_cost = round(w3.from_wei(gas * gas_price, "ether"), 6)
 
-        print(f"GAS price (estimate): {gas_price} wei")
-        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH")
+        transaction_estimate_cost_wei = gas * gas_price
+        transaction_estimate_cost = round(w3.from_wei(transaction_estimate_cost_wei, "ether"), 6)
+
+        print(f"GAS price (estimate): {gas_price} WEI")
+        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH - {transaction_estimate_cost_wei} WEI")
 
         ts_build_end = datetime.now() #time.time() - start_time
-        print(f"\nDeploying contract {self.label} (bytecode: {len(self.bytecode)} bytes) ...")
         #tx_receipt = bc._sendTransaction(transaction, callback=callback)
         tx, tx_receipt = bc._sendTransaction(transaction) # callback=callback)
 
         if not tx_receipt:
             raise Exception("No transaction receipt received. Are you experiencing network problems?")
+        elif tx_receipt["status"] == 0:
+            raise Exception(f"Failed deployment: status={tx_receipt['status']}. Transaction={tx}. Receipt={tx_receipt}")
+
+        #breakpoint()
 
         gas_price_actual = tx_receipt.effectiveGasPrice
-        transaction_actual_cost = round(w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
+        transaction_actual_cost_wei = tx_receipt.gasUsed * gas_price_actual
+        transaction_actual_cost = round(w3.from_wei(transaction_actual_cost_wei, 'ether'), 6)
 
         ts_execution_end = datetime.now() #time.time() - start_time
 
-        print(f"GAS price (actual): {gas_price_actual} wei")
-        print(f"Transaction cost (actual): {transaction_actual_cost} ether")
+        print(f"GAS price (actual): {gas_price_actual} WEI")
+        print(f"Transaction cost (actual): {transaction_actual_cost} ETH - {transaction_actual_cost_wei} WEI")
 
         balance_after = w3.eth.get_balance(bc.address)
         balance_eth = w3.from_wei(balance_after, 'ether')
         print(f"Account: {bc.address} . Balance (after deployment): {balance_eth} ETH")
 
+        events = bc._get_events(w3_contract, tx_receipt) or []
+        for curr in events:
+            print(f"**> Event: {curr}")
+        
 
         #self.__add_statistics(tx_receipt.contractAddress ,tx_receipt.gasUsed, transaction_actual_cost, round(execution_time,3), f"Contract Creation")
         #self.__log(tx_receipt.contractAddress ,tx_receipt.gasUsed, round(w3.from_wei(tx_receipt.gasUsed * self._w3.eth.gas_price, 'ether'),2), round(execution_time,3),f"Contract Creation")
@@ -1639,8 +1740,11 @@ class Contract(models.Model):
             "execution_time": (ts_execution_end - ts_build_end).total_seconds(), # / 1000,
         }
 
+        #breakpoint()
         return w3_contract, stats
         #return tx_receipt.contractAddress, contract
+
+
 
     def transact(self, function_name, function_args=None):
 
@@ -1664,23 +1768,64 @@ class Contract(models.Model):
         if not the_function:
             raise ValueError(f"Cannot find function '{function_name}'")
 
-        function_args = function_args or []
-        transaction = the_function(*function_args).build_transaction({
-                        "chainId": w3.eth.chain_id, #self.chain_id,
-                        "from": bc.address,
-                        "gasPrice": int(w3.eth.gas_price * 1.5),
-                    })
-        gas_transaction_estimate = w3.eth.estimate_gas(transaction)
+        block_gas_limit = w3.eth.get_block("latest")["gasLimit"]
+        print(f"Block Gas Limit: {block_gas_limit}")
+
+        gas = int(0.9 * block_gas_limit)
+        gas_price = w3.eth.gas_price
+        max_fee_per_gas = int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER)
+
+        #function_args = function_args or []
+        #breakpoint()
+        tx = {
+            "chainId": w3.eth.chain_id, #self.chain_id,
+            "gas": gas, 
+            "from": bc.address,
+            #"gasPrice": int(w3.eth.gas_price * 1.5),
+            "maxFeePerGas": max_fee_per_gas, 
+            "maxPriorityFeePerGas": w3.eth.max_priority_fee,
+        }
+
+        if function_args == None:
+            transaction = the_function().build_transaction(tx)
+        else:
+            transaction = the_function(*function_args).build_transaction(tx)
+
+        gas_transaction_estimate = bc.estimate_gas_limit(transaction)
         gas = int(gas_transaction_estimate * settings.GAS_MULTIPLIER)
         print(f"Estimated gas: {gas}.")
+
+####=====
+####
+####        tx = {
+####            "chainId": w3.eth.chain_id, 
+####            "gas": gas, #60000000,
+####            "from": bc.address,
+####            "maxFeePerGas": max_fee_per_gas,
+####            "maxPriorityFeePerGas": w3.eth.max_priority_fee,
+####
+####        }
+####        print(f"Transaction parameters: {tx}")
+####        #breakpoint()
+####        if (arguments == None):
+#####            transaction = contract.constructor().buildTransaction(
+####            transaction = w3_contract.constructor().build_transaction(tx)
+####        else:
+#####            transaction = contract.constructor(address).buildTransaction(
+#####            transaction = contract.constructor(address).build_transaction(
+####            transaction = w3_contract.constructor(*arguments).build_transaction(tx)
+####
+####====
+####
 
         transaction.update({"gas": gas })
 
         gas_price = w3.eth.gas_price
-        transaction_estimate_cost = round(w3.from_wei(gas * gas_price, "ether"), 6)
+        transaction_estimate_cost_wei = gas * gas_price
+        transaction_estimate_cost = round(w3.from_wei(transaction_estimate_cost_wei, "ether"), 6)
 
-        print(f"GAS price (estimate): {gas_price} wei")
-        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH")
+        print(f"GAS price (estimate): {gas_price} WEI")
+        print(f"Transaction cost (estimate): {transaction_estimate_cost} ETH - {transaction_estimate_cost_wei} WEI")
 
         balance_after = w3.eth.get_balance(bc.address)
         balance_eth = w3.from_wei(balance_after, 'ether')
@@ -1692,13 +1837,22 @@ class Contract(models.Model):
         tx, tx_receipt = self.blockchain_configuration._sendTransaction(transaction) #, callback=self._transaction_callback)
         ts_execution_end = datetime.now()
 
+        #breakpoint()
+        events = bc._get_events(w3_contract, tx_receipt) or []
+        for curr in events:
+            print(f"**> Event: {curr}")
+
+
 
         gas_price_actual = tx_receipt.effectiveGasPrice
-        transaction_actual_cost = round(w3.from_wei(tx_receipt.gasUsed * gas_price_actual, 'ether'), 6)
+        transaction_actual_cost_wei = tx_receipt.gasUsed * gas_price_actual
+        transaction_actual_cost = round(w3.from_wei(transaction_actual_cost_wei, 'ether'), 6)
 
 
-        print(f"GAS price (actual): {gas_price_actual} wei")
-        print(f"Transaction cost (actual): {transaction_actual_cost} ether")
+        print(f"GAS price (actual): {gas_price_actual} WEI")
+        print(f"Transaction cost (actual): {transaction_actual_cost} ETH - {transaction_actual_cost_wei} WEI")
+
+        max_fee_per_gas = int(gas_price * settings.GAS_MAX_FEE_MULTIPLIER)
 
 
         #execution_time = time.time() - start_time
@@ -1714,8 +1868,11 @@ class Contract(models.Model):
             "balance_after": balance_after,
             "transaction_type": "function",
             "ts_begin": ts_begin,
-            "ts_execution_end": ts_execution_end,
+            "ts_end": ts_execution_end,
             "execution_time": (ts_execution_end - ts_begin).total_seconds(), # / 1000,
+            "transaction_actual_cost": transaction_actual_cost,
+            "max_fee_per_gas": max_fee_per_gas,
+            "transaction_estimate_cost": transaction_estimate_cost,
         }
 
         return None, _stats # TODO refactor this, use events to get the intended output
@@ -1723,30 +1880,35 @@ class Contract(models.Model):
 
     def invoke(self, function_name, function_args=None):
 
-        #breakpoint()
-        try:
-            w3_contract = self.attach_w3_contract()#self.blockchain_configuration)
-            
-            if not hasattr(w3_contract.functions, function_name):
-                raise Exception(f"Smart contract does not have the specified function: {function_name}")
+        retries = max(settings.DEFAULT_RETRIES, 1) # at least one attempt ...
 
-            the_function = getattr(w3_contract.functions, function_name)
-            function_args = function_args or []
-            res = the_function(*function_args).call()
-            return res
-
-        except Exception as err:
+        while retries > 0:
             #breakpoint()
-            raise Exception(f"Error invoking smart contract function: {function_name}. Details: {err}")
-            #print(f"Error invoking Enforcer contract function: {function_name}")
-            #traceback.print_exc()
-            #return None
-
+            self.blockchain_configuration.sync()
+            try:
+                w3_contract = self.attach_w3_contract()#self.blockchain_configuration)
+                
+                if not hasattr(w3_contract.functions, function_name):
+                    raise Exception(f"Smart contract does not have the specified function: {function_name}")
+    
+                the_function = getattr(w3_contract.functions, function_name)
+                function_args = function_args or []
+                res = the_function(*function_args).call()
+                return res
+    
+            except Exception as err:
+                #breakpoint()
+                raise Exception(f"Error invoking smart contract function: {function_name}. Details: {err}. Retries: {retries}")
+                #print(f"Error invoking Enforcer contract function: {function_name}")
+                #traceback.print_exc()
+                #return None
+                retries -= 1
+    
 
 
 class EngineOnChainMPST(Engine, models.Model):
 
-    RE_MESSAGE_MPST = "^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
+    RE_MESSAGE_MPST = r"^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
 
     running_instance = models.OneToOneField(RunningInstance, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="running instance")
     blockchain_configuration = models.ForeignKey(Configuration, null=True, blank=True, on_delete=models.SET_NULL, verbose_name=_("configuration"))
@@ -1762,7 +1924,7 @@ class EngineOnChainMPST(Engine, models.Model):
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
-    stats = models.JSONField(default = [])
+    stats = models.JSONField(default=list)
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
 
@@ -1777,7 +1939,21 @@ class EngineOnChainMPST(Engine, models.Model):
 
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
-    stats = models.JSONField(default = [])
+    stats = models.JSONField(default=list)
+
+    def set_global_type(self, gt):
+
+        self._global_type = gt
+        self._local_types = {}
+        self.curr_states = {}
+        self.pruning_relation = {}
+
+        for p in gt.participants:
+            lt = gt.project(p)
+            self._local_types[p] = lt
+            self.curr_states[p] = [ lt.initial ]
+            self.pruning_relation[p] = PruningRelation()
+
 
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None): 
@@ -1787,7 +1963,7 @@ class EngineOnChainMPST(Engine, models.Model):
 
         e = EngineOnChainMPST()
         e._lts = gt
-        #e.set_global_type(gt)
+        e.set_global_type(gt)
 
         blockchain_configuration = ri.blockchain_configuration
 
@@ -1828,9 +2004,9 @@ class EngineOnChainMPST(Engine, models.Model):
 
         return e
 
-      
 
     def deploy_smart_contracts(self): #, ri:RunningInstance=None):
+        import hashlib
 
         #if not self._nfa:
         #breakpoint()
@@ -1845,57 +2021,87 @@ class EngineOnChainMPST(Engine, models.Model):
         sc : SmartContract = scg.createSmartContract()
         sc.compile(debug=self._debug)
  
- 
-        # 2. deploy the Incomp library
+        # 1. deploy the Incomp library
         sc_incomp_abi = sc.get_abi("Incomp")
         sc_incomp_bytecode = sc.get_bytecode("Incomp")
-        sc_incomp = Contract.objects.create(
+        sc_incomp_hash = Contract.get_bytecode_hash(sc_incomp_bytecode)
+
+        #breakpoint()
+        # if it does not exist, deploy a new instance
+        sc_incomp = Contract.objects.filter(
+                        blockchain_configuration=self.blockchain_configuration,
+                        bytecode_hash=sc_incomp_hash).first()
+
+        #breakpoint()
+        if not sc_incomp:
+            sc_incomp = Contract.objects.create(
+                        blockchain_configuration=self.blockchain_configuration,
+                        bytecode_hash=sc_incomp_hash,
                         abi=sc_incomp_abi, 
                         bytecode=sc_incomp_bytecode, 
                         label="Incomp", 
-                        blockchain_configuration=self.blockchain_configuration)
-        
-        _, incomp_stats = sc_incomp.deploy()
-
-        self._log_stats(incomp_stats)
-
+                   )
+            _, incomp_stats = sc_incomp.deploy()
+            self._log_stats(incomp_stats)
+        else:
+            print(f"********** Reuse smart contract: {sc_incomp} ...")
+    
         ehc = EngineHasContract.objects.create(engine=self, contract=sc_incomp, name="__Incomp__")
 
   
-        # 0. deploy the Utils library
+        # 2. deploy the States library
         sc_states_abi = sc.get_abi("States")
         sc_states_bytecode = sc.get_bytecode("States")
-        sc_states = Contract.objects.create(
+        sc_states_hash = Contract.get_bytecode_hash(sc_states_bytecode)
+
+        sc_states = Contract.objects.filter(
+                        blockchain_configuration=self.blockchain_configuration,
+                        bytecode_hash=sc_states_hash).first()
+        if not sc_states:
+            sc_states = Contract.objects.create(
+                        blockchain_configuration=self.blockchain_configuration,
+                        bytecode_hash=sc_states_hash,
                         abi=sc_states_abi, 
                         bytecode=sc_states_bytecode, 
                         label="States", 
-                        blockchain_configuration=self.blockchain_configuration)
-        
-        _, states_stats = sc_states.deploy()
-
-        self._log_stats(states_stats)
+                )
+            _, states_stats = sc_states.deploy()
+            self._log_stats(states_stats)
+        else:
+            print(f"Reusing smart contract: {sc_states} ...")
 
         ehc = EngineHasContract.objects.create(engine=self, contract=sc_states, name="__State__")
         print(f"States library deployed ({sc_states.contract_address}) ...")    
 
-        # 1. deploy the Events
+        # 3. deploy the Events library
         sc_events_abi = sc.get_abi("Events")
         sc_events_bytecode = sc.get_bytecode("Events")
-        sc_events = Contract.objects.create(
+        sc_events_hash = Contract.get_bytecode_hash(sc_events_bytecode)
+
+        sc_events = Contract.objects.filter(
+                        blockchain_configuration=self.blockchain_configuration,
+                        bytecode_hash=sc_events_hash).first()
+
+        if not sc_events:
+            sc_events = Contract.objects.create(
+                        blockchain_configuration=self.blockchain_configuration,
+                        bytecode_hash=sc_events_hash,
                         abi=sc_events_abi, 
                         bytecode=sc_events_bytecode, 
                         label="Events", 
-                        blockchain_configuration=self.blockchain_configuration)
-        
-        _, events_stats = sc_events.deploy()
-
-        self._log_stats(events_stats)
+                )
+            _, events_stats = sc_events.deploy()
+            self._log_stats(events_stats)
+        else:
+            print(f"Reuse smart contract: {sc_events} ...")
 
         ehc = EngineHasContract.objects.create(engine=self, contract=sc_events, name="__Event__")
 
 
+        self.curr_states = {}
+
         # 3. deploy all participant's enforcers
-        for curr in self.lts.participants:
+        for curr in sorted(self.lts.participants):
             sc_enforcer_abi = sc.get_abi(curr)
             sc_enforcer_bytecode = sc.get_bytecode(curr, { "Events": sc_events.contract_address, "States": sc_states.contract_address, "Incomp": sc_incomp.contract_address })
             sc_enforcer = Contract.objects.create(
@@ -1910,8 +2116,17 @@ class EngineOnChainMPST(Engine, models.Model):
             ehc = EngineHasContract.objects.create(engine=self, contract=sc_enforcer, name=curr)
             print(f"Enforcer contract deployed for participant {curr} ({sc_enforcer.contract_address}) ...")    
 
+            self.blockchain_configuration.sync()
+
+        # 4. fetch participants' states
+        for curr in sorted(self.lts.participants):
+            print(f"Load {curr} states ...")
+            self.curr_states[curr] = list(map(self._decode_state, sc_enforcer.invoke("getStates")))
+            print(f"Loaded {curr} states: {self.curr_states[curr]} ...")
+
         #self.contract_nfa =sc_nfa
         #self.contract_enforcer = sc_enforcer
+        #breakpoint()
         self.save()
 
 
@@ -1954,23 +2169,124 @@ class EngineOnChainMPST(Engine, models.Model):
             the_contract = self.contract_enforcer.get(label=agent)
             
             output_before = the_contract.invoke("getOutput")
-         
-            _, process_input_stats = the_contract.transact("check_event", [ enc_agent, enc_action, enc_target, enc_message, ]) 
+            buffer_before = the_contract.invoke("getBuffer")
+            #breakpoint()
+            args = [ agent, action, target, message ]
+            enc_args = [ enc_agent, enc_action, enc_target, enc_message, ]
+            print(f"**> Encode ({args}) -> ({enc_args})")
+            print(f"**> Invoke [{agent}]check_event({args}) - Output before: {output_before} - Buffer before: {buffer_before}")
+            _, process_input_stats = the_contract.transact("check_event", enc_args)
 
             self._log_stats(process_input_stats)
 
             self.save()
 
+            self.blockchain_configuration.sync()
+
             output_after = the_contract.invoke("getOutput")
+            buffer_after = the_contract.invoke("getBuffer")
+            print(f"**> Output after: {output_after} - Buffer after: {buffer_after}")
+
+        except requests.exceptions.ReadTimeout:
+            self._debug_log(f"Timeout estimating gas. Transaction: {transaction}",)
+            return None
+
+        except requests.exceptions.ConnectionError:
+            self._debug_log(f"Connection error estimating gas. Transaction: {transaction}")
+            return None
+
         except Contract.DoesNotExist:
-            output_after = output_before
+            output_after = output_before # TODO was this path tested? -FS
     
-        return output_after[len(output_before):]
+        # decode every item of the tuple in the list
+
+        
+        #decode_ev = lambda ev: (self._decode_agent(ev[0]), self._decode_action(ev[1]), self._decode_agent(ev[2]), self._decode_message(ev[3]))
+
+        events = output_after[len(output_before):]
+        res = []
+        action_to_direction = { "!" : "->", "?" : "<-" }
+
+        for ev in events:
+            #curr = decode_ev(curr_enc)
+            initiator = self._decode_agent(ev[0])
+            action = self._decode_action(ev[1])
+            target = self._decode_agent(ev[2])
+            label = self._decode_message(ev[3])
+            direction = "->" if action == "!" else "<-"
+            res.append(f"{initiator}{action}{label}{direction}{target}")
+            
+        return res
 
 
 
     def process_check(self):    
         print(f"(* Not needed for MPST *)")
+
+
+    def get_curr_states(self, participant=None):
+        #breakpoint()
+        res = set()
+        if participant:
+            the_contract = self.contract_enforcer.get(label=participant)
+            states_enc = the_contract.invoke("getStates")
+            states_dec = list(map(self._decode_state, states_enc))
+            res = set(states_dec)
+        else:
+            for p in self.lts.participants:
+                the_contract = self.contract_enforcer.get(label=p)
+                #res[p] = the_contract.invoke("getStates")
+                res.update(map(self._decode_state, the_contract.invoke("getStates")))
+
+        return sorted(res)
+
+    def some_state_is_current(self, states, participant=None):
+        #breakpoint()
+        curr_states = self.get_curr_states(participant)
+
+        return len(states.intersection(curr_states)) > 0
+
+
+    def get_acceptable_events(self, participant=None):
+        
+        res = []
+    
+
+        curr_transitions = self.get_current_transitions(participant=participant)
+
+        for t in curr_transitions:
+            if t.is_concat:
+                msgexc = t.rhs.arguments[0]
+                #breakpoint()
+                if msgexc.is_global:
+                    res.append(msgexc.send_event)
+                    res.append(msgexc.receive_event)
+                else:   
+                    res.append(msgexc.event)
+
+        #breakpoint()
+        return set(res)
+
+    def get_current_transitions(self, participant=None):
+        res = []
+        curr_states = set(map(str, self.get_curr_states(participant=participant)))
+        if not participant:
+            transitions = self.get_transitions()
+        else:
+            transitions = self._local_types[participant].transitions
+
+        for t in transitions:
+            if len(set(t.source.states).intersection(curr_states)) > 0:
+                res.append(t)
+
+        return res
+            
+
+    def get_execution_started(self):
+        return self.execution_started
+
+    def get_execution_ended(self):
+        return self.execution_ended    
 
     def ended(self):
         # TODO re-implement this
@@ -1992,6 +2308,11 @@ class EngineOnChainMPST(Engine, models.Model):
 
         #return sorted(map(lambda s: s.id, self._nfa.states)).index(value)
         return sorted(map(lambda s: s.id, self._lts.states)).index(value)
+
+    def _decode_state(self, enc):
+
+        states = sorted(self._lts.states)
+        return states[enc]
 
     def _encode_action(self, value):
         # this is based on the enum appearing in the template for MPST enforcers
@@ -2080,6 +2401,21 @@ class EngineOnChainMPST(Engine, models.Model):
         return self.blockchain_configuration.private_key if self.blockchain_configuration else None
  
 
+    def get_buffer_items(self):
+        assert self.contract_enforcer is not None
+        #return list(map(self._decode_buffer_item, self.contract_enforcer.invoke("getBuffer")))
+        #breakpoint()
+
+        buffer = []
+        for p in self.lts.participants:
+            items = self.contract_enforcer.get(label=p).invoke("getBuffer")
+            buffer.extend(items)
+
+        #breakpoint()
+        return buffer
+
+
+
 class EngineHasContract(models.Model):
 
     engine = models.ForeignKey(EngineOnChainMPST, null=True, blank=False, on_delete=models.SET_NULL)
@@ -2102,7 +2438,7 @@ class EngineOnChain(Engine,models.Model):
     execution_started = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
     execution_ended = models.DateTimeField(null=True, blank=True, help_text=_("The time when the instance was started, if it was ever executed"))
 
-    stats = models.JSONField(default = [])
+    stats = models.JSONField(default=list)
     created_at = models.DateTimeField(null=True, blank=False, auto_now_add=True, help_text=_("The time when the engine has been created"))
 
  
@@ -2196,7 +2532,7 @@ class EngineOnChain(Engine,models.Model):
     @staticmethod
     def create_engine(ri : RunningInstance, transaction_callback = None, deploy_callback = None, the_filter : Filter = None): #nfa : nfa.NFA, blockchain_configuration : Configuration, transaction_callback = None, deploy_callback = None):
 
-        breakpoint()
+        #breakpoint()
         nfa_start = datetime.now()
         nfa = ri.choreography.to_nfa(optimize=True)
     

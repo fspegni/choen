@@ -1,8 +1,9 @@
 
 // SPDX-Licence-Identiier: CC-BY-NC-4.0	
 
-pragma solidity >= 0.7.6;
+pragma solidity >= 0.8.0;
 pragma abicoder v2;
+
 
 enum ACTION {
     Send,   // 0
@@ -366,6 +367,7 @@ function task_arr_to_string(Event[] memory ar) pure returns (string[] memory) {
 abstract contract MSABase
  {
 
+    event Debug(string);
 
 	STATE[] states;
 	IRel pr;
@@ -429,7 +431,6 @@ abstract contract MSABase
 contract {{ CURR.name }} is MSABase
  {
 	function init_delayable() internal override {
-		// TODO
 {{ CURR._functions.init_delayable.body }}
 	}
 	

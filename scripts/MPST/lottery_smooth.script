@@ -1,0 +1,12 @@
+Alice!bwin->Bob
+Bob?bwin<-Alice
+Bob!close->Charlie
+Charlie?close<-Bob
+Charlie!busy->Dana
+Dana?busy<-Charlie
+Charlie!msg->Alice
+Alice?msg<-Charlie
+Bob!sig->Alice
+Alice?sig<-Bob
+Alice!free->Dana
+Dana?free<-Alice

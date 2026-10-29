@@ -273,7 +273,8 @@ class Composition(object):
             elif isinstance(curr, Composition):
                 pass
             elif isinstance(curr, MsgExc):
-                res.append(f"!{curr.label}<>{curr.sender}")
+                res.append(f"{curr.sender}!{curr.label}->{curr.receiver}")
+                res.append(f"{curr.receiver}?{curr.label}<-{curr.sender}")
             elif isinstance(curr, MsgSend):
                 res.append(f"!{curr.label}->{curr.receiver}")
             elif isinstance(curr, MsgRecv):
@@ -418,6 +419,13 @@ class MsgSend(IsLocalMixin, IsNotGlobalMixin):
     
         return f"{self._sender}!{self._label}({payload})->{self._receiver}"
 
+    @property
+    def event(self):        
+        # TODO use payload
+        return f"{self._sender}!{self._label}->{self._receiver}"
+
+
+
     def to_json(self):
         payload = ""
 
@@ -476,6 +484,11 @@ class MsgRecv(IsLocalMixin, IsNotGlobalMixin):
         return f"{self._receiver}?{self._label}({payload})<-{self._sender}"
 
 
+    @property
+    def event(self):        
+        # TODO use payload
+        return f"{self._receiver}?{self._label}<-{self._sender}"
+
     def to_json(self):
         payload = ""
 
@@ -533,6 +546,17 @@ class MsgExc(IsGlobalMixin, IsNotLocalMixin):
             payload = ",".join(map(lambda c: c.__name__, self._payload))
     
         return f"{self._sender} -> {self._receiver} : {self._label} <{payload}>"
+
+    @property
+    def send_event(self):
+        # TODO add payload
+        return f"{self._sender}!{self._label}->{self._receiver}"
+ 
+    @property
+    def receive_event(self):
+        # TODO add payload
+        return f"{self._receiver}?{self._label}<-{self._sender}"
+  
 
     @property
     def sender(self):
@@ -664,14 +688,17 @@ class PruningRelation:
     def add(self, source, to_prune : []):
         assert len(to_prune) > 0, "Empty to_prune not accepted"
 
-        assert source not in self._to_prune
+        #assert source not in self._to_prune
 
-        self._to_prune[source] = to_prune
+        if source not in self._to_prune:
+            self._to_prune[source] = to_prune
+        else:
+            self._to_prune[source].extend(to_prune)
 
     def remove(self, state):
         #breakpoint()
         for source1, alternatives in self._to_prune.items():
-            if source1 != state:
+            if source1 != state and source1 in self._to_prune and state in self._to_prune[source1]:
                 # remove source from states alternatives to source1
                 self._to_prune[source1].remove(state)
          
@@ -844,9 +871,13 @@ class Transform:
         if rhs2 not in states:
             states.append(rhs2)
 
+        #breakpoint()
         # TODO check the encoding below works
         for alt in pr.to_prune(self.lhs):
             pr.remove(alt)
+
+            if alt in states:
+                states.remove(alt)
 
         pr.remove(self.lhs)
 
@@ -1000,7 +1031,7 @@ class Transform:
     def parse(obj):
 
         if "lhs" not in obj or "rhs" not in obj:
-            breakpoint()
+            #breakpoint()
             raise Exception("Ill-formed representation of transform.")
 
         lhs = obj["lhs"]
@@ -1061,7 +1092,7 @@ class TypeDef(nfa.LTS):
 
     @property
     def states(self):
-        return map(lambda sv: sv.id, self.state_vars)
+        return set(map(lambda sv: sv.id, self.state_vars))
 
     @property
     def messages(self):
@@ -1075,11 +1106,23 @@ class TypeDef(nfa.LTS):
     @property
     def events(self):
 
-        res = set([])
+        res = []
         for t in self.transforms:
-            res = res.union(t.events)
+            #res.append(t.events)
+            res.extend(t.events) # TODO check -FS
 
-        return res
+        return set(res)
+
+    @property
+    def delayable(self):
+        res = []
+        #breakpoint()
+        for t in self.transforms:
+            if t.is_concat:
+                res.append(t.rhs.arguments[0]) # = res.union(t.events)
+
+        return set(res)
+
 
 
 
@@ -1122,6 +1165,11 @@ class TypeDef(nfa.LTS):
             self._participants = set(reduce(lambda a,b: a.union(b), map(lambda t: t.participants, self._transforms)))
 
         return self._participants
+
+    @property
+    def agents(self):
+        return self.participants
+
 
     def find_transform(self, lhs : StateVar = None, rhs : StateVar = None, such_that = None):
         if lhs is None and rhs is None:
@@ -1782,10 +1830,17 @@ class GlobalType(TypeDef):
         replaces = []
 
         for t in self._transforms:
+            #print(f"Projecting {t} ...")
             if t.is_end:
                 t1 = Transform(StateVar(t.lhs), End())
 
             elif t.is_passthrough:
+                # do not replace the inital variable (x0) ; it is used here and now instead of referring to
+                # self.initial; we should refactor this and make it less dependable from the naming convention -FS TODO
+                if t.lhs == self.initial:
+                    p_transforms.append(t)
+                    continue
+
                 t1 = Transform(StateVar(t.lhs), StateVar(t.rhs))
                 replaces.append(t1)
                 
@@ -1834,6 +1889,7 @@ class GlobalType(TypeDef):
                     senders = senders.union(self.compute_senders(a))
 
                 if len(senders) == 0:
+                    breakpoint()
                     raise Exception(f"No senders in Choice: {t}")
                 elif len(senders) > 1:
                     raise Exception(f"Too many senders in Choice: {t}. Senders: {senders}")

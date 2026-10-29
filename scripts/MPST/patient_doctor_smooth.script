@@ -1,0 +1,12 @@
+Patient!AppointmentRequest->Doctor
+Doctor?AppointmentRequest<-Patient
+Doctor!AppointmentConfirmation->Patient
+Patient?AppointmentConfirmation<-Doctor
+Patient!SymptomsList->Doctor
+Doctor?SymptomsList<-Patient
+Doctor!Prescription->Patient
+Patient?Prescription<-Doctor
+Patient!MedicineRequest->Pharmacy
+Pharmacy?MedicineRequest<-Patient
+Pharmacy!MedicineDelivery->Patient
+Patient?MedicineDelivery<-Pharmacy

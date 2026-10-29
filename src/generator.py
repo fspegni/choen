@@ -1258,48 +1258,53 @@ bool dirty = false;
 
         rules = []
 
+        init_delayable = []
+
         for t in self._local_type.transforms:
             if t.is_fork:
                 lhs = t.lhs
                 rhs1 = t.rhs.arguments[0]
                 rhs2 = t.rhs.arguments[1]
 
-                rules.append(f"        if (apply_fork(states, pr, STATE.{lhs}, STATE.{rhs1}, STATE.{rhs2})) {{ dirty = true; }}")
+                rules.append(f"        if (apply_fork(states, pr, STATE.{lhs}, STATE.{rhs1}, STATE.{rhs2})) {{ emit Debug('apply fork: {lhs} -> {rhs1} | {rhs2} ...'); dirty = true; }}")
 
             elif t.is_join:
                 lhs1 = t.lhs.arguments[0]
                 lhs2 = t.lhs.arguments[1]
                 rhs1 = t.rhs
 
-                rules.append(f"        if (apply_join(states, pr, STATE.{lhs1}, STATE.{lhs2}, STATE.{rhs1})) {{ dirty = true; }}")
+                rules.append(f"        if (apply_join(states, pr, STATE.{lhs1}, STATE.{lhs2}, STATE.{rhs1})) {{ emit Debug('apply join: {lhs1} | {lhs2} -> {rhs1} ...'); dirty = true; }}")
 
             elif t.is_internal_choice or t.is_external_choice:
                 lhs = t.lhs
                 rhs1 = t.rhs.arguments[0]
                 rhs2 = t.rhs.arguments[1]
 
-                rules.append(f"        if (apply_choice(states, pr, STATE.{lhs}, STATE.{rhs1}, STATE.{rhs2})) {{ dirty = true; }}")
+                rules.append(f"        if (apply_choice(states, pr, STATE.{lhs}, STATE.{rhs1}, STATE.{rhs2})) {{ emit Debug('apply choice: {lhs} -> {rhs1} + {rhs2} ...'); dirty = true; }}")
 
             elif t.is_merge:
                 lhs1 = t.lhs.arguments[0]
                 lhs2 = t.lhs.arguments[1]
                 rhs1 = t.rhs
 
-                rules.append(f"        if (apply_merge(states, pr, STATE.{lhs1}, STATE.{lhs2}, STATE.{rhs1})) {{ dirty = true; }}")
+                rules.append(f"        if (apply_merge(states, pr, STATE.{lhs1}, STATE.{lhs2}, STATE.{rhs1})) {{ emit Debug('apply merge: {lhs1} + {lhs2} -> {rhs1} ...'); dirty = true; }}")
 
 
             elif t.is_passthrough:
                 lhs1 = t.lhs
                 rhs1 = t.rhs
 
-                rules.append(f"        if (apply_passthrough(states, pr, STATE.{lhs1}, STATE.{rhs1})) {{ dirty = true; }}")
+                rules.append(f"        if (apply_passthrough(states, pr, STATE.{lhs1}, STATE.{rhs1})) {{ emit Debug('apply passthrough: {lhs1} -> {rhs1} ...'); dirty = true; }}")
 
 
             elif t.is_end:
                 lhs1 = t.lhs.arguments[0]
 
-                rules.append(f"        if (apply_end(states, pr, STATE.{lhs1})) {{ dirty = true; }}")
+                rules.append(f"        if (apply_end(states, pr, STATE.{lhs1})) {{ emit Debug('apply end: {lhs1} -> end ...'); dirty = true; }}")
 
+
+            elif t.is_concat:
+                init_delayable.append(t.rhs.arguments[0])
 
         #breakpoint()
         if len(rules) > 0:
@@ -1311,7 +1316,19 @@ bool dirty = false;
 
         contract.add_function(Function("eq_closure", [], eq_closure_body, "public"))
 
-        contract.add_function(Function("init_delayable", [], "", "public")) # TODO finish this function
+        id_parts = []
+        for ev in init_delayable:
+            if isinstance(ev, MsgSend):
+                id_parts.append(f"delayable.push(Event(ACTOR.{ev.sender}, ACTION.Send, ACTOR.{ev.receiver}, MSG.{ev.label}));")
+            elif isinstance(ev, MsgRecv):
+                id_parts.append(f"delayable.push(Event(ACTOR.{ev.receiver}, ACTION.Receive, ACTOR.{ev.sender}, MSG.{ev.label}));")
+            else:
+                raise Exception(f"Delayable not supported: {ev}")
+
+        #breakpoint()
+        id_body = "\n".join(id_parts)
+    
+        contract.add_function(Function("init_delayable", [], id_body, "public")) # TODO finish this function
 
         check_event_body = """
 Event memory ev = Event(initiator, act, recipient, label);
@@ -1350,10 +1367,10 @@ input.push(ev);
                 lhs = t.lhs
                 rhs = t.rhs.arguments[-1]
                 rules.append(f"        // {str(t)}")
-                rules.append(f"        if (Events.eq(ev, ACTION.{action}, ACTOR.{initiator}, ACTOR.{target}, MSG.{label}) && apply_pass(states, pr, STATE.{lhs}, STATE.{rhs})) {{ output.push(ev); eq_closure(); return; }}")
+                rules.append(f"        if (Events.eq(ev, ACTION.{action}, ACTOR.{initiator}, ACTOR.{target}, MSG.{label}) && apply_pass(states, pr, STATE.{lhs}, STATE.{rhs})) {{ emit Debug('apply pass: {str(t)} ...');  output.push(ev); eq_closure(); return; }}")
                 #check_event_body = f"{check_event_body}\n\n// {action} : {t} \npos = states_arr_find(states, STATE.{t.lhs}); if (pos >= 0) {{ if (task.action == ACTION.{ action } && task.initiator == ACTOR.{ initiator } && task.target == ACTOR.{ target }) {{ apply_send_receive(states, pr, uint256(pos), STATE.{t.rhs.arguments[-1]}); output.push(task); eq_closure(); return; }} else if (task.action == ACTION.Wt{ action } && task.initiator == ACTOR.{ initiator } && task.target == ACTOR.{ target }) {{ apply_passthrough(states, pr, uint256(pos), STATE.{t.lhs}); output.push(task); eq_closure(); return; }} }} "
         rules_body = "\n".join(rules)
-        check_event_body = f"{check_event_body}{rules_body}\n\n// add to buffer (delay) or skip (suppress)\n\nif (Events.contains(delayable, ev)) {{ buffer.push(ev); }}"
+        check_event_body = f"{check_event_body}{rules_body}\n\n// add to buffer (delay) or skip (suppress)\n\nemit Debug(\"check_event : test is delayable ...\"); if (Events.contains(delayable, ev)) {{ emit Debug(\"check_event : add to buffer ...\"); buffer.push(ev); }} else {{ emit Debug(\"check_event : suppress ...\"); }}"
 
         contract.add_function(Function("check_event", [Variable("task", "Event", "calldata")], check_event_body, "public"))
 

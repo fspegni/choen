@@ -15,6 +15,12 @@ rebuild: build stop rm up
 
 restart: stop rm up 
 
+ganache-restart:
+	${DC} restart ganache
+
+ganache-wipe:
+	${DC} down --volume ganache
+
 #up:
 #	${DA} runserver 0.0.0.0:${PORT} &
 #	sleep 3 && open http://localhost:${PORT}
@@ -33,6 +39,10 @@ shell-old:
 
 shell:
 	${DC} exec -it backend bash
+
+ganache-shell:
+	${DC} exec -it ganache bash
+
 
 emergency-shell:
 	${DC} run --rm -it backend bash 
@@ -75,5 +85,11 @@ test:
 ganache:
 	npx ganache --db ./ganache_data --mnemonic "${MNEMONIC}" --accounts 5 --defaultBalanceEther 10000
 
-init: static
-	${DC} exec -it backend ${DA} createsuperuser
+init: up static
+	${DC} exec -it backend ${DA} loaddata data/initial/fixtures.json
+
+fixtures-create:
+	${DC} exec backend ${DA} dumpdata mpst.MPST auth.User sites.Site engine.Configuration --indent 2 -o data/initial/fixtures.json
+
+wipe: stop rm
+	${DC} down --volumes

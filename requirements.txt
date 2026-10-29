@@ -48,3 +48,4 @@ django-picklefield==3.1
 django-object-actions==4.2.0
 pyperclip==1.11.0
 django-cors-headers==4.7.0
+jsbeautifier==2.0.3

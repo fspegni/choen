@@ -1,5 +1,6 @@
 volumes:
     backend_data:
+    ganache_data:
 
 services:
 
@@ -15,6 +16,7 @@ services:
             - './src:/app/src'  
             - './public:/app/public'  
             - './data/initial:/app/data/initial'
+            - './data/output:/app/data/output'
             - 'backend_data:/app/data/persistent'
         env_file:
             - "./contrib/docker/.env"
@@ -41,6 +43,8 @@ services:
           - "127.0.0.1:8545:8545"
         networks:
           - blockchain
+        volumes:
+          - ganache_data:/ganache_data
     
 networks:
   blockchain:

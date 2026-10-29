@@ -1,0 +1,117 @@
+[
+{
+  "model": "mpst.mpst",
+  "pk": 1,
+  "fields": {
+    "name": "lottery",
+    "resource": "upload/lottery_choice_fork_UQJZKzP.mpst",
+    "enabled": true,
+    "details": ""
+  }
+},
+{
+  "model": "mpst.mpst",
+  "pk": 7,
+  "fields": {
+    "name": "alternating_bit",
+    "resource": "upload/alternating_bit_Af752Ci.mpst",
+    "enabled": true,
+    "details": null
+  }
+},
+{
+  "model": "mpst.mpst",
+  "pk": 9,
+  "fields": {
+    "name": "patient_doctor",
+    "resource": "upload/patient_doctor_43h7yOx.mpst",
+    "enabled": true,
+    "details": null
+  }
+},
+{
+  "model": "mpst.mpst",
+  "pk": 10,
+  "fields": {
+    "name": "incident_management",
+    "resource": "upload/incident_management_TEy3pay.mpst",
+    "enabled": true,
+    "details": null
+  }
+},
+{
+  "model": "mpst.mpst",
+  "pk": 15,
+  "fields": {
+    "name": "railway_maintenance",
+    "resource": "upload/railway_maintenance.mpst",
+    "enabled": true,
+    "details": null
+  }
+},
+{
+  "model": "mpst.mpst",
+  "pk": 17,
+  "fields": {
+    "name": "coffee_machine",
+    "resource": "upload/coffee_machine_WjEQRyM.mpst",
+    "enabled": true,
+    "details": null
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 1,
+  "fields": {
+    "password": "pbkdf2_sha256$870000$xaBpXMA7f4h3mntiZxMEw2$d7733rXvoenu2QscNqYEXtxbzxkq5zF1n40X0hn4p4I=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "aadmin",
+    "first_name": "",
+    "last_name": "",
+    "email": "admin@admin.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-10-26T14:24:40.413Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 2,
+  "fields": {
+    "password": "pbkdf2_sha256$870000$OANM9hPEuEvfhLXcMacjo5$s+saT70382+NqasjhNa7CmxJKdLOpuiwuQrfhf6gk4E=",
+    "last_login": "2026-10-29T09:09:29.528Z",
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "admin@admin.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-10-26T14:28:16.143Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "sites.site",
+  "pk": 1,
+  "fields": {
+    "domain": "127.0.0.1:8000",
+    "name": "127.0.0.1:8000"
+  }
+},
+{
+  "model": "engine.configuration",
+  "pk": 1,
+  "fields": {
+    "label": "Ganache",
+    "url": "http://ganache:8545",
+    "chain_id": "1337",
+    "address": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
+    "private_key": "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+  }
+}
+]
