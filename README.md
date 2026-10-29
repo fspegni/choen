@@ -1,8 +1,71 @@
-This repository contains a blockchain-based Choreography Enforcer. The application takes as input a BPMN 2.0 Choreography diagram, and synthesize a Solidity smart contract that act as an enforcer of actors trying to implement the choreography in their production processes.
+This repository contains a blockchain-based Choreography Enforcer. The application takes as input a multiparty session type or a BPMN 2.0 choreography diagram, and synthesize a Solidity smart contract that act as an enforcer of actors trying to implement the choreography in their production processes.
 
-The tool is still a prototype. The current stable version is based on a comand-line interface (CLI) where the user inputs the simulated events and observes whether the enforcer allows such events or not (perhaps they will be delayed, or postponed indefinitely). In future versions, a REST API interface will allow to seemlessly integrate it with (local or remotely connected) third party apps.
+The tool is still a prototype. The current stable version is based on a comand-line interface (CLI) where the user inputs the simulated events and observes whether the enforcer allows such events or not (perhaps they will be delayed, or postponed indefinitely). A REST API interface allows to integrate ChoEn with third party apps.
 
-# Preliminaries
+# Overview
+
+The current release of ChoEn is defined as a micro-service architecture. The main services at the moment are:
+- backend
+- ganache
+
+The _backend_ implements the CLI as well as the REST API. The backend also hosts the web GUI static files generated using [another project](https://gitlab.com/fspegni/choen-frontend). The _ganache_ service provides a local simulated blockchain, for tests before using a public network such as Sepolia.
+
+# Requirements
+* Ubuntu >= 24.04.5 LTS
+* Docker >= 28.3.3
+* GNU Make >= 4.3
+
+# Quick Start
+
+## Setup
+
+The following commands download/build the images and import some initial data (fixtures) needed to run tests. *NB:* no process in the hosting machine should be listening on port 8000.
+
+```
+$ make up
+$ make init
+```
+
+To test the environment is correctly working, use your browser to access address [http://localhost:8000](http://localhost:8000); a BPMN editor is presented. By visiting [http://localhost:8000/admin](http://localhost:8000/admin) you can visit the control panel of ChoEn, using the following default credentials:
+* username : _admin_
+* password : _admin_
+
+
+
+## Run experiments
+
+```
+$ make cli
+>> /list_choreographies
+>> /load_mpst <name>
+>> /load_config <bc_config>
+>> /start
++> /random <N>
+```
+
+Where:
+
+* `/list_choreographies` : return the list of all MPSTs loaded from the previous `make init` command
+* `/load_mpst <name>` : loads a specific MPST; <name> is the name of the test MPST, e.g. 
+    * lottery
+    * alternating_bit
+    * patient_doctor
+    * incident_mangement
+    * railway_maintenance
+    * coffee_machine
+* `/load_config <bc_config>` : loads a blockchain configuration; <bc_config> at the moment can be _"ganache"_ (no quotes) because it is the one pre-loaded by the previous `make init` command and uses well-known test addresses and private keys; later it is explained how to connect to Sepolia using your personal (test) credentials
+* `/start` : actually synthesizes the smart contracts and deploys them in the chosen blockchain node
+* `/random <N>` : executes _N_ random steps among the allowed ones; by default 80% of the times it picks a symbol that is expected at the current state, while 20% of the times picks a MPST action that is not expected at the current state; 
+
+
+## Configuring Sepolia
+
+In order to configure Sepolia we suggest to follow these steps using online tutorials:
+- configure an account on MetaMask
+- add Sepolia testnests on MetaMask
+- use a Sepolia-faucet to load some Sepolia-ETH and start deploying/transactiong (e.g. [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia), [here](https://sepolia-faucet.pk910.de/))
+
+# Some details
 
 ## Linux/Ubuntu without VSCode
 
@@ -16,26 +79,6 @@ export PYTHONPATH=${HOME}/git/choen/src:$PYTHONPATH
 ## Windows or Linux with VSCode
 
 You can follow this guide: https://code.visualstudio.com/docs/python . Remember to export the environment variables as described above.
-
-# First execution
-
-The first time you execute the tool, the required Python libraries must be installed, and a database must be initialized. Use the following commands:
-```
-$ workon <your_venv>
-(your_venv) $ pip install -r requirements.txt
-(your_venv) $ django-admin migrate
-```
-
-In the following we assume you were able to execute the commands above, and are still typing commands in the same terminal shell where you activated your virtual environment.
-
-# Running the automated tests
-
-Automated tests can be executed with the following command:
-```
-(your_venv) $ django-admin test bpmn_parser
-```
-
-At the moment, some tests have not been aligned with the most recent changes in code, thus resulting in some test failures.
 
 # Using the enforcer
 
@@ -139,32 +182,11 @@ The sequence of events returned by the enforcer represents the sequence in which
 
 # The WEB GUI
 
-In order to use the WEB GUI, you need to run the internal web-server in your virtualenv:
-```
-(your_env) $ django-admin runserver
-```
-
-Then, use your favourite browser to access the following URL: `http://localhost:8000/admin`.
-
-Note that at the moment, you cannot use the WEB GUI to prepare new running instances, but you cannot feed them using the WEB GUI, at the moment. At the moment, the user can only feed events through the CLI and the REST API.
+The WEB GUI is available at address [http://localhost:8000](http://localhost:8000) . Through it, it is possible to draw new BPMN choreography diagrams or access the API and Control panel.
 
 # The REST API
 
-In order to use the REST API, you need to run the internal web-server in your virtualenv (as for the WEB GUI scenario, above):
-```
-(your_env) $ django-admin runserver
-```
-
-Next, you can use your favourite browser to navigate the automatically generated documentation at the following URL: `http://localhost:8000/api`. 
+The automatically generated documentation of the REST API is available at the following URL: [http://localhost:8000/api](http://localhost:8000/api)`. 
 
 Finally, you can program your application to use the endpoints published by the API (navigate the documentation in order to discover them). 
 
-# Drawing choreographies
-
-At the moment the choreography diagrams are generated using the following online tool:
-
-https://bpt-lab.org/chor-js-demo/
-
----
-
-# Footnotes
