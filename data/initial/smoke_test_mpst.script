@@ -3,7 +3,7 @@
 
 /load_mpst alternating_bit
 /start
-/random 12
+/random 14
 /stats
 /stop
 /halt
@@ -11,6 +11,34 @@
 /load_mpst lottery
 /start
 /random 12
+/stats
+/stop
+/halt
+
+/load_mpst patient_doctor
+/start
+/random 12
+/stats
+/stop
+/halt
+
+/load_mpst railway_maintenance
+/start
+/random 26
+/stats
+/stop
+/halt
+
+/load_mpst incident_management
+/start
+/random 20
+/stats
+/stop
+/halt
+
+/load_mpst coffee_machine
+/start
+/random 10
 /stats
 /stop
 /halt
