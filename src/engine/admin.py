@@ -9,6 +9,8 @@ from django.core.exceptions import ValidationError
 from engine.models import RunningInstance, Configuration, Transaction, Contract, EngineOnChain, EngineOnChainMPST, EngineOffChain, EngineOffChainMPST, EngineHasContract
 from django.contrib.admin import SimpleListFilter
 from django.urls import reverse
+from django.contrib import messages
+from django.conf import settings
 
 import traceback
 
@@ -21,16 +23,51 @@ class ConfigurationForm(forms.ModelForm):
             'private_key': forms.PasswordInput(),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['private_key'].required = False
+
 
 @admin.register(Configuration)
-class ConfigurationAdmin(admin.ModelAdmin):
+class ConfigurationAdmin(DjangoObjectActions, admin.ModelAdmin):
 
     form = ConfigurationForm
 
     list_display = [ "label", "chain_id", "url", ]
     search_fields = [ "chain_id", "url", "address", "private_key", ]
-
     
+    changelist_actions = [ "create_account", ]
+
+    @action(label=_("Create Sepolia account"), description=_("create a Sepolia account"))
+    def create_account(self, request, queryset):
+        from web3 import Web3
+
+        account = Web3().eth.account.create()
+
+        #print("Address:", account.address)
+        #print("Private key:", account.key.hex())
+
+        c, created = Configuration.objects.get_or_create(label="Sepolia",
+            defaults={
+                "url": settings.SEPOLIA_ENDPOINT,
+                "chain_id": settings.SEPOLIA_CHAIN_ID,  
+                "address": account.address,
+                "private_key": account.key.hex()
+            })
+
+        if created:
+            messages.warn(request, f"A Sepolia configuration already exist. Skip.")
+        else:
+            messages.info(request, f"Created Sepolia configuration for address: {account.address}")
+
+
+    def clean_private_key(self):
+        password = self.cleaned_data.get('private_key')
+
+        if not password and self.instance.pk:
+            return self.instance.private_key
+
+        return password
 
 class IsOnChainFilter(SimpleListFilter):
 

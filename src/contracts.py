@@ -681,7 +681,8 @@ pragma abicoder v2;
         if (debug):
             file_name = "_".join([prefix,datetime.datetime.now().strftime("%y%m%d_%H%M%S")])
             #tmp_path = f"{settings.BASE_DIR}\..\public\\tmp\{file_name}.sol"
-            tmp_path = os.path.join(settings.BASE_DIR, "..", "public", "tmp", f"{file_name}.sol")
+            os.makedirs(settings.TMP_DIR, exist_ok=True)     
+            tmp_path = os.path.join(settings.TMP_DIR, f"{file_name}.sol")
             with open(tmp_path,"w") as file:
                 file.write(smart_contract_text)
                 print("\nSmart contract saved at: ",tmp_path,"\n")

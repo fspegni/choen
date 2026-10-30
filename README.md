@@ -62,12 +62,20 @@ Where:
 
 ## Configuring Sepolia
 
-In order to configure Sepolia we suggest to follow these steps using online tutorials:
+One way to configure an account on Sepolia is to let the ChoEn tool generate it. In order to do so, open the link []() using the browser. On the top-right corner there is a button labeled "Create Sepolia Account". Press it, and you will see a new configuration named _Sepolia_ will appear in the list of accounts. Next, use the Sepolia-faucets to load some Sepolia-ETH on your account to execute tests. Finally, execute the experiments changing the name of your `<bc_config>` onto `Sepolia`.
+
+
+Alternatively, it is possible to follow these steps well documented on several online tutorials:
 - configure an account on MetaMask
 - add Sepolia testnests on MetaMask
-- use a Sepolia-faucet to load some Sepolia-ETH and start deploying/transactiong (e.g. [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia), [here](https://sepolia-faucet.pk910.de/))
 - enter [http://localhost:8000/admin/engine/configuration/](http://localhost:8000/admin/engine/configuration/) to create a new configuration, saving the RPC endpoing and chain-id for Sepolia together with address and private key)
+- use Sepolia-faucets to get some Sepolia-ETH to run the experiments (see below)
 - execute the experiments changing the name of your `<bc_config>` to match the one given at the previous step
+
+## Sepolia faucets
+- [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia)
+- [here](https://sepolia-faucet.pk910.de/))
+
 
 ## Cleanup
 

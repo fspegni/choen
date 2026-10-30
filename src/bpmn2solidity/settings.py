@@ -23,6 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 MEDIA_ROOT = BASE_DIR / ".." / "public" / "media"
 MEDIA_URL = "/media/"
 UPLOAD_ROOT = "upload"
+TMP_DIR  =BASE_DIR / ".." / "public" / "tmp" 
 
 DATA_ROOT = BASE_DIR /  ".." / "data" / "initial"
 
@@ -195,3 +196,6 @@ GAS_PRIORITY_FEE_MULTIPLIER = 6 # 1.5
 GAS_MAX_FEE_MULTIPLIER = 2 #1.5
 
 DEFAULT_RETRIES = 2 
+
+SEPOLIA_ENDPOINT = "https://ethereum-sepolia-rpc.publicnode.com"
+SEPOLIA_CHAIN_ID = 11155111
