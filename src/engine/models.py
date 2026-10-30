@@ -2174,7 +2174,7 @@ class EngineOnChainMPST(Engine, models.Model):
             args = [ agent, action, target, message ]
             enc_args = [ enc_agent, enc_action, enc_target, enc_message, ]
             print(f"**> Encode ({args}) -> ({enc_args})")
-            print(f"**> Invoke [{agent}]check_event({args}) - Output before: {output_before} - Buffer before: {buffer_before}")
+            print(f"**> Invoke [{agent}] check_event({args}) - Output before: {output_before} - Buffer before: {buffer_before}")
             _, process_input_stats = the_contract.transact("check_event", enc_args)
 
             self._log_stats(process_input_stats)

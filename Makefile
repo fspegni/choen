@@ -72,6 +72,10 @@ cli:
 	#${DA} cli
 	${DC} exec -it backend ${DA} cli
 
+smoke_mpst:
+	#${DA} cli
+	${DC} exec -it backend ${DA} cli data/initial/smoke_test_mpst.script
+
 cli-old:
 	${DA} cli
 

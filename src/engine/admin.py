@@ -56,9 +56,10 @@ class ConfigurationAdmin(DjangoObjectActions, admin.ModelAdmin):
             })
 
         if created:
-            messages.warn(request, f"A Sepolia configuration already exist. Skip.")
+            messages.info(request, f"Created Sepolia configuration for address: {account.address}.")
+            messages.warning(request, f"Remember that you need to add ETH tokens to the just-created account in order to operate with it.")
         else:
-            messages.info(request, f"Created Sepolia configuration for address: {account.address}")
+            messages.warning(request, f"A Sepolia configuration already exist. Skip.")
 
 
     def clean_private_key(self):

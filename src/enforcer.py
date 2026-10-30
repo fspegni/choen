@@ -23,7 +23,7 @@ import prompt_toolkit
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import NestedCompleter
 from web3 import Web3
-from engine.models import ActionFilter, UnionFilter, Filter, Contract, Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain
+from engine.models import ActionFilter, UnionFilter, Filter, Contract, Configuration, RunningInstance, Engine, EngineOnChain, EngineOffChain, EngineOnChainMPST
 
 import random
 import string
@@ -40,7 +40,7 @@ class Enforcer:
     def __init__(self, engine : Engine):
 #        assert nfa is not None, f"Expected not-null nfa to build an enforcer"
         self._debug : bool = True
-        self._onChain : bool = isinstance(engine, EngineOnChain)
+        #self._onChain : bool = isinstance(engine, EngineOnChain)
         
         #self._history = []  
         self._engine = engine
@@ -196,6 +196,12 @@ class UICommand:
     def execute(self, *args, **kwargs):
         raise Exception("You must implement this")
 
+class CmdHalt(UICommand):
+
+    _description = "Halth the execution of the script"
+
+    def execute(self, *args, **kwargs):
+        _ = self.ui.prompt(f"Press Enter to continue ...")
 
 class CmdInit(UICommand):
 
@@ -397,12 +403,12 @@ class CmdScript(CmdStep):
         steps = int(args[1]) if len(args) > 1 else None
 
         if not path:
-            raise Exception("Script not passed")
+            raise UICommand.Error("Script not passed")
+
 
         if not os.path.exists(path):
             raise Exception(f"Script path does not exist")
         elif os.path.isdir(path):
-            #breakpoint()
             files = sorted(
                 (p for p in Path(path).iterdir() if p.is_file()),
                 key=lambda p: p.name.lower()
@@ -1721,17 +1727,20 @@ class CmdStats(UICommand):
     _description = "Print statistics collected during execution"
 
     def execute(self, *args, **kwargs):
-        if self.ui._enforcer is None:
-            raise UICommand.Error("You must start the enforcer, before getting statistics")
 
-        if not self.ui._enforcer._onChain:
-            raise UICommand.Error("Statistics for off-chain Engine are not available.")
+        the_engine = None
+        if len(args) > 0:
+            the_engine = EngineOnChainMPST.objects.get(pk=args[0]) # TODO generalize this to other engines ...
+        else:
+           if self.ui._enforcer is None:
+                raise UICommand.Error("Either pass an Engine PK or start the enforcer, before getting statistics")
 
-        self.ui.__print_stats()
-        """if (args[0] == "-save"):
-            with open(f'test_ganache.csv', 'a', encoding="utf-8") as f:
-                f.write(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="tsv"))
-                f.write("\n")"""
+           the_engine = self.ui._enforcer.engine
+
+        if not getattr(the_engine, "stats"): #_onChain:
+            raise UICommand.Error("Your engine does not provide a 'stats' field.")
+
+        self.ui._print_stats(the_engine.stats)
 
 class CmdHistory(UICommand):
 
@@ -1874,6 +1883,7 @@ class UI:
 
     def __init__(self, *args, **kwargs):
         self._registry = {
+            "halt": CmdHalt(self),
             "init"  : CmdInit(self), #self.cmd_init,
             "list"  : CmdListChoreographies(self), #self.cmd_list,
             "list_choreographies"  : CmdListChoreographies(self), #self.cmd_list, # FS redundant but more familiar name
@@ -2034,22 +2044,67 @@ class UI:
         if self._debug:
             print(text)
 
-    def __print_stats(self):
-        print(tabulate(self._stats, headers=["Transaction", "Contract Address", "Gas Used", "Cost (Eth)", "Execution Time (s)", ""],tablefmt="fancy_grid"))
+    def _print_stats(self, the_stats):
+
+        deploy_headers = { "contract_name" : "Contract", "contract_address": "Address", "transaction_estimate_cost": "Tx.Est.Cost", "gas_price_actual": "GAS price", "max_fee_per_gas": "MaxFeeGas", "gas": "GAS", "transaction_actual_cost": "Tx.Cost", "transaction_type": "Tx.Type", "bytecode_size": "ByteCode Size", "build_time": "Build Time", "execution_time": "Ex. Time", }
+        runtime_headers = { "contract_name" : "Contract", "function_name": "Function", "function_args": "Args", "transaction_estimate_cost": "Tx.Est.Cost", "gas_price_actual": "GAS price", "max_fee_per_gas": "MaxFeeGas", "gas": "GAS", "transaction_actual_cost": "Tx.Cost", "transaction_type": "Tx.Type", "execution_time": "Ex. Time", }
+
+        # filter the rows that have transaction_type == deploy, and keep only the required fields
+        the_stats_deploy = [
+            {k: curr.get(k) for k in deploy_headers}
+            for curr in the_stats
+            if curr.get("transaction_type") == "deploy"
+        ]
+        
+        # filter the rows that have transaction_type == function, and keep only the required fields
+        the_stats_runtime = [
+            {k: curr.get(k) for k in runtime_headers}
+            for curr in the_stats
+            if curr.get("transaction_type") == "function"
+        ]
+
+        print("Detailed:")
+        print("Deploy:")
+        print(tabulate(the_stats_deploy, headers=deploy_headers, tablefmt="fancy_grid"))
+        print("")
+        print("Runtime:")
+        print(tabulate(the_stats_runtime, headers=runtime_headers, tablefmt="fancy_grid"))
         print("\n")
-        """gas_used = []
-        cost = []
-        execution_time = []
-        for row in self._stats:
-            gas_used.append(row[2])
-            cost.append(row[3])
-            execution_time.append(row[4])
-        print("Avg (Gas Used): ", round(statistics.mean(gas_used), 5))
-        print("SD (Gas Used): ", round(statistics.stdev(gas_used), 5))
-        print("Avg (Cost): ", statistics.mean(cost), " Eth")
-        print("SD (Cost): ", statistics.stdev(cost), " Eth")
-        print("Avg (Execution time): ", round(statistics.mean(execution_time), 5), " s")
-        print("SD (Execution time): ", round(statistics.stdev(execution_time), 5), " s")"""
+
+        print("Summary:")
+        print("Deploy:")
+        self._aggregate(the_stats_deploy, [ "gas", "execution_time" ], deploy_headers, indent=2)
+        print("---")
+        print("Runtime:")
+        self._aggregate(the_stats_runtime, [ "gas", "execution_time" ], runtime_headers, indent=2)
+
+    def _aggregate(self, the_stats, fields, headers, prefix="", indent=0):
+
+        indentation = " "*indent
+        prefix = f"{indentation}{prefix}"
+        aggregation = { key: list() for key in fields }
+        for row in the_stats:
+            #breakpoint()
+            for curr in fields:
+                aggregation[curr].append(row[curr])
+            #gas_used.append(row["gas"])
+            #cost.append(row["transaction_actual_cost"])
+            #execution_time.append(row["execution_time"])
+
+        for curr in fields:
+            mean = round(statistics.mean(aggregation[curr]), 5)
+            if len(aggregation[curr]) > 1:
+                sd = round(statistics.stdev(aggregation[curr]), 5)
+                sd = f"{sd:,.5f}"
+            else:
+                sd = "<not enough data>"
+
+            print(f"{prefix}Mean ({headers[curr]}): {mean:,.5f}")        
+            print(f"{prefix}SD ({headers[curr]}): {sd}")
+        #print("Avg (Cost): ", statistics.mean(cost), " Eth")
+        #print("SD (Cost): ", statistics.stdev(cost), " Eth")
+        #print("{prefix}Avg (Execution time): ", round(statistics.mean(execution_time), 5), " s")
+        #print("{prefix}SD (Execution time): ", round(statistics.stdev(execution_time), 5), " s")
 
 
     def prompt(self, line=None):
@@ -2145,7 +2200,7 @@ class UI:
             if self._enforcer.ended():
                 self._debug_log("(* Ended *)")
                 #print("\n")
-                #self.__print_stats()       
+                #self._print_stats()       
                 #self._enforcer = None
                 #self._rei = None
                 #self._running = False
@@ -2165,8 +2220,26 @@ class UI:
 
 def cli(*args, **kwargs):
 
+    if kwargs["script"] and not os.path.exists(kwargs["script"]):
+        print(f"Script file not found: {kwargs['script']}")
+        sys.exit(1)
+
     with UI() as ui:
 
+        if kwargs["script"]:
+            # interpret the script lines
+            with open(kwargs["script"], "r") as the_script:
+                for line in the_script:
+                    line = line.strip()
+                    if not line or line[0] == "#":
+                        continue
+    
+                    try:
+                        ui.consume(line)
+                    except Exception as e:
+                        traceback.print_exc()
+    
+        # interpret the user input
         while True:
             try:
                 userin = ui.prompt().strip()

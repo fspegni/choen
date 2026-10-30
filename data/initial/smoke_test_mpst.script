@@ -1,0 +1,16 @@
+/load_config ganache
+
+
+/load_mpst alternating_bit
+/start
+/random 12
+/stats
+/stop
+/halt
+
+/load_mpst lottery
+/start
+/random 12
+/stats
+/stop
+/halt

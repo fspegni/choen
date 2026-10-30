@@ -6,6 +6,14 @@ from enforcer import cli
 
 class Command(BaseCommand):
 
-    def handle(self, *args, **options):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "script",
+            nargs="?",
+            default=None,
+            help="Optional script command"
+        )
 
-        cli(*args, **options)
+    def handle(self, *args, **options):
+        script = options.pop("script")
+        cli(script=script, **options)
