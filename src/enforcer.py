@@ -608,6 +608,58 @@ class CmdRemove(UICommand):
             else:
                 print(f"Operation interrupted by the user")
 
+class CmdCreateConfiguration(UICommand):
+
+    _description = "Create a configuration for running on a blockchain"
+
+    def execute(self, label=None, *args, **kwargs):
+        from web3 import Web3
+
+        if not label:
+            print(f"Please, specify the label of the configuration to create.")
+            return
+
+        #breakpoint()
+        is_auto = False
+
+        if len(args) > 0 and args[0] == "--auto":
+            is_auto = True
+            the_url = settings.SEPOLIA_ENDPOINT
+            the_chain_id = settings.SEPOLIA_CHAIN_ID
+
+            account = Web3().eth.account.create()
+            the_address = account.address
+            the_private_key = account.key.hex()
+
+            
+        else:
+            the_url = self.ui.prompt(f"RPC endpoint URL: ")
+            the_chain_id = self.ui.prompt(f"Chain ID: ")
+            the_address = self.ui.prompt(f"Account address: ")
+            the_private_key = self.ui.prompt(f"Account private key: ")
+
+
+        c, created = Configuration.objects.get_or_create(label=label,
+            defaults={
+                "url": the_url,
+                "chain_id": the_chain_id,
+                "address": the_address,
+                "private_key": the_private_key,
+            })
+
+        if created:
+            #self.ui._model.add_object("", c)
+            self.ui.set_env("ONCHAIN_URL", the_url)
+            self.ui.set_env("ONCHAIN_CHAIN_ID", the_chain_id)
+            self.ui.set_env("ONCHAIN_ADDRESS", the_address)
+            self.ui.set_env("ONCHAIN_PRIVATE_KEY", the_private_key)
+            print(f"Configuration created: {c.label}. Checkout the new /env")
+
+            if is_auto:
+                print(f"**> BEWARE: you need to have ETH tokens to operate using this just-created account")
+        else:
+            print(f"Configuration {label} already exists. You can load it.")
+
 class CmdLoadConfiguration(UICommand):
 
     _description = "Load an existing blockchain configuration from database"
@@ -632,6 +684,7 @@ class CmdLoadConfiguration(UICommand):
                 available = "\n".join(config_labels)
             else:
                 available = "(* none *)"
+            
             print(available)
             return
 
@@ -1661,6 +1714,8 @@ class CmdDump(UICommand):
             else:
                 print(f"Option not recognized: {' '.join(args)}")
 
+
+
 class CmdStats(UICommand):
 
     _description = "Print statistics collected during execution"
@@ -1853,6 +1908,7 @@ class UI:
             "env"   : CmdEnv(self),
             "env_unset": CmdEnvUnset(self),
             "env_reset": CmdEnvReset(self),
+            "create_config"   : CmdCreateConfiguration(self),
             "load_config"   : CmdLoadConfiguration(self),
             "get_balance"   : CmdGetBalance(self),
             "build_contracts"   : CmdBuildContracts(self),
