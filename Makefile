@@ -86,10 +86,11 @@ ganache:
 	npx ganache --db ./ganache_data --mnemonic "${MNEMONIC}" --accounts 5 --defaultBalanceEther 10000
 
 init: up static
-	${DC} exec -it backend ${DA} loaddata data/initial/fixtures.json
+	${DC} exec -it backend ${DA} loaddata /app/data/initial/fixtures.json
+	${DC} exec -it backend tar zxvf /app/data/initial/fixtures_media.tar.gz -C /app/public
 
 fixtures-create:
-	${DC} exec backend ${DA} dumpdata mpst.MPST auth.User sites.Site engine.Configuration --indent 2 -o data/initial/fixtures.json
+	${DC} exec backend ${DA} dumpdata mpst.MPST auth.User sites.Site bpmn_parser.Choreography engine.Configuration --indent 2 -o data/initial/fixtures.json
 
 wipe: stop rm
 	${DC} down --volumes

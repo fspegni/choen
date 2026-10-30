@@ -32,7 +32,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
 
-class HomeView(LoginRequiredMixin, TemplateView):
+class HomeView(TemplateView):
 
     template_name = "index.html"
 

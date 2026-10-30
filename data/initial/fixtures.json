@@ -4,7 +4,7 @@
   "pk": 1,
   "fields": {
     "name": "lottery",
-    "resource": "upload/lottery_choice_fork_UQJZKzP.mpst",
+    "resource": "upload/lottery.mpst",
     "enabled": true,
     "details": ""
   }
@@ -14,7 +14,7 @@
   "pk": 7,
   "fields": {
     "name": "alternating_bit",
-    "resource": "upload/alternating_bit_Af752Ci.mpst",
+    "resource": "upload/alternating_bit.mpst",
     "enabled": true,
     "details": null
   }
@@ -24,7 +24,7 @@
   "pk": 9,
   "fields": {
     "name": "patient_doctor",
-    "resource": "upload/patient_doctor_43h7yOx.mpst",
+    "resource": "upload/patient_doctor.mpst",
     "enabled": true,
     "details": null
   }
@@ -34,7 +34,7 @@
   "pk": 10,
   "fields": {
     "name": "incident_management",
-    "resource": "upload/incident_management_TEy3pay.mpst",
+    "resource": "upload/incident_management.mpst",
     "enabled": true,
     "details": null
   }
@@ -54,7 +54,7 @@
   "pk": 17,
   "fields": {
     "name": "coffee_machine",
-    "resource": "upload/coffee_machine_WjEQRyM.mpst",
+    "resource": "upload/coffee_machine.mpst",
     "enabled": true,
     "details": null
   }
@@ -104,6 +104,46 @@
   }
 },
 {
+  "model": "bpmn_parser.choreography",
+  "pk": 3,
+  "fields": {
+    "name": "coffee_machine",
+    "resource": "upload/coffee_machine.bpmn",
+    "enabled": true,
+    "details": ""
+  }
+},
+{
+  "model": "bpmn_parser.choreography",
+  "pk": 6,
+  "fields": {
+    "name": "railway_maintenance",
+    "resource": "upload/railway_maintenance.bpmn",
+    "enabled": true,
+    "details": null
+  }
+},
+{
+  "model": "bpmn_parser.choreography",
+  "pk": 8,
+  "fields": {
+    "name": "patient_doctor",
+    "resource": "upload/patient_doctor.bpmn",
+    "enabled": true,
+    "details": ""
+  }
+},
+{
+  "model": "bpmn_parser.choreography",
+  "pk": 10,
+  "fields": {
+    "name": "incident_management",
+    "resource": "upload/incident_management.bpmn",
+    "enabled": true,
+    "details": ""
+  }
+},
+{
   "model": "engine.configuration",
   "pk": 1,
   "fields": {
@@ -112,6 +152,17 @@
     "chain_id": "1337",
     "address": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
     "private_key": "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+  }
+},
+{
+  "model": "engine.configuration",
+  "pk": 2,
+  "fields": {
+    "label": "FS @ Metamask + Sepolia",
+    "url": "https://ethereum-sepolia-rpc.publicnode.com",
+    "chain_id": "11155111",
+    "address": "0xaB4f1F5d5c1c50c2E4E6Ad6Ae062901AAD2426B8",
+    "private_key": "5b4b5047b062b81425ddd5f36a85979b66e6821e5d17de70ac081401f2f9df3d"
   }
 }
 ]

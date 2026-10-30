@@ -725,7 +725,7 @@ class PruningRelation:
 class Transform:
 
     # Alice!cwin->Charlie ; Charlie?close<-Alice
-    RE_MSG = "^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
+    RE_MSG = r"^([^!?]+)(([!?])([^!?]+)(->|<-)([\w]+))$"
 
 
     select_concat = lambda t: t.is_concat
