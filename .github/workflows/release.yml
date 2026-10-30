@@ -1,0 +1,36 @@
+name: Update TACAS 2027 Release
+
+on:
+  push:
+    branches:
+      - tacas2027
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update release tag
+        run: |
+          git tag -f tacas2027 $GITHUB_SHA
+          git push origin refs/tags/tacas2027 --force
+
+      - name: Update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view tacas2027 >/dev/null 2>&1 || \
+            gh release create tacas2027 \
+              --title "TACAS 2027" \
+              --notes "Artifact evaluation for TACAS 2027 associated with paper ID 2122"
+
+          gh release edit tacas2027 \
+            --title "TACAS 2027" \
+            --notes "Artifact evaluation for TACAS 2027 associated with paper ID 2122"
